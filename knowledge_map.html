@@ -1853,8 +1853,6 @@ function updateMoons() {
 // ─── ORBITING SPACESHIP ──────────────────────────────────────────────────────
 let shipGroup = null;
 let shipData = null;
-let shipTrailPoints = [];
-const shipTrailMax = 40;
 let shipMeshForRaycast = null; // the hitbox mesh for raycasting
 
 function buildShip() {
@@ -1866,61 +1864,88 @@ function buildShip() {
 
   shipGroup = new THREE.Group();
 
-  // ── Fuselage — elongated cone ──
-  const bodyGeo = new THREE.ConeGeometry(1.8, 8, 6);
-  const bodyMat = new THREE.MeshPhongMaterial({
-    color: 0x888899,
-    emissive: domColor,
-    emissiveIntensity: 0.08,
-    shininess: 60,
-    specular: new THREE.Color(0x444444),
+  const metalMat = new THREE.MeshPhongMaterial({
+    color: 0x99999f,
+    emissive: new THREE.Color(0x222228),
+    emissiveIntensity: 0.1,
+    shininess: 80,
+    specular: new THREE.Color(0x666666),
   });
-  const body = new THREE.Mesh(bodyGeo, bodyMat);
-  body.rotation.x = Math.PI / 2; // point forward along Z
-  shipGroup.add(body);
 
-  // ── Wings — two flat triangles ──
-  const wingGeo = new THREE.BufferGeometry();
-  const wingVerts = new Float32Array([
-    0, 0, -2,   -6, 0, 2,   0, 0, 2,  // left wing
-    0, 0, -2,    6, 0, 2,   0, 0, 2,  // right wing
-  ]);
-  wingGeo.setAttribute('position', new THREE.BufferAttribute(wingVerts, 3));
-  wingGeo.computeVertexNormals();
-  const wingMat = new THREE.MeshPhongMaterial({
-    color: 0x667788,
+  // ── Central bus — small box body ──
+  const busGeo = new THREE.BoxGeometry(2.2, 2.2, 3);
+  const bus = new THREE.Mesh(busGeo, metalMat);
+  shipGroup.add(bus);
+
+  // ── Solar panels — two large flat rectangles on each side ──
+  const panelMat = new THREE.MeshPhongMaterial({
+    color: 0x1a2244,
     emissive: domColor,
-    emissiveIntensity: 0.05,
+    emissiveIntensity: 0.12,
+    shininess: 40,
+    specular: new THREE.Color(0x334466),
     side: THREE.DoubleSide,
   });
-  const wings = new THREE.Mesh(wingGeo, wingMat);
-  shipGroup.add(wings);
+  const panelGeo = new THREE.BoxGeometry(8, 0.15, 3.5);
+  const panelL = new THREE.Mesh(panelGeo, panelMat);
+  panelL.position.x = -5.5;
+  shipGroup.add(panelL);
+  const panelR = new THREE.Mesh(panelGeo, panelMat);
+  panelR.position.x = 5.5;
+  shipGroup.add(panelR);
 
-  // ── Engine glow — small bright sphere at the back ──
-  const engineGeo = new THREE.SphereGeometry(1.2, 8, 6);
+  // ── Panel struts — thin cylinders connecting bus to panels ──
+  const strutGeo = new THREE.CylinderGeometry(0.12, 0.12, 3.0, 4);
+  const strutL = new THREE.Mesh(strutGeo, metalMat);
+  strutL.rotation.z = Math.PI / 2;
+  strutL.position.x = -2.5;
+  shipGroup.add(strutL);
+  const strutR = new THREE.Mesh(strutGeo, metalMat);
+  strutR.rotation.z = Math.PI / 2;
+  strutR.position.x = 2.5;
+  shipGroup.add(strutR);
+
+  // ── Antenna dish — small cone on top ──
+  const dishGeo = new THREE.ConeGeometry(0.8, 1.5, 8, 1, true);
+  const dishMat = new THREE.MeshPhongMaterial({
+    color: 0xaaaaaa,
+    side: THREE.DoubleSide,
+    shininess: 60,
+  });
+  const dish = new THREE.Mesh(dishGeo, dishMat);
+  dish.position.y = 2;
+  dish.rotation.x = Math.PI;
+  shipGroup.add(dish);
+  const antennaGeo = new THREE.CylinderGeometry(0.06, 0.06, 1.8, 4);
+  const antenna = new THREE.Mesh(antennaGeo, metalMat);
+  antenna.position.y = 2.8;
+  shipGroup.add(antenna);
+
+  // ── Signal glow — faint pulsing light at antenna tip ──
+  const engineGeo = new THREE.SphereGeometry(0.5, 8, 6);
   const engineMat = new THREE.MeshBasicMaterial({
     color: domColor,
     transparent: true,
-    opacity: 0.8,
+    opacity: 0.6,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
-  const engine = new THREE.Mesh(engineGeo, engineMat);
-  engine.position.z = 4;
-  shipGroup.add(engine);
+  const signalLight = new THREE.Mesh(engineGeo, engineMat);
+  signalLight.position.y = 3.8;
+  shipGroup.add(signalLight);
 
-  // ── Engine halo ──
-  const haloGeo = new THREE.SphereGeometry(2.5, 8, 6);
+  // ── Signal halo ──
+  const haloGeo = new THREE.SphereGeometry(1.5, 8, 6);
   const haloMat = new THREE.MeshBasicMaterial({
     color: domColor,
     transparent: true,
-    opacity: 0.2,
+    opacity: 0.15,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
-  const halo = new THREE.Mesh(haloGeo, haloMat);
-  halo.position.z = 4.5;
-  shipGroup.add(halo);
+  const signalHalo = new THREE.Mesh(haloGeo, haloMat);
+  signalHalo.position.y = 3.8;
+  shipGroup.add(signalHalo);
 
   // ── Invisible hitbox for raycasting (larger than visual) ──
   const hitGeo = new THREE.SphereGeometry(8, 8, 6);
@@ -1936,7 +1961,7 @@ function buildShip() {
   shipData = {
     orbitR,
     angle: Math.random() * Math.PI * 2,
-    speed: 0.006,
+    speed: 0.004,
     incl: 0.7 + Math.random() * 0.5,
     alpha: 0,
     engineMat,
@@ -1944,8 +1969,6 @@ function buildShip() {
     spawnTime: performance.now(),
   };
 
-  // Build engine trail line
-  shipTrailPoints = [];
 }
 
 function clearShip() {
@@ -1959,28 +1982,8 @@ function clearShip() {
     shipData = null;
     shipMeshForRaycast = null;
   }
-  if (shipTrailLine) {
-    scene.remove(shipTrailLine);
-    shipTrailGeo.dispose();
-    shipTrailMat.dispose();
-    shipTrailLine = null;
-  }
-  shipTrailPoints = [];
 }
 
-// Engine trail
-const shipTrailGeo = new THREE.BufferGeometry();
-const shipTrailPositions = new Float32Array(shipTrailMax * 3);
-shipTrailGeo.setAttribute('position', new THREE.BufferAttribute(shipTrailPositions, 3));
-shipTrailGeo.setDrawRange(0, 0);
-let shipTrailMat = new THREE.LineBasicMaterial({
-  color: 0xc8b89a,
-  transparent: true,
-  opacity: 0.3,
-  blending: THREE.AdditiveBlending,
-  depthWrite: false,
-});
-let shipTrailLine = null;
 
 function updateShip() {
   if (!shipData || !shipGroup || !focusedNode) return;
@@ -2002,40 +2005,16 @@ function updateShip() {
 
   shipGroup.position.set(wx, wy, wz);
 
-  // Point ship in direction of travel (tangent to orbit)
-  const nextAngle = shipData.angle + 0.05;
-  const nx = Math.cos(nextAngle) * shipData.orbitR;
-  const ny = Math.sin(nextAngle) * shipData.orbitR * sinI;
-  const nz = Math.sin(nextAngle) * shipData.orbitR * cosI;
-  shipGroup.lookAt(cx + nx, cy + ny, cz + nz);
+  // Satellite slowly rotates — solar panels catch light from different angles
+  shipGroup.rotation.y += 0.003;
+  shipGroup.rotation.x = Math.sin(now * 0.0005) * 0.15;
 
   // Scale and opacity
   shipGroup.scale.setScalar(shipData.alpha * 1.0);
-  shipData.engineMat.opacity = shipData.alpha * (0.6 + Math.sin(now * 0.01) * 0.2);
-  shipData.haloMat.opacity = shipData.alpha * (0.15 + Math.sin(now * 0.008) * 0.08);
 
-  // Update trail color to match domain
-  const domColor = DOMAINS[focusedNode.domain]?.color || '#c8b89a';
-  shipTrailMat.color.set(domColor);
-
-  // Engine trail
-  shipTrailPoints.push(wx, wy, wz);
-  if (shipTrailPoints.length > shipTrailMax * 3) {
-    shipTrailPoints.splice(0, 3);
-  }
-  const count = shipTrailPoints.length / 3;
-  for (let i = 0; i < count; i++) {
-    shipTrailPositions[i * 3]     = shipTrailPoints[i * 3];
-    shipTrailPositions[i * 3 + 1] = shipTrailPoints[i * 3 + 1];
-    shipTrailPositions[i * 3 + 2] = shipTrailPoints[i * 3 + 2];
-  }
-  shipTrailGeo.attributes.position.needsUpdate = true;
-  shipTrailGeo.setDrawRange(0, count);
-
-  if (!shipTrailLine && count > 1) {
-    shipTrailLine = new THREE.Line(shipTrailGeo, shipTrailMat);
-    scene.add(shipTrailLine);
-  }
+  // Signal light blinks
+  shipData.engineMat.opacity = shipData.alpha * (0.3 + Math.max(0, Math.sin(now * 0.005)) * 0.7);
+  shipData.haloMat.opacity = shipData.alpha * (0.08 + Math.max(0, Math.sin(now * 0.005)) * 0.15);
 }
 
 // ─── LEGEND ─────────────────────────────────────────────────────────────────
