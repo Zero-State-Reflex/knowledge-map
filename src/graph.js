@@ -329,7 +329,7 @@ clearFocusEdges(); // hidden initially
 export let alpha = 1.0;
 const ALPHA_DECAY   = 0.016;
 const ALPHA_MIN     = 0.004; // keep gently alive forever
-const VEL_DECAY     = 0.58;
+let   VEL_DECAY     = 0.58;
 const REP_STR       = 7500;
 const LINK_TARGET   = 88;
 const LINK_STR      = 0.28;
@@ -344,6 +344,60 @@ const settlingEl = document.getElementById('settling');
 // Import focusedNode getter — we'll use a callback pattern to avoid circular deps
 let _getFocusedNode = () => null;
 export function setFocusedNodeGetter(fn) { _getFocusedNode = fn; }
+
+// ─── PRE-SIMULATION: position nodes before first render ─────────────────────
+{
+  const savedVelDecay = VEL_DECAY;
+  VEL_DECAY = 0.4;
+  alpha = 1.0;
+  for (let tick = 0; tick < 150; tick++) {
+    const a = Math.max(alpha, ALPHA_MIN);
+    // Repulsion
+    for (let i = 0; i < nodes.length; i++) {
+      const p = nodes[i];
+      for (let j = i + 1; j < nodes.length; j++) {
+        const q = nodes[j];
+        const dx = p.x - q.x, dy = p.y - q.y, dz = p.z - q.z;
+        const d2 = dx*dx + dy*dy + dz*dz + 1;
+        const f = REP_STR * a / d2;
+        p.vx += dx*f; p.vy += dy*f; p.vz += dz*f;
+        q.vx -= dx*f; q.vy -= dy*f; q.vz -= dz*f;
+      }
+    }
+    // Link attraction
+    for (const l of links) {
+      const s = l.source, t = l.target;
+      const dx = t.x-s.x, dy = t.y-s.y, dz = t.z-s.z;
+      const d = Math.sqrt(dx*dx + dy*dy + dz*dz) + 0.01;
+      const f = (d - LINK_TARGET) * LINK_STR * a / d;
+      s.vx += dx*f; s.vy += dy*f; s.vz += dz*f;
+      t.vx -= dx*f; t.vy -= dy*f; t.vz -= dz*f;
+    }
+    // Domain clustering
+    for (const n of nodes) {
+      const c = DOMAIN_CENTERS[n.domain];
+      if (!c) continue;
+      n.vx += (c[0] - n.x) * CLUSTER_STR * a;
+      n.vy += (c[1] - n.y) * CLUSTER_STR * a;
+      n.vz += (c[2] - n.z) * CLUSTER_STR * a;
+    }
+    // Integrate
+    for (const n of nodes) {
+      n.vx *= VEL_DECAY; n.vy *= VEL_DECAY; n.vz *= VEL_DECAY;
+      n.x += n.vx; n.y += n.vy; n.z += n.vz;
+    }
+    // Decay alpha
+    if (alpha > ALPHA_MIN) alpha -= ALPHA_DECAY * (alpha - ALPHA_MIN);
+  }
+  // Sync mesh positions to pre-simulated node positions
+  for (const n of nodes) {
+    n.mesh.position.set(n.x, n.y, n.z);
+    if (n.atm) n.atm.position.set(n.x, n.y, n.z);
+    if (n.outerAtm) n.outerAtm.position.set(n.x, n.y, n.z);
+    if (n.ring) n.ring.position.set(n.x, n.y, n.z);
+  }
+  VEL_DECAY = savedVelDecay;
+}
 
 export function simTick() {
   const focusedNode = _getFocusedNode();
