@@ -19,7 +19,7 @@
   #title {
     position:fixed; top:28px; left:50%; transform:translateX(-50%);
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:42px; font-weight:700;
-    letter-spacing:0.18em; color:rgba(232,216,154,0.82);
+    letter-spacing:0.04em; color:rgba(232,216,154,0.82);
     text-transform:uppercase; z-index:100; pointer-events:none; white-space:nowrap;
     text-shadow: 0 0 60px rgba(232,216,154,0.18);
   }
@@ -28,7 +28,7 @@
   }
   #subtitle {
     position:fixed; top:90px; left:50%; transform:translateX(-50%);
-    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; letter-spacing:0.28em;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px; letter-spacing:0.08em;
     color:rgba(180,165,130,0.5); z-index:100; pointer-events:none; white-space:nowrap;
     text-transform:uppercase;
   }
@@ -50,10 +50,10 @@
     opacity:0; transition:opacity 0.4s ease;
   }
   #node-info-img.loaded { opacity:1; }
-  #node-info-name { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:30px; font-weight:700; letter-spacing:0.12em; color:#e8d89a; margin-bottom:8px; }
-  #node-info-domain { font-size:11px; letter-spacing:0.25em; text-transform:uppercase; margin-bottom:20px; }
+  #node-info-name { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:30px; font-weight:700; letter-spacing:0.02em; color:#e8d89a; margin-bottom:8px; }
+  #node-info-domain { font-size:11px; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:20px; }
   #node-info-desc { font-size:15px; line-height:1.75; color:rgba(215,205,185,0.88); letter-spacing:0.02em; margin-bottom:22px; }
-  #node-info-related-label { font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:rgba(160,150,130,0.6); margin-bottom:12px; }
+  #node-info-related-label { font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:rgba(160,150,130,0.6); margin-bottom:12px; }
   #node-info-related { display:flex; flex-wrap:wrap; gap:8px; }
   .related-chip {
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:11px; padding:5px 13px;
@@ -65,7 +65,7 @@
   .related-chip:hover { background:rgba(232,216,154,0.15); color:#e8d89a; }
   .moon-label {
     position:fixed; pointer-events:auto; cursor:pointer; z-index:130;
-    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:10px; letter-spacing:0.12em;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:10px; letter-spacing:0.03em;
     text-transform:uppercase; white-space:nowrap;
     transform:translateX(-50%);
     text-shadow: 0 0 12px currentColor;
@@ -89,7 +89,7 @@
   #leader-dot  { fill:rgba(232,216,154,0.9); }
   #hover-label {
     position:fixed; pointer-events:none; z-index:150;
-    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:11px; letter-spacing:0.1em;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:11px; letter-spacing:0.03em;
     color:#e8d89a; background:rgba(4,6,15,0.85);
     padding:4px 10px; border-radius:3px; border:1px solid rgba(200,180,120,0.25);
     opacity:0; transition:opacity 0.1s; transform:translateX(-50%);
@@ -2194,7 +2194,7 @@ focusLabelEl.style.cssText = `
   font-family: 'Cinzel', serif;
   font-size: clamp(16px, 2.2vw, 32px);
   font-weight: 700;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.02em;
   line-height: 1.25;
   color: #f0e4b0;
   text-shadow:
