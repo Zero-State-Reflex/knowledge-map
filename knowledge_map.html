@@ -1,0 +1,2885 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Map of Human Knowledge — 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Cinzel:wght@400;600;900&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#04060f; overflow:hidden; width:100vw; height:100vh; font-family:'Space Mono',monospace; color:#e8e0d0; }
+  #c { display:block; width:100%; height:100%; cursor:grab; }
+  #c:active { cursor:grabbing; }
+  #title-bar {
+    position:fixed; top:0; left:0; width:100%;
+    height:130px;
+    background:rgba(0,0,0,0.80);
+    z-index:99; pointer-events:none;
+    backdrop-filter:blur(2px);
+  }
+  #title {
+    position:fixed; top:28px; left:50%; transform:translateX(-50%);
+    font-family:'Cinzel',serif; font-size:42px; font-weight:700;
+    letter-spacing:0.18em; color:rgba(232,216,154,0.82);
+    text-transform:uppercase; z-index:100; pointer-events:none; white-space:nowrap;
+    text-shadow: 0 0 60px rgba(232,216,154,0.18);
+  }
+  #title-sprite {
+    position:fixed; top:0; left:0; pointer-events:none; z-index:101;
+  }
+  #subtitle {
+    position:fixed; top:90px; left:50%; transform:translateX(-50%);
+    font-family:'Space Mono',monospace; font-size:13px; letter-spacing:0.28em;
+    color:rgba(180,165,130,0.5); z-index:100; pointer-events:none; white-space:nowrap;
+    text-transform:uppercase;
+  }
+  #node-info {
+    max-width:560px; width:560px; padding:28px 32px 32px;
+    opacity:0; transition:opacity 0.35s ease;
+    background:rgba(4,6,15,0.92); border:1px solid rgba(200,180,120,0.22);
+    border-radius:10px; backdrop-filter:blur(10px);
+    position:fixed; z-index:120; pointer-events:auto;
+  }
+  #node-info.visible { opacity:1; }
+  #node-info-name { font-family:'Cinzel',serif; font-size:30px; font-weight:700; letter-spacing:0.12em; color:#e8d89a; margin-bottom:8px; }
+  #node-info-domain { font-size:11px; letter-spacing:0.25em; text-transform:uppercase; margin-bottom:20px; }
+  #node-info-desc { font-size:15px; line-height:1.75; color:rgba(215,205,185,0.88); letter-spacing:0.02em; margin-bottom:22px; }
+  #node-info-related-label { font-size:10px; letter-spacing:0.2em; text-transform:uppercase; color:rgba(160,150,130,0.6); margin-bottom:12px; }
+  #node-info-related { display:flex; flex-wrap:wrap; gap:8px; }
+  .related-chip {
+    font-family:'Space Mono',monospace; font-size:11px; padding:5px 13px;
+    border-radius:4px; border:1px solid rgba(200,180,120,0.25);
+    background:rgba(255,255,255,0.04); color:rgba(220,210,185,0.8);
+    cursor:pointer; transition: background 0.15s, color 0.15s; letter-spacing:0.05em;
+    pointer-events:auto;
+  }
+  .related-chip:hover { background:rgba(232,216,154,0.15); color:#e8d89a; }
+  .moon-label {
+    position:fixed; pointer-events:auto; cursor:pointer; z-index:130;
+    font-family:'Cinzel',serif; font-size:10px; letter-spacing:0.12em;
+    text-transform:uppercase; white-space:nowrap;
+    transform:translateX(-50%);
+    text-shadow: 0 0 12px currentColor;
+    transition: opacity 0.2s;
+    opacity:0;
+  }
+  .moon-label:hover { opacity:1 !important; text-shadow:0 0 20px currentColor; }
+  #node-info-wiki {
+    display:inline-block; margin-bottom:20px;
+    font-family:'Space Mono',monospace; font-size:11px; letter-spacing:0.08em;
+    color:rgba(140,180,220,0.75); text-decoration:none;
+    border-bottom:1px solid rgba(140,180,220,0.3);
+    transition: color 0.15s, border-color 0.15s;
+  }
+  #node-info-wiki:hover { color:rgba(180,215,255,0.95); border-color:rgba(180,215,255,0.6); }
+  #leader-svg {
+    position:fixed; top:0; left:0; width:100%; height:100%;
+    pointer-events:none; z-index:115;
+  }
+  #leader-line { stroke:rgba(200,180,120,0.45); stroke-width:1.2; fill:none; stroke-dasharray:4 3; }
+  #leader-dot  { fill:rgba(232,216,154,0.9); }
+  #hover-label {
+    position:fixed; pointer-events:none; z-index:150;
+    font-family:'Cinzel',serif; font-size:11px; letter-spacing:0.1em;
+    color:#e8d89a; background:rgba(4,6,15,0.85);
+    padding:4px 10px; border-radius:3px; border:1px solid rgba(200,180,120,0.25);
+    opacity:0; transition:opacity 0.1s; transform:translateX(-50%);
+    white-space:nowrap;
+  }
+  #legend {
+    position:fixed; bottom:24px; left:24px; z-index:100;
+    display:flex; flex-direction:column; gap:7px; max-height:80vh; overflow:hidden;
+  }
+  .legend-item {
+    display:flex; align-items:center; gap:9px; font-size:13px;
+    letter-spacing:0.08em; color:rgba(180,170,150,0.7); cursor:pointer;
+    transition:color 0.2s;
+  }
+  .legend-item:hover { color:rgba(220,210,190,0.95); }
+  .legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  #instructions {
+    position:fixed; bottom:24px; right:24px; font-size:8px;
+    color:rgba(130,120,100,0.4); letter-spacing:0.1em; line-height:1.9; text-align:right; z-index:100;
+  }
+  #settling { position:fixed; bottom:60px; right:24px; font-size:8px; color:rgba(140,180,140,0.5); letter-spacing:0.1em; z-index:100; transition:opacity 1s; }
+
+  #audio-controls {
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
+    display:flex; align-items:center; gap:12px; z-index:200;
+    background:rgba(4,6,15,0.72); border:1px solid rgba(200,180,120,0.14);
+    border-radius:20px; padding:7px 16px; backdrop-filter:blur(8px);
+    pointer-events:auto;
+  }
+  #mute-btn {
+    background:none; border:none; cursor:pointer; padding:0;
+    color:rgba(200,185,140,0.65); font-size:16px; line-height:1;
+    transition:color 0.2s; width:20px; text-align:center; flex-shrink:0;
+  }
+  #mute-btn:hover { color:rgba(232,216,154,0.95); }
+  #vol-slider {
+    -webkit-appearance:none; appearance:none;
+    width:90px; height:2px; border-radius:2px; outline:none; cursor:pointer;
+    background: linear-gradient(to right,
+      rgba(232,216,154,0.7) 0%, rgba(232,216,154,0.7) var(--pct,60%),
+      rgba(120,110,80,0.3) var(--pct,60%), rgba(120,110,80,0.3) 100%);
+  }
+  #vol-slider::-webkit-slider-thumb {
+    -webkit-appearance:none; width:11px; height:11px; border-radius:50%;
+    background:rgba(232,216,154,0.85); cursor:pointer; border:none;
+    box-shadow:0 0 6px rgba(232,216,154,0.4);
+  }
+  #vol-slider::-moz-range-thumb {
+    width:11px; height:11px; border-radius:50%;
+    background:rgba(232,216,154,0.85); cursor:pointer; border:none;
+  }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<svg id="leader-svg">
+  <line id="leader-line" x1="0" y1="0" x2="0" y2="0"/>
+  <circle id="leader-dot" r="3" cx="0" cy="0"/>
+</svg>
+<div id="title-bar"></div>
+<div id="title">Map of Human Knowledge</div>
+<canvas id="title-sprite"></canvas>
+<div id="subtitle">drag · scroll · click to explore</div>
+<div id="node-info">
+  <div id="node-info-name"></div>
+  <div id="node-info-domain"></div>
+  <div id="node-info-desc"></div>
+  <a id="node-info-wiki" href="#" target="_blank" rel="noopener">↗ Wikipedia</a>
+  <div id="node-info-related-label">Related Disciplines</div>
+  <div id="node-info-related"></div>
+</div>
+<div id="hover-label"></div>
+<div id="legend"></div>
+<div id="instructions">drag → spin<br>scroll → zoom<br>hover → attract<br>click → explore</div>
+<div id="settling">● settling…</div>
+<div id="audio-controls">
+  <button id="mute-btn" title="Mute / Unmute">♪</button>
+  <input id="vol-slider" type="range" min="0" max="1" step="0.01" value="0.6" title="Volume">
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+const DOMAINS = {
+  "Formal Sciences":         { color: "#c8b89a", cx: 0.5,  cy: 0.2  },  // warm parchment
+  "Physical Sciences":       { color: "#8faa8b", cx: 0.75, cy: 0.3  },  // sage green
+  "Earth & Space":           { color: "#7a9e7e", cx: 0.65, cy: 0.55 },  // muted forest
+  "Life Sciences":           { color: "#6b9e6e", cx: 0.55, cy: 0.72 },  // deeper moss
+  "Chemistry":               { color: "#b5c99a", cx: 0.82, cy: 0.5  },  // light olive
+  "Medicine & Health":       { color: "#c67d4a", cx: 0.15, cy: 0.38 },  // burnt sienna
+  "Social Sciences":         { color: "#c9a84c", cx: 0.38, cy: 0.35 },  // goldenrod
+  "Humanities":              { color: "#b8956a", cx: 0.42, cy: 0.52 },  // warm tan
+  "Arts & Design":           { color: "#9b6b3a", cx: 0.3,  cy: 0.62 },  // dark umber
+  "Engineering & Tech":      { color: "#7a9aa8", cx: 0.7,  cy: 0.18 },  // slate blue-grey
+  "Interdisciplinary":       { color: "#a09070", cx: 0.5,  cy: 0.5  },  // warm greige
+  "Esoteric & Occult":       { color: "#6b5a7e", cx: 0.18, cy: 0.65 },  // muted plum
+  "Contemplative Traditions":{ color: "#c48a3f", cx: 0.22, cy: 0.82 },  // amber ochre
+  "Indigenous & Traditional":{ color: "#7d9c5a", cx: 0.42, cy: 0.88 },  // earthy green
+  "Consciousness & Fringe":  { color: "#8b6f5e", cx: 0.72, cy: 0.82 },  // warm clay
+};
+
+const NODES_RAW = [
+  // Formal Sciences
+  ["Mathematics",       "Formal Sciences", 22],
+  ["Statistics",        "Formal Sciences", 15],
+  ["Logic",             "Formal Sciences", 13],
+  ["Information Theory","Formal Sciences", 11],
+  ["Probability Theory","Formal Sciences", 12],
+  ["Graph Theory",      "Formal Sciences", 10],
+  ["Number Theory",     "Formal Sciences", 10],
+  ["Topology",          "Formal Sciences", 10],
+  ["Algebra",           "Formal Sciences", 11],
+  ["Calculus",          "Formal Sciences", 10],
+  ["Geometry",          "Formal Sciences", 10],
+  ["Combinatorics",     "Formal Sciences", 9],
+  ["Set Theory",        "Formal Sciences", 9],
+  ["Category Theory",   "Formal Sciences", 8],
+  ["Numerical Analysis","Formal Sciences", 9],
+
+  // Physical Sciences
+  ["Physics",           "Physical Sciences", 22],
+  ["Quantum Mechanics", "Physical Sciences", 16],
+  ["Thermodynamics",    "Physical Sciences", 13],
+  ["Electromagnetism",  "Physical Sciences", 13],
+  ["Relativity",        "Physical Sciences", 13],
+  ["Optics",            "Physical Sciences", 11],
+  ["Acoustics",         "Physical Sciences", 10],
+  ["Particle Physics",  "Physical Sciences", 13],
+  ["Nuclear Physics",   "Physical Sciences", 12],
+  ["Astrophysics",      "Physical Sciences", 14],
+  ["Cosmology",         "Physical Sciences", 13],
+  ["Statistical Physics","Physical Sciences",12],
+  ["Condensed Matter",  "Physical Sciences", 11],
+  ["Plasma Physics",    "Physical Sciences", 10],
+
+  // Earth & Space
+  ["Geology",           "Earth & Space", 14],
+  ["Oceanography",      "Earth & Space", 12],
+  ["Meteorology",       "Earth & Space", 12],
+  ["Climatology",       "Earth & Space", 13],
+  ["Hydrology",         "Earth & Space", 11],
+  ["Seismology",        "Earth & Space", 10],
+  ["Volcanology",       "Earth & Space", 9],
+  ["Glaciology",        "Earth & Space", 9],
+  ["Paleontology",      "Earth & Space", 12],
+  ["Mineralogy",        "Earth & Space", 10],
+  ["Soil Science",      "Earth & Space", 10],
+  ["Geography",         "Earth & Space", 13],
+  ["Cartography",       "Earth & Space", 10],
+  ["Astronomy",         "Earth & Space", 14],
+
+  // Life Sciences
+  ["Biology",           "Life Sciences", 22],
+  ["Ecology",           "Life Sciences", 16],
+  ["Genetics",          "Life Sciences", 16],
+  ["Evolutionary Biology","Life Sciences",16],
+  ["Microbiology",      "Life Sciences", 14],
+  ["Zoology",           "Life Sciences", 13],
+  ["Botany",            "Life Sciences", 13],
+  ["Neuroscience",      "Life Sciences", 16],
+  ["Cell Biology",      "Life Sciences", 14],
+  ["Molecular Biology", "Life Sciences", 15],
+  ["Biochemistry",      "Life Sciences", 15],
+  ["Marine Biology",    "Life Sciences", 12],
+  ["Ethology",          "Life Sciences", 11],
+  ["Physiology",        "Life Sciences", 14],
+  ["Immunology",        "Life Sciences", 14],
+  ["Virology",          "Life Sciences", 13],
+  ["Taxonomy",          "Life Sciences", 11],
+  ["Biodiversity",      "Life Sciences", 12],
+
+  // Chemistry
+  ["Chemistry",         "Chemistry", 20],
+  ["Organic Chemistry", "Chemistry", 16],
+  ["Inorganic Chemistry","Chemistry", 14],
+  ["Physical Chemistry","Chemistry", 15],
+  ["Analytical Chemistry","Chemistry",14],
+  ["Electrochemistry",  "Chemistry", 12],
+  ["Polymer Chemistry", "Chemistry", 11],
+  ["Geochemistry",      "Chemistry", 11],
+  ["Astrochemistry",    "Chemistry", 10],
+  ["Computational Chemistry","Chemistry",11],
+  ["Toxicology",        "Chemistry", 13],
+  ["Pharmacology",      "Chemistry", 14],
+
+  // Medicine & Health
+  ["Medicine",          "Medicine & Health", 22],
+  ["Anatomy",           "Medicine & Health", 14],
+  ["Pathology",         "Medicine & Health", 14],
+  ["Surgery",           "Medicine & Health", 13],
+  ["Psychiatry",        "Medicine & Health", 14],
+  ["Epidemiology",      "Medicine & Health", 14],
+  ["Nutrition",         "Medicine & Health", 12],
+  ["Pharmacology (Med)","Medicine & Health", 13],
+  ["Dentistry",         "Medicine & Health", 11],
+  ["Nursing",           "Medicine & Health", 11],
+  ["Public Health",     "Medicine & Health", 14],
+  ["Genetics (Med)",    "Medicine & Health", 13],
+  ["Oncology",          "Medicine & Health", 13],
+  ["Cardiology",        "Medicine & Health", 12],
+  ["Neurology",         "Medicine & Health", 13],
+  ["Dermatology",       "Medicine & Health", 11],
+  ["Radiology",         "Medicine & Health", 12],
+  ["Biotechnology",     "Medicine & Health", 14],
+
+  // Social Sciences
+  ["Sociology",         "Social Sciences", 18],
+  ["Psychology",        "Social Sciences", 18],
+  ["Economics",         "Social Sciences", 18],
+  ["Anthropology",      "Social Sciences", 16],
+  ["Political Science", "Social Sciences", 16],
+  ["Demography",        "Social Sciences", 13],
+  ["Criminology",       "Social Sciences", 13],
+  ["International Relations","Social Sciences",14],
+  ["Cultural Studies",  "Social Sciences", 13],
+  ["Social Psychology", "Social Sciences", 14],
+  ["Cognitive Science", "Social Sciences", 16],
+  ["Behavioral Economics","Social Sciences",14],
+  ["Urban Studies",     "Social Sciences", 12],
+  ["Education Theory",  "Social Sciences", 13],
+  ["Communication",     "Social Sciences", 13],
+  ["Human Geography",   "Social Sciences", 12],
+
+  // Humanities
+  ["Philosophy",        "Humanities", 20],
+  ["History",           "Humanities", 18],
+  ["Literature",        "Humanities", 16],
+  ["Linguistics",       "Humanities", 16],
+  ["Ethics",            "Humanities", 15],
+  ["Aesthetics",        "Humanities", 12],
+  ["Religion",          "Humanities", 14],
+  ["Mythology",         "Humanities", 12],
+  ["Archaeology",       "Humanities", 14],
+  ["Classics",          "Humanities", 12],
+  ["Law",               "Humanities", 16],
+  ["Epistemology",      "Humanities", 13],
+  ["Metaphysics",       "Humanities", 12],
+  ["Semiotics",         "Humanities", 11],
+  ["Hermeneutics",      "Humanities", 10],
+  ["Political Philosophy","Humanities", 14],
+
+  // Arts & Design
+  ["Music",             "Arts & Design", 16],
+  ["Visual Art",        "Arts & Design", 15],
+  ["Architecture",      "Arts & Design", 16],
+  ["Film & Cinema",     "Arts & Design", 14],
+  ["Theater",           "Arts & Design", 13],
+  ["Dance",             "Arts & Design", 11],
+  ["Photography",       "Arts & Design", 12],
+  ["Graphic Design",    "Arts & Design", 13],
+  ["Industrial Design", "Arts & Design", 12],
+  ["Fashion Design",    "Arts & Design", 11],
+  ["Narrative Design",  "Arts & Design", 11],
+  ["Game Design",       "Arts & Design", 13],
+  ["Urban Design",      "Arts & Design", 12],
+
+  // Engineering & Tech
+  ["Computer Science",  "Engineering & Tech", 22],
+  ["Electrical Engineering","Engineering & Tech",16],
+  ["Mechanical Engineering","Engineering & Tech",16],
+  ["Civil Engineering", "Engineering & Tech", 14],
+  ["Chemical Engineering","Engineering & Tech",14],
+  ["Aerospace Engineering","Engineering & Tech",14],
+  ["Materials Science", "Engineering & Tech", 14],
+  ["Robotics",          "Engineering & Tech", 15],
+  ["Artificial Intelligence","Engineering & Tech",18],
+  ["Machine Learning",  "Engineering & Tech", 17],
+  ["Software Engineering","Engineering & Tech",16],
+  ["Cryptography",      "Engineering & Tech", 13],
+  ["Telecommunications","Engineering & Tech", 13],
+  ["Nanotechnology",    "Engineering & Tech", 13],
+  ["Biomedical Engineering","Engineering & Tech",14],
+  ["Environmental Engineering","Engineering & Tech",13],
+  ["Systems Theory",    "Engineering & Tech", 13],
+
+  // Interdisciplinary
+  ["Cognitive Science (Interdis.)","Interdisciplinary",14],
+  ["Complexity Science","Interdisciplinary", 14],
+  ["Systems Biology",   "Interdisciplinary", 13],
+  ["Bioinformatics",    "Interdisciplinary", 14],
+  ["Environmental Science","Interdisciplinary",16],
+  ["Science & Tech Studies","Interdisciplinary",12],
+  ["Philosophy of Science","Interdisciplinary",13],
+  ["Philosophy of Mind","Interdisciplinary", 15],
+  ["Neurophilosophy",   "Interdisciplinary", 12],
+  ["Data Science",      "Interdisciplinary", 16],
+  ["Cybernetics",       "Interdisciplinary", 12],
+  ["Information Science","Interdisciplinary", 13],
+  ["Science Communication","Interdisciplinary",11],
+
+  // Esoteric & Occult
+  ["Hermeticism",       "Esoteric & Occult", 14],
+  ["Alchemy",           "Esoteric & Occult", 13],
+  ["Kabbalah",          "Esoteric & Occult", 13],
+  ["Astrology",         "Esoteric & Occult", 12],
+  ["Tarot",             "Esoteric & Occult", 10],
+  ["Numerology",        "Esoteric & Occult", 10],
+  ["Sacred Geometry",   "Esoteric & Occult", 12],
+  ["Gnosticism",        "Esoteric & Occult", 13],
+  ["Theosophy",         "Esoteric & Occult", 12],
+  ["Ceremonial Magic",  "Esoteric & Occult", 11],
+  ["Divination",        "Esoteric & Occult", 11],
+  ["Neoplatonism",      "Esoteric & Occult", 13],
+  ["Rosicrucianism",    "Esoteric & Occult", 10],
+  ["Freemasonry",       "Esoteric & Occult", 11],
+  ["Mystery Traditions","Esoteric & Occult", 12],
+
+  // Contemplative Traditions
+  ["Meditation",        "Contemplative Traditions", 14],
+  ["Yoga Philosophy",   "Contemplative Traditions", 13],
+  ["Zen Buddhism",      "Contemplative Traditions", 13],
+  ["Sufism",            "Contemplative Traditions", 13],
+  ["Christian Mysticism","Contemplative Traditions",12],
+  ["Taoism",            "Contemplative Traditions", 14],
+  ["Advaita Vedanta",   "Contemplative Traditions", 13],
+  ["Contemplative Prayer","Contemplative Traditions",11],
+  ["Tantra",            "Contemplative Traditions", 12],
+  ["Shamanic Traditions","Contemplative Traditions",12],
+  ["Lucid Dreaming",    "Contemplative Traditions", 10],
+  ["Breathwork",        "Contemplative Traditions", 10],
+
+  // Indigenous & Traditional Knowledge
+  ["Indigenous Cosmology","Indigenous & Traditional", 13],
+  ["Ethnobotany",        "Indigenous & Traditional", 14],
+  ["Traditional Medicine","Indigenous & Traditional", 14],
+  ["Oral Traditions",    "Indigenous & Traditional", 13],
+  ["Animism",            "Indigenous & Traditional", 12],
+  ["Totemism",           "Indigenous & Traditional", 11],
+  ["Land Knowledge",     "Indigenous & Traditional", 12],
+  ["Ethnoastronomy",     "Indigenous & Traditional", 11],
+  ["Ritual Studies",     "Indigenous & Traditional", 12],
+  ["Ancestor Veneration","Indigenous & Traditional", 11],
+  ["Sacred Ecology",     "Indigenous & Traditional", 12],
+  ["Ethnoarchaeology",   "Indigenous & Traditional", 11],
+
+  // Consciousness & Fringe Science
+  ["Consciousness Studies","Consciousness & Fringe", 16],
+  ["Parapsychology",     "Consciousness & Fringe", 12],
+  ["Psychedelic Science","Consciousness & Fringe", 14],
+  ["Near-Death Studies", "Consciousness & Fringe", 11],
+  ["Dream Studies",      "Consciousness & Fringe", 12],
+  ["Anomalous Cognition","Consciousness & Fringe", 10],
+  ["Quantum Mind Theory","Consciousness & Fringe", 12],
+  ["Morphic Resonance",  "Consciousness & Fringe", 10],
+  ["Noetics",            "Consciousness & Fringe", 11],
+  ["Integral Theory",    "Consciousness & Fringe", 12],
+  ["Transpersonal Psychology","Consciousness & Fringe",13],
+  ["Chronobiology",      "Consciousness & Fringe", 11],
+];
+
+const NODE_DESCRIPTIONS = {
+  // Formal Sciences
+  "Mathematics": "The abstract study of number, quantity, structure, and space — the universal language underlying all quantitative reasoning.",
+  "Statistics": "The science of collecting, analyzing, and interpreting data to reveal patterns and support decisions under uncertainty.",
+  "Logic": "The formal study of valid inference and correct reasoning, foundational to mathematics, philosophy, and computer science.",
+  "Information Theory": "Quantifies information, entropy, and communication limits — the theoretical backbone of all digital technology.",
+  "Probability Theory": "The mathematical framework for reasoning about chance, uncertainty, and random phenomena.",
+  "Graph Theory": "Studies networks of nodes and edges — essential to understanding relationships in biology, society, and computation.",
+  "Number Theory": "The pure mathematics of integers and their properties, hiding extraordinary depth beneath apparent simplicity.",
+  "Topology": "Studies properties preserved under continuous deformation — shapes without rulers, space without distance.",
+  "Algebra": "Generalizes arithmetic through symbols and structures, revealing deep patterns across mathematics.",
+  "Calculus": "The mathematics of continuous change — rates, areas, and accumulation — engine of physics and engineering.",
+  "Geometry": "The study of shape, size, and spatial relationships, from Euclid's axioms to curved spacetime.",
+  "Combinatorics": "Counts and arranges discrete structures, underpinning cryptography, probability, and algorithm design.",
+  "Set Theory": "The foundational language of mathematics, examining collections of objects and their relationships.",
+  "Category Theory": "An abstract framework unifying mathematical structures through morphisms and functors — mathematics about mathematics.",
+  "Numerical Analysis": "Develops algorithms to approximate mathematical problems computationally with controlled precision.",
+
+  // Physical Sciences
+  "Physics": "The fundamental science of matter, energy, and the forces governing the universe from quarks to cosmos.",
+  "Quantum Mechanics": "Describes reality at subatomic scales — probabilistic, non-local, and deeply counterintuitive.",
+  "Thermodynamics": "Laws governing heat, work, and energy — including entropy's arrow pointing only toward disorder.",
+  "Electromagnetism": "Unifies electricity and magnetism; governs light, radio waves, and all electronic technology.",
+  "Relativity": "Einstein's rewriting of space, time, and gravity — mass curves spacetime, time dilates with speed.",
+  "Optics": "The physics of light — reflection, refraction, diffraction, and the wave-particle duality of photons.",
+  "Acoustics": "The science of sound waves, vibration, and their perception — from music theory to sonar.",
+  "Particle Physics": "Probes the fundamental constituents of matter — quarks, leptons, and the forces between them.",
+  "Nuclear Physics": "Studies the atomic nucleus, nuclear forces, fission, fusion, and radioactive decay.",
+  "Astrophysics": "Applies physics to understand stars, galaxies, black holes, and the large-scale universe.",
+  "Cosmology": "Studies the origin, structure, and ultimate fate of the universe as a whole.",
+  "Statistical Physics": "Uses probability to explain bulk properties of matter emerging from microscopic interactions.",
+  "Condensed Matter": "The richest branch of physics — explains superconductivity, magnetism, crystals, and phase transitions.",
+  "Plasma Physics": "Studies ionized gas, the most common state of visible matter in the universe.",
+
+  // Earth & Space
+  "Geology": "Reads Earth's history through rocks, minerals, and tectonic forces spanning billions of years.",
+  "Oceanography": "Explores the physics, chemistry, biology, and geology of Earth's oceans.",
+  "Meteorology": "The science of atmospheric dynamics, weather patterns, and short-term climate phenomena.",
+  "Climatology": "Studies long-term patterns and changes in Earth's climate systems.",
+  "Hydrology": "Examines the movement, distribution, and quality of water across the planet.",
+  "Seismology": "Studies earthquakes and seismic waves to probe Earth's deep interior structure.",
+  "Volcanology": "Investigates volcanic processes, eruptions, and magma dynamics.",
+  "Glaciology": "Studies ice sheets, glaciers, and their role in Earth's climate and sea level.",
+  "Paleontology": "Reconstructs ancient life from fossils, bridging geology and evolutionary biology.",
+  "Mineralogy": "Classifies and characterizes minerals — their crystal structure, composition, and formation.",
+  "Soil Science": "Studies soil formation, composition, and ecology — the thin living skin of the planet.",
+  "Geography": "Maps and analyzes the spatial relationships between human societies and physical environments.",
+  "Cartography": "The art and science of making maps — representation, projection, and spatial communication.",
+  "Astronomy": "Observes and measures celestial objects — stars, planets, galaxies, and cosmic phenomena.",
+
+  // Life Sciences
+  "Biology": "The science of life — studying organisms from molecules to ecosystems in all their complexity.",
+  "Ecology": "Examines relationships between organisms and their environments, including population and community dynamics.",
+  "Genetics": "Studies heredity and variation through genes, chromosomes, and the mechanisms of inheritance.",
+  "Evolutionary Biology": "Explains the diversity of life through descent with modification, natural selection, and genetic drift.",
+  "Microbiology": "Investigates microscopic organisms — bacteria, archaea, fungi — and their vast ecological roles.",
+  "Zoology": "The systematic study of animals — their behavior, physiology, classification, and evolution.",
+  "Botany": "The science of plants, their biology, ecology, diversity, and significance to life on Earth.",
+  "Neuroscience": "Investigates the nervous system — from single neurons to cognition, emotion, and consciousness.",
+  "Cell Biology": "Studies the cell as life's fundamental unit — structure, function, signaling, and division.",
+  "Molecular Biology": "Examines biological processes at the molecular level — DNA, RNA, protein synthesis.",
+  "Biochemistry": "Explores the chemistry of life — metabolic pathways, enzymes, and biomolecular interactions.",
+  "Marine Biology": "Studies life in ocean environments — from hydrothermal vent ecosystems to whale migration.",
+  "Ethology": "Investigates animal behavior in natural settings — instinct, learning, and social organization.",
+  "Physiology": "Studies the functions and mechanisms of living organisms and their organ systems.",
+  "Immunology": "Examines the immune system's recognition and defense against pathogens and disease.",
+  "Virology": "Studies viruses — their structure, replication, and complex relationships with host organisms.",
+  "Taxonomy": "Classifies and names living organisms, creating the universal language of biodiversity.",
+  "Biodiversity": "Quantifies and studies the variety of life at genetic, species, and ecosystem levels.",
+
+  // Chemistry
+  "Chemistry": "Studies matter's composition, properties, and transformations — the central science bridging physics and biology.",
+  "Organic Chemistry": "The chemistry of carbon compounds — the molecular basis of life and synthetic materials.",
+  "Inorganic Chemistry": "Studies non-carbon compounds — metals, minerals, and coordination complexes.",
+  "Physical Chemistry": "Applies physics to chemical systems — thermodynamics, kinetics, and quantum chemistry.",
+  "Analytical Chemistry": "Identifies and quantifies chemical substances using sophisticated measurement techniques.",
+  "Electrochemistry": "Studies chemical reactions driven by or producing electrical energy — batteries, corrosion, biosensors.",
+  "Polymer Chemistry": "Designs and studies large chain molecules — plastics, rubber, proteins, and DNA.",
+  "Geochemistry": "Applies chemistry to understand Earth's composition, geological processes, and elemental cycles.",
+  "Astrochemistry": "Studies molecules in space — interstellar clouds, comets, and the chemistry of planetary formation.",
+  "Computational Chemistry": "Uses algorithms and simulation to model molecular behavior and chemical reactions.",
+  "Toxicology": "Studies the adverse effects of chemical substances on living organisms.",
+  "Pharmacology": "Investigates how drugs interact with biological systems — mechanisms, effects, and dosage.",
+
+  // Medicine & Health
+  "Medicine": "The science and practice of diagnosing, treating, and preventing disease in humans.",
+  "Anatomy": "Maps the structure of the human body — organs, tissues, and their spatial relationships.",
+  "Pathology": "Studies the causes and mechanisms of disease at cellular and molecular levels.",
+  "Surgery": "Treats disease and injury through direct physical intervention on the body.",
+  "Psychiatry": "Diagnoses and treats mental disorders through biological, psychological, and social frameworks.",
+  "Epidemiology": "Tracks disease distribution in populations to identify causes and guide public health policy.",
+  "Nutrition": "Studies how diet and nutrients affect health, metabolism, and disease prevention.",
+  "Pharmacology (Med)": "Applies drug science to clinical treatment — efficacy, safety, and pharmacokinetics.",
+  "Dentistry": "Diagnoses and treats conditions of the oral cavity, teeth, and jaw.",
+  "Nursing": "A clinical discipline focused on patient care, advocacy, and health promotion.",
+  "Public Health": "Protects and improves health at population scale through policy, education, and prevention.",
+  "Genetics (Med)": "Applies genetic knowledge to diagnose inherited disorders and guide personalized medicine.",
+  "Oncology": "Diagnoses and treats cancer — a field transformed by molecular biology and immunotherapy.",
+  "Cardiology": "Specializes in heart and cardiovascular system disorders — medicine's highest-stakes domain.",
+  "Neurology": "Clinical care for nervous system disorders — stroke, epilepsy, neurodegeneration.",
+  "Dermatology": "Studies and treats skin conditions — the body's largest organ and first immune barrier.",
+  "Radiology": "Uses imaging technologies to visualize internal anatomy and guide diagnosis and treatment.",
+  "Biotechnology": "Engineers biological systems for medical, agricultural, and industrial applications.",
+
+  // Social Sciences
+  "Sociology": "Examines social structures, institutions, and the collective patterns shaping human behavior.",
+  "Psychology": "Studies behavior and mental processes — cognition, emotion, personality, and social influence.",
+  "Economics": "Analyzes how individuals and societies allocate scarce resources under incentive and constraint.",
+  "Anthropology": "Explores human diversity across cultures, time periods, and biological evolution.",
+  "Political Science": "Studies political systems, power, governance, and the theory and practice of government.",
+  "Demography": "Analyzes population dynamics — birth, death, migration, and their social consequences.",
+  "Criminology": "Examines crime, deviance, criminal justice, and the social roots of lawbreaking.",
+  "International Relations": "Studies interactions between states, international organizations, and global power dynamics.",
+  "Cultural Studies": "Critically examines culture, representation, identity, and the politics of meaning.",
+  "Social Psychology": "Explores how social contexts shape individual thought, feeling, and behavior.",
+  "Cognitive Science": "An interdisciplinary study of mind, intelligence, and mental processes across species and machines.",
+  "Behavioral Economics": "Blends psychology and economics to explain how humans actually make decisions.",
+  "Urban Studies": "Examines the design, governance, inequality, and lived experience of cities.",
+  "Education Theory": "Studies how learning occurs and how knowledge should be transmitted across generations.",
+  "Communication": "Analyzes how meaning is created and shared through language, media, and symbol.",
+  "Human Geography": "Studies the spatial patterns of human activity, culture, and interaction with environment.",
+
+  // Humanities
+  "Philosophy": "Pursues fundamental questions about existence, knowledge, value, reason, and mind.",
+  "History": "Reconstructs and interprets the human past through evidence, narrative, and critical analysis.",
+  "Literature": "Studies written works as art — language, narrative, meaning, and cultural expression.",
+  "Linguistics": "The scientific study of language — structure, acquisition, change, and cognitive underpinnings.",
+  "Ethics": "Examines what is morally right, the foundations of value, and how we ought to live.",
+  "Aesthetics": "Philosophical inquiry into beauty, art, taste, and the nature of aesthetic experience.",
+  "Religion": "Studies religious belief, practice, and institutions across human cultures and history.",
+  "Mythology": "Examines traditional narratives that encode a culture's cosmology, values, and origins.",
+  "Archaeology": "Recovers and interprets material culture to reconstruct past human lives and societies.",
+  "Classics": "Scholarship on ancient Greek and Roman language, literature, history, and thought.",
+  "Law": "The system of rules governing society — its creation, interpretation, and enforcement.",
+  "Epistemology": "Asks what knowledge is, how we acquire it, and what its limits are.",
+  "Metaphysics": "Investigates the fundamental nature of reality — being, time, causation, identity.",
+  "Semiotics": "Studies signs, symbols, and the processes by which meaning is created and communicated.",
+  "Hermeneutics": "The theory and methodology of text interpretation — from scripture to all forms of meaning.",
+  "Political Philosophy": "Examines the foundations of political authority, justice, rights, and the ideal society.",
+
+  // Arts & Design
+  "Music": "The art of organizing sound in time — melody, harmony, rhythm, and the expression of emotion.",
+  "Visual Art": "Creates meaning and experience through visual media — painting, sculpture, and conceptual work.",
+  "Architecture": "Designs built environments that balance structural necessity, function, and aesthetic vision.",
+  "Film & Cinema": "A narrative and visual art form that shapes culture, identity, and collective memory.",
+  "Theater": "Live performance combining drama, movement, voice, and design to embody human experience.",
+  "Dance": "Expression through movement — the body as instrument of narrative, emotion, and culture.",
+  "Photography": "Captures light to document reality and construct meaning through framing and moment.",
+  "Graphic Design": "Solves visual communication problems through typography, image, and composition.",
+  "Industrial Design": "Creates objects for human use, balancing function, manufacturability, and aesthetics.",
+  "Fashion Design": "Designs clothing as cultural artifact, identity expression, and aesthetic object.",
+  "Narrative Design": "Structures story across interactive and non-linear media — games, experience design.",
+  "Game Design": "Crafts interactive systems that produce meaningful play, challenge, and narrative experience.",
+  "Urban Design": "Shapes the public realm — streets, squares, and the spaces between buildings.",
+
+  // Engineering & Tech
+  "Computer Science": "Studies computation, algorithms, data structures, and the theoretical limits of machines.",
+  "Electrical Engineering": "Designs systems that generate, transmit, and use electrical energy and signals.",
+  "Mechanical Engineering": "Applies physics to design machines, structures, and thermal systems.",
+  "Civil Engineering": "Designs infrastructure — bridges, roads, dams — that shapes how civilization functions.",
+  "Chemical Engineering": "Converts raw materials into valuable products through industrial-scale chemical processes.",
+  "Aerospace Engineering": "Designs aircraft and spacecraft operating in atmosphere and beyond.",
+  "Materials Science": "Engineers the properties of matter to create new materials with targeted behaviors.",
+  "Robotics": "Combines mechanics, electronics, and AI to create machines that sense and act autonomously.",
+  "Artificial Intelligence": "Builds systems capable of tasks requiring human-like intelligence — reasoning, perception, language.",
+  "Machine Learning": "Enables computers to learn patterns from data without being explicitly programmed.",
+  "Software Engineering": "The disciplined design, development, and maintenance of complex software systems.",
+  "Cryptography": "Secures communication through mathematical encoding, enabling privacy in a digital world.",
+  "Telecommunications": "Engineering the transmission of information across distance through signals and networks.",
+  "Nanotechnology": "Manipulates matter at atomic scales to create materials and devices with novel properties.",
+  "Biomedical Engineering": "Applies engineering principles to medicine — prosthetics, imaging, drug delivery systems.",
+  "Environmental Engineering": "Designs solutions to environmental pollution, waste management, and sustainable infrastructure.",
+  "Systems Theory": "Studies how complex systems behave through feedback, emergence, and self-organization.",
+
+  // Interdisciplinary
+  "Cognitive Science (Interdis.)": "Synthesizes neuroscience, psychology, AI, linguistics, and philosophy to understand the mind.",
+  "Complexity Science": "Studies how simple rules produce emergent complexity — from ant colonies to financial markets.",
+  "Systems Biology": "Models biological organisms as integrated networks of interacting components.",
+  "Bioinformatics": "Applies computational methods to analyze genomic, proteomic, and biological sequence data.",
+  "Environmental Science": "Integrates natural sciences to understand environmental problems and guide solutions.",
+  "Science & Tech Studies": "Examines how science and technology shape and are shaped by society and culture.",
+  "Philosophy of Science": "Investigates the methods, foundations, and implications of scientific inquiry.",
+  "Philosophy of Mind": "Examines consciousness, mental states, and the relationship between mind and brain.",
+  "Neurophilosophy": "Bridges neuroscience and philosophy to address consciousness, free will, and identity.",
+  "Data Science": "Extracts insight from large, complex datasets using statistics, computation, and domain expertise.",
+  "Cybernetics": "Studies control and communication in animals and machines — the science of feedback systems.",
+  "Information Science": "Manages, retrieves, and organizes knowledge across libraries, databases, and digital systems.",
+  "Science Communication": "Translates complex scientific ideas for public understanding and informed democratic discourse.",
+
+  // Esoteric & Occult
+  "Hermeticism": "A philosophical tradition rooted in ancient Egypt and Greece — 'as above, so below' — linking macrocosm to microcosm.",
+  "Alchemy": "The precursor to chemistry, pursuing transformation of base metals into gold and of the self into wisdom.",
+  "Kabbalah": "A mystical Jewish tradition mapping divine emanation through the Sefirot, seeking hidden dimensions of scripture.",
+  "Astrology": "Correlates celestial configurations with earthly events and human character — one of humanity's oldest symbolic systems.",
+  "Tarot": "A symbolic system of 78 archetypes used for divination, psychological reflection, and narrative.",
+  "Numerology": "Assigns symbolic meaning to numbers and their relationship to names, dates, and cosmic patterns.",
+  "Sacred Geometry": "Attributes spiritual significance to geometric ratios — the Fibonacci spiral, Platonic solids, the golden mean.",
+  "Gnosticism": "Ancient dualist traditions teaching that the material world is flawed and liberation comes through hidden knowledge.",
+  "Theosophy": "A 19th-century synthesis of Eastern and Western esotericism pursuing universal brotherhood and hidden laws of nature.",
+  "Ceremonial Magic": "Structured ritual practice to invoke spiritual forces, using symbol, will, and correspondence.",
+  "Divination": "Reading signs, symbols, or chance to access hidden knowledge — one of humanity's most universal practices.",
+  "Neoplatonism": "A philosophical mysticism descending from Plato — reality as emanations from a transcendent One.",
+  "Rosicrucianism": "A secret philosophical order claiming hidden wisdom about nature, health, and spiritual transformation.",
+  "Freemasonry": "A fraternal tradition using symbolic ritual and allegory to transmit moral and philosophical teachings.",
+  "Mystery Traditions": "Ancient initiatory schools — Eleusinian, Orphic, Mithraic — transmitting esoteric knowledge through ritual.",
+
+  // Contemplative Traditions
+  "Meditation": "Disciplined practices for focusing attention, cultivating awareness, and transforming the mind — found in all major traditions.",
+  "Yoga Philosophy": "The Indian philosophical system of Patanjali and the Vedic tradition — union of body, mind, and consciousness.",
+  "Zen Buddhism": "A Japanese school emphasizing direct experience over doctrine — the koan, the breath, the present moment.",
+  "Sufism": "The mystical heart of Islam, seeking direct experience of the divine through love, poetry, and inner practice.",
+  "Christian Mysticism": "A tradition within Christianity of direct experiential union with God — Meister Eckhart, St. John of the Cross.",
+  "Taoism": "Chinese philosophy of living in harmony with the Tao — the ineffable principle underlying all change and existence.",
+  "Advaita Vedanta": "Non-dual Hindu philosophy: ultimate reality is one undivided consciousness; the individual self is identical with Brahman.",
+  "Contemplative Prayer": "Christian meditative practices — centering prayer, lectio divina — cultivating interior silence and union with God.",
+  "Tantra": "Indian and Tibetan traditions using ritual, energy, and the body as a vehicle for spiritual transformation.",
+  "Shamanic Traditions": "Indigenous healing practices involving altered states, spirit world navigation, and community ceremony.",
+  "Lucid Dreaming": "The practice and study of becoming conscious within dreams — a bridge between sleep science and contemplative inquiry.",
+  "Breathwork": "Intentional breathing practices — pranayama, holotropic breathing — altering physiology, emotion, and consciousness.",
+
+  // Indigenous & Traditional Knowledge
+  "Indigenous Cosmology": "Worldviews locating humans within a living cosmos — specific to place, language, and ancestral relationship.",
+  "Ethnobotany": "Documents traditional plant knowledge — how cultures name, use, and relate to the plant world.",
+  "Traditional Medicine": "Healing systems developed over millennia — Ayurveda, TCM, Indigenous medicine — integrating body, mind, and spirit.",
+  "Oral Traditions": "Knowledge transmitted through story, song, and ceremony — memory systems without writing.",
+  "Animism": "The worldview that all things — rivers, stones, animals, wind — possess spirit or agency.",
+  "Totemism": "A system of symbolic kinship between human groups and animals, plants, or natural phenomena.",
+  "Land Knowledge": "Deep, place-based ecological expertise accumulated over generations of intimate relationship with specific landscapes.",
+  "Ethnoastronomy": "How indigenous cultures mapped, named, and related to the sky — navigation, calendars, ceremony.",
+  "Ritual Studies": "Academic study of structured symbolic action — how ritual creates meaning, community, and transformation.",
+  "Ancestor Veneration": "Practices honoring deceased family members as ongoing presences influencing the living — nearly universal across cultures.",
+  "Sacred Ecology": "The view that nature is inherently sacred — integrating spiritual reverence with ecological care.",
+  "Ethnoarchaeology": "Studies living cultures to interpret archaeological remains and bridge past and present human practices.",
+
+  // Consciousness & Fringe
+  "Consciousness Studies": "Interdisciplinary inquiry into subjective experience — the hard problem of why there is something it is like to be.",
+  "Parapsychology": "Scientific investigation of claimed phenomena beyond conventional explanation — ESP, telekinesis, precognition.",
+  "Psychedelic Science": "Research into psychedelic substances as tools for treating mental illness and studying consciousness.",
+  "Near-Death Studies": "Examines near-death experiences — tunnel, light, life review — and their implications for consciousness.",
+  "Dream Studies": "Scientific and phenomenological study of dreaming — REM sleep, dream content, and their psychological significance.",
+  "Anomalous Cognition": "Investigates mental phenomena that challenge standard cognitive models — intuition, exceptional memory, altered states.",
+  "Quantum Mind Theory": "Speculative frameworks proposing quantum processes in neurons underlie consciousness — Penrose-Hameroff and others.",
+  "Morphic Resonance": "Rupert Sheldrake's controversial theory that memory is inherent in nature through non-local morphic fields.",
+  "Noetics": "Studies the nature and potentials of consciousness, including its possible non-local and collective properties.",
+  "Integral Theory": "Ken Wilber's framework synthesizing developmental psychology, spirituality, and systems theory into a unified worldview.",
+  "Transpersonal Psychology": "Extends psychology beyond the personal self to include spiritual and transcendent aspects of human experience.",
+  "Chronobiology": "Studies biological rhythms — circadian clocks, seasonal cycles — and how time is encoded in living systems.",
+};
+
+const EDGES_DEF = [
+  // Math ↔ everything
+  ["Mathematics","Statistics"],["Mathematics","Physics"],["Mathematics","Computer Science"],
+  ["Mathematics","Logic"],["Mathematics","Probability Theory"],["Mathematics","Algebra"],
+  ["Mathematics","Calculus"],["Mathematics","Geometry"],["Mathematics","Topology"],
+  ["Mathematics","Number Theory"],["Mathematics","Graph Theory"],["Mathematics","Combinatorics"],
+  ["Mathematics","Set Theory"],["Mathematics","Category Theory"],["Mathematics","Numerical Analysis"],
+  ["Mathematics","Information Theory"],["Mathematics","Cryptography"],["Mathematics","Quantum Mechanics"],
+  ["Mathematics","Statistical Physics"],["Mathematics","Economics"],
+  ["Statistics","Epidemiology"],["Statistics","Psychology"],["Statistics","Data Science"],
+  ["Statistics","Machine Learning"],["Statistics","Demography"],["Statistics","Sociology"],
+  ["Statistics","Behavioral Economics"],["Statistics","Bioinformatics"],
+
+  // Physics cluster
+  ["Physics","Quantum Mechanics"],["Physics","Thermodynamics"],["Physics","Electromagnetism"],
+  ["Physics","Relativity"],["Physics","Optics"],["Physics","Acoustics"],
+  ["Physics","Particle Physics"],["Physics","Nuclear Physics"],["Physics","Astrophysics"],
+  ["Physics","Cosmology"],["Physics","Statistical Physics"],["Physics","Condensed Matter"],
+  ["Physics","Plasma Physics"],["Physics","Chemistry"],["Physics","Engineering & Tech"],
+  ["Physics","Materials Science"],["Physics","Nanotechnology"],
+  ["Quantum Mechanics","Particle Physics"],["Quantum Mechanics","Condensed Matter"],
+  ["Quantum Mechanics","Physical Chemistry"],["Quantum Mechanics","Quantum Mechanics"],
+  ["Astrophysics","Cosmology"],["Astrophysics","Relativity"],["Astrophysics","Astronomy"],
+  ["Thermodynamics","Physical Chemistry"],["Thermodynamics","Meteorology"],
+  ["Thermodynamics","Chemical Engineering"],["Electromagnetism","Electrical Engineering"],
+  ["Electromagnetism","Optics"],["Electromagnetism","Telecommunications"],
+  ["Nuclear Physics","Nuclear Physics"],["Particle Physics","Cosmology"],
+  ["Statistical Physics","Complexity Science"],["Statistical Physics","Thermodynamics"],
+
+  // Earth & Space
+  ["Geology","Mineralogy"],["Geology","Seismology"],["Geology","Volcanology"],
+  ["Geology","Paleontology"],["Geology","Geochemistry"],["Geology","Soil Science"],
+  ["Geology","Geography"],["Oceanography","Marine Biology"],["Oceanography","Hydrology"],
+  ["Oceanography","Climatology"],["Meteorology","Climatology"],["Meteorology","Environmental Science"],
+  ["Climatology","Environmental Science"],["Climatology","Ecology"],
+  ["Geography","Human Geography"],["Geography","Cartography"],["Geography","Urban Studies"],
+  ["Astronomy","Astrophysics"],["Astronomy","Cosmology"],
+  ["Paleontology","Evolutionary Biology"],["Soil Science","Agriculture"],
+  ["Hydrology","Environmental Science"],["Glaciology","Climatology"],
+
+  // Life Sciences
+  ["Biology","Genetics"],["Biology","Ecology"],["Biology","Evolutionary Biology"],
+  ["Biology","Microbiology"],["Biology","Zoology"],["Biology","Botany"],
+  ["Biology","Cell Biology"],["Biology","Molecular Biology"],["Biology","Biochemistry"],
+  ["Biology","Physiology"],["Biology","Taxonomy"],["Biology","Neuroscience"],
+  ["Genetics","Molecular Biology"],["Genetics","Evolutionary Biology"],
+  ["Genetics","Genomics"],["Genetics","Bioinformatics"],["Genetics","Medicine"],
+  ["Ecology","Environmental Science"],["Ecology","Biodiversity"],["Ecology","Ethology"],
+  ["Ecology","Marine Biology"],["Ecology","Systems Biology"],
+  ["Evolutionary Biology","Anthropology"],["Evolutionary Biology","Paleontology"],
+  ["Neuroscience","Cognitive Science"],["Neuroscience","Psychology"],
+  ["Neuroscience","Neurology"],["Neuroscience","Psychiatry"],["Neuroscience","Neurophilosophy"],
+  ["Neuroscience","Bioinformatics"],
+  ["Cell Biology","Biochemistry"],["Cell Biology","Molecular Biology"],["Cell Biology","Immunology"],
+  ["Molecular Biology","Bioinformatics"],["Molecular Biology","Biochemistry"],
+  ["Biochemistry","Chemistry"],["Biochemistry","Pharmacology"],["Biochemistry","Toxicology"],
+  ["Physiology","Medicine"],["Physiology","Anatomy"],
+  ["Microbiology","Virology"],["Microbiology","Immunology"],["Microbiology","Biotechnology"],
+  ["Immunology","Medicine"],["Virology","Epidemiology"],["Virology","Public Health"],
+
+  // Chemistry
+  ["Chemistry","Organic Chemistry"],["Chemistry","Inorganic Chemistry"],
+  ["Chemistry","Physical Chemistry"],["Chemistry","Analytical Chemistry"],
+  ["Chemistry","Electrochemistry"],["Chemistry","Polymer Chemistry"],
+  ["Chemistry","Geochemistry"],["Chemistry","Astrochemistry"],
+  ["Chemistry","Computational Chemistry"],["Chemistry","Toxicology"],
+  ["Chemistry","Pharmacology"],["Organic Chemistry","Pharmacology"],
+  ["Organic Chemistry","Biochemistry"],["Physical Chemistry","Thermodynamics"],
+  ["Computational Chemistry","Computer Science"],
+
+  // Medicine
+  ["Medicine","Anatomy"],["Medicine","Pathology"],["Medicine","Surgery"],
+  ["Medicine","Psychiatry"],["Medicine","Epidemiology"],["Medicine","Nutrition"],
+  ["Medicine","Pharmacology (Med)"],["Medicine","Oncology"],["Medicine","Cardiology"],
+  ["Medicine","Neurology"],["Medicine","Dermatology"],["Medicine","Radiology"],
+  ["Medicine","Genetics (Med)"],["Medicine","Biotechnology"],["Medicine","Public Health"],
+  ["Public Health","Epidemiology"],["Public Health","Sociology"],["Public Health","Nutrition"],
+  ["Psychiatry","Psychology"],["Psychiatry","Neuroscience"],
+  ["Pharmacology","Pharmacology (Med)"],["Pharmacology (Med)","Biotechnology"],
+  ["Biomedical Engineering","Medicine"],["Biomedical Engineering","Biotechnology"],
+
+  // Social Sciences
+  ["Sociology","Psychology"],["Sociology","Anthropology"],["Sociology","Cultural Studies"],
+  ["Sociology","Criminology"],["Sociology","Demography"],["Sociology","Urban Studies"],
+  ["Psychology","Cognitive Science"],["Psychology","Social Psychology"],["Psychology","Behavioral Economics"],
+  ["Psychology","Neuroscience"],["Psychology","Philosophy of Mind"],["Psychology","Education Theory"],
+  ["Economics","Political Science"],["Economics","Behavioral Economics"],
+  ["Economics","Demography"],["Economics","Urban Studies"],["Economics","International Relations"],
+  ["Anthropology","Archaeology"],["Anthropology","Linguistics"],["Anthropology","Cultural Studies"],
+  ["Anthropology","Mythology"],["Anthropology","Religion"],
+  ["Political Science","International Relations"],["Political Science","Law"],
+  ["Political Science","Political Philosophy"],["Political Science","Sociology"],
+  ["Cognitive Science","Philosophy of Mind"],["Cognitive Science","Linguistics"],
+  ["Cognitive Science","Artificial Intelligence"],["Cognitive Science","Neuroscience"],
+  ["Communication","Sociology"],["Communication","Linguistics"],["Communication","Media Studies"],
+  ["Human Geography","Urban Studies"],["Human Geography","Anthropology"],
+
+  // Humanities
+  ["Philosophy","Ethics"],["Philosophy","Epistemology"],["Philosophy","Metaphysics"],
+  ["Philosophy","Logic"],["Philosophy","Aesthetics"],["Philosophy","Political Philosophy"],
+  ["Philosophy","Philosophy of Science"],["Philosophy","Philosophy of Mind"],
+  ["Philosophy","Hermeneutics"],["Philosophy","Semiotics"],["Philosophy","Religion"],
+  ["History","Archaeology"],["History","Classics"],["History","Political Science"],
+  ["History","Mythology"],["History","Cultural Studies"],["History","Art History"],
+  ["Literature","Linguistics"],["Literature","Semiotics"],["Literature","Cultural Studies"],
+  ["Literature","Aesthetics"],["Literature","Mythology"],["Literature","Classics"],
+  ["Linguistics","Anthropology"],["Linguistics","Semiotics"],
+  ["Ethics","Law"],["Ethics","Bioethics"],["Ethics","Political Philosophy"],
+  ["Law","Political Science"],["Law","Ethics"],["Law","Criminology"],
+  ["Epistemology","Philosophy of Science"],["Metaphysics","Philosophy of Mind"],
+
+  // Arts
+  ["Music","Acoustics"],["Music","Mathematics"],["Music","Cultural Studies"],
+  ["Music","Cognitive Science"],["Music","Neuroscience"],
+  ["Visual Art","Aesthetics"],["Visual Art","Graphic Design"],["Visual Art","Photography"],
+  ["Architecture","Urban Design"],["Architecture","Engineering & Tech"],
+  ["Architecture","Aesthetics"],["Architecture","Urban Studies"],
+  ["Film & Cinema","Photography"],["Film & Cinema","Narrative Design"],
+  ["Film & Cinema","Cultural Studies"],
+  ["Game Design","Computer Science"],["Game Design","Narrative Design"],
+  ["Game Design","Cognitive Science"],
+  ["Graphic Design","Visual Art"],["Industrial Design","Mechanical Engineering"],
+  ["Industrial Design","Graphic Design"],
+
+  // Engineering & Tech
+  ["Computer Science","Artificial Intelligence"],["Computer Science","Machine Learning"],
+  ["Computer Science","Software Engineering"],["Computer Science","Cryptography"],
+  ["Computer Science","Information Theory"],["Computer Science","Robotics"],
+  ["Computer Science","Data Science"],["Computer Science","Information Science"],
+  ["Artificial Intelligence","Machine Learning"],["Artificial Intelligence","Robotics"],
+  ["Artificial Intelligence","Cognitive Science"],["Artificial Intelligence","Philosophy of Mind"],
+  ["Artificial Intelligence","Data Science"],["Artificial Intelligence","Neuroscience"],
+  ["Machine Learning","Data Science"],["Machine Learning","Statistics"],
+  ["Machine Learning","Bioinformatics"],
+  ["Electrical Engineering","Electromagnetism"],["Electrical Engineering","Telecommunications"],
+  ["Electrical Engineering","Robotics"],["Electrical Engineering","Computer Science"],
+  ["Mechanical Engineering","Materials Science"],["Mechanical Engineering","Thermodynamics"],
+  ["Civil Engineering","Architecture"],["Civil Engineering","Materials Science"],
+  ["Chemical Engineering","Chemistry"],["Chemical Engineering","Materials Science"],
+  ["Aerospace Engineering","Fluid Dynamics"],["Aerospace Engineering","Materials Science"],
+  ["Materials Science","Nanotechnology"],["Materials Science","Chemistry"],
+  ["Robotics","Computer Science"],["Robotics","Mechanical Engineering"],
+  ["Systems Theory","Cybernetics"],["Systems Theory","Complexity Science"],
+  ["Environmental Engineering","Chemistry"],["Environmental Engineering","Environmental Science"],
+
+  // Interdisciplinary
+  ["Complexity Science","Systems Theory"],["Complexity Science","Biology"],
+  ["Complexity Science","Sociology"],["Complexity Science","Economics"],
+  ["Systems Biology","Biochemistry"],["Systems Biology","Genetics"],
+  ["Systems Biology","Ecology"],
+  ["Bioinformatics","Computer Science"],["Bioinformatics","Genetics"],
+  ["Bioinformatics","Molecular Biology"],
+  ["Environmental Science","Ecology"],["Environmental Science","Geography"],
+  ["Environmental Science","Chemistry"],["Environmental Science","Climate Science"],
+  ["Philosophy of Science","History"],["Philosophy of Science","Logic"],
+  ["Philosophy of Mind","Neuroscience"],["Philosophy of Mind","Cognitive Science"],
+  ["Neurophilosophy","Neuroscience"],["Neurophilosophy","Philosophy"],
+  ["Data Science","Statistics"],["Data Science","Computer Science"],
+  ["Cybernetics","Systems Theory"],["Cybernetics","Artificial Intelligence"],
+  ["Information Science","Computer Science"],["Information Science","Cognitive Science"],
+  ["Science & Tech Studies","History"],["Science & Tech Studies","Sociology"],
+
+  // Esoteric & Occult
+  ["Hermeticism","Alchemy"],["Hermeticism","Kabbalah"],["Hermeticism","Neoplatonism"],
+  ["Hermeticism","Gnosticism"],["Hermeticism","Sacred Geometry"],["Hermeticism","Philosophy"],
+  ["Hermeticism","Mystery Traditions"],["Hermeticism","Rosicrucianism"],
+  ["Alchemy","Chemistry"],["Alchemy","Hermeticism"],["Alchemy","Philosophy"],
+  ["Alchemy","Sacred Geometry"],
+  ["Kabbalah","Gnosticism"],["Kabbalah","Numerology"],["Kabbalah","Sacred Geometry"],
+  ["Kabbalah","Religion"],
+  ["Astrology","Astronomy"],["Astrology","Mathematics"],["Astrology","Mythology"],
+  ["Astrology","Divination"],["Astrology","Numerology"],
+  ["Sacred Geometry","Mathematics"],["Sacred Geometry","Architecture"],["Sacred Geometry","Neoplatonism"],
+  ["Gnosticism","Religion"],["Gnosticism","Philosophy"],["Gnosticism","Mythology"],
+  ["Neoplatonism","Philosophy"],["Neoplatonism","Religion"],["Neoplatonism","Metaphysics"],
+  ["Theosophy","Religion"],["Theosophy","Hermeticism"],["Theosophy","Philosophy"],["Theosophy","Anthropology"],
+  ["Ceremonial Magic","Hermeticism"],["Ceremonial Magic","Kabbalah"],
+  ["Divination","Mythology"],["Divination","Anthropology"],["Divination","Psychology"],
+  ["Mystery Traditions","Religion"],["Mystery Traditions","Anthropology"],["Mystery Traditions","Mythology"],
+  ["Tarot","Kabbalah"],["Tarot","Divination"],["Tarot","Psychology"],
+  ["Numerology","Mathematics"],["Freemasonry","Hermeticism"],["Freemasonry","Sacred Geometry"],
+
+  // Contemplative
+  ["Meditation","Neuroscience"],["Meditation","Psychology"],["Meditation","Consciousness Studies"],
+  ["Meditation","Zen Buddhism"],["Meditation","Yoga Philosophy"],["Meditation","Breathwork"],
+  ["Yoga Philosophy","Advaita Vedanta"],["Yoga Philosophy","Tantra"],["Yoga Philosophy","Physiology"],
+  ["Zen Buddhism","Taoism"],["Zen Buddhism","Philosophy"],["Zen Buddhism","Meditation"],
+  ["Sufism","Religion"],["Sufism","Philosophy"],["Sufism","Christian Mysticism"],
+  ["Christian Mysticism","Religion"],["Christian Mysticism","Philosophy"],["Christian Mysticism","Ethics"],
+  ["Taoism","Philosophy"],["Taoism","Religion"],["Taoism","Traditional Medicine"],["Taoism","Ecology"],
+  ["Advaita Vedanta","Philosophy"],["Advaita Vedanta","Epistemology"],["Advaita Vedanta","Consciousness Studies"],
+  ["Tantra","Religion"],["Tantra","Sacred Geometry"],["Tantra","Yoga Philosophy"],
+  ["Shamanic Traditions","Indigenous Cosmology"],["Shamanic Traditions","Ritual Studies"],
+  ["Shamanic Traditions","Psychedelic Science"],["Shamanic Traditions","Anthropology"],
+  ["Lucid Dreaming","Dream Studies"],["Lucid Dreaming","Consciousness Studies"],["Lucid Dreaming","Neuroscience"],
+  ["Breathwork","Physiology"],["Breathwork","Psychology"],["Breathwork","Meditation"],
+
+  // Indigenous
+  ["Indigenous Cosmology","Mythology"],["Indigenous Cosmology","Animism"],
+  ["Indigenous Cosmology","Ethnoastronomy"],["Indigenous Cosmology","Oral Traditions"],
+  ["Ethnobotany","Botany"],["Ethnobotany","Anthropology"],["Ethnobotany","Traditional Medicine"],
+  ["Ethnobotany","Ecology"],["Ethnobotany","Pharmacology"],
+  ["Traditional Medicine","Medicine"],["Traditional Medicine","Ethnobotany"],
+  ["Traditional Medicine","Pharmacology"],["Traditional Medicine","Anthropology"],
+  ["Oral Traditions","Anthropology"],["Oral Traditions","Literature"],
+  ["Oral Traditions","Linguistics"],["Oral Traditions","History"],
+  ["Animism","Religion"],["Animism","Anthropology"],["Animism","Ecology"],
+  ["Totemism","Animism"],["Totemism","Anthropology"],["Totemism","Psychology"],
+  ["Land Knowledge","Geography"],["Land Knowledge","Ecology"],["Land Knowledge","Indigenous Cosmology"],
+  ["Ethnoastronomy","Astronomy"],["Ethnoastronomy","Anthropology"],
+  ["Ritual Studies","Anthropology"],["Ritual Studies","Religion"],["Ritual Studies","Sociology"],
+  ["Ancestor Veneration","Religion"],["Ancestor Veneration","Anthropology"],
+  ["Sacred Ecology","Ecology"],["Sacred Ecology","Indigenous Cosmology"],
+  ["Sacred Ecology","Religion"],["Sacred Ecology","Environmental Science"],
+  ["Ethnoarchaeology","Archaeology"],["Ethnoarchaeology","Anthropology"],
+
+  // Consciousness & Fringe
+  ["Consciousness Studies","Neuroscience"],["Consciousness Studies","Philosophy of Mind"],
+  ["Consciousness Studies","Psychology"],["Consciousness Studies","Quantum Mind Theory"],
+  ["Consciousness Studies","Meditation"],["Consciousness Studies","Noetics"],
+  ["Consciousness Studies","Transpersonal Psychology"],
+  ["Parapsychology","Psychology"],["Parapsychology","Anomalous Cognition"],["Parapsychology","Consciousness Studies"],
+  ["Psychedelic Science","Neuroscience"],["Psychedelic Science","Psychology"],
+  ["Psychedelic Science","Pharmacology"],["Psychedelic Science","Consciousness Studies"],
+  ["Psychedelic Science","Anthropology"],
+  ["Near-Death Studies","Consciousness Studies"],["Near-Death Studies","Neuroscience"],["Near-Death Studies","Psychology"],
+  ["Dream Studies","Psychology"],["Dream Studies","Neuroscience"],
+  ["Dream Studies","Consciousness Studies"],["Dream Studies","Mythology"],
+  ["Quantum Mind Theory","Quantum Mechanics"],["Quantum Mind Theory","Neuroscience"],
+  ["Quantum Mind Theory","Consciousness Studies"],["Quantum Mind Theory","Physics"],
+  ["Noetics","Consciousness Studies"],["Noetics","Philosophy of Mind"],["Noetics","Parapsychology"],
+  ["Integral Theory","Sociology"],["Integral Theory","Consciousness Studies"],
+  ["Transpersonal Psychology","Psychology"],["Transpersonal Psychology","Consciousness Studies"],
+  ["Transpersonal Psychology","Anthropology"],
+  ["Morphic Resonance","Biology"],["Morphic Resonance","Consciousness Studies"],
+  ["Chronobiology","Biology"],["Chronobiology","Neuroscience"],["Chronobiology","Physics"],
+  ["Anomalous Cognition","Psychology"],["Anomalous Cognition","Parapsychology"],
+];
+
+// ─── 3D DOMAIN CLUSTER CENTERS ─────────────────────────────────────────────
+const DOMAIN_CENTERS = {
+  "Formal Sciences":           [ 0,    430,   0  ],
+  "Physical Sciences":         [ 350,  220,   0  ],
+  "Earth & Space":             [ 220,  220,  310 ],
+  "Life Sciences":             [-220,  80,   380 ],
+  "Chemistry":                 [ 380,  80,   220 ],
+  "Medicine & Health":         [-420,  80,   0  ],
+  "Social Sciences":           [-220,  80,  -380 ],
+  "Humanities":                [ 0,    80,  -430 ],
+  "Arts & Design":             [-220, -200,  310 ],
+  "Engineering & Tech":        [ 350,  220, -220 ],
+  "Interdisciplinary":         [ 0,    0,    0  ],
+  "Esoteric & Occult":         [-220, -300,  220 ],
+  "Contemplative Traditions":  [ 0,   -430,  0  ],
+  "Indigenous & Traditional":  [ 220, -300, -220 ],
+  "Consciousness & Fringe":    [ 0,   -180, -380 ],
+};
+
+// ─── BUILD GRAPH ────────────────────────────────────────────────────────────
+const nodeMap = new Map();
+NODES_RAW.forEach(([name, domain, size]) => {
+  const phi = Math.acos(1 - 2 * (nodeMap.size + 0.5) / NODES_RAW.length);
+  const theta = Math.PI * (1 + Math.sqrt(5)) * nodeMap.size;
+  const r = 480;
+  nodeMap.set(name, {
+    id: name, domain, size,
+    x: r * Math.sin(phi) * Math.cos(theta),
+    y: r * Math.cos(phi),
+    z: r * Math.sin(phi) * Math.sin(theta),
+    vx:0, vy:0, vz:0,
+    mesh: null,
+  });
+});
+const nodes = Array.from(nodeMap.values());
+
+const links = [];
+EDGES_DEF.forEach(([a, b]) => {
+  if (nodeMap.has(a) && nodeMap.has(b) && a !== b)
+    links.push({ source: nodeMap.get(a), target: nodeMap.get(b) });
+});
+
+// ─── THREE.JS SETUP ─────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 3));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x04060f, 1);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 12000);
+
+// ─── STAR FIELD ──────────────────────────────────────────────────────────────
+(function buildStars() {
+  const STAR_COUNT = 12000;
+  const RADIUS     = 9000; // far shell, always behind everything
+
+  const positions = new Float32Array(STAR_COUNT * 3);
+  const colors    = new Float32Array(STAR_COUNT * 3);
+  const sizes     = new Float32Array(STAR_COUNT);
+
+  // Star color temperatures: blue-white, white, warm yellow, faint orange
+  const starTints = [
+    [0.72, 0.82, 1.00],  // blue-white
+    [0.95, 0.97, 1.00],  // white
+    [1.00, 0.98, 0.88],  // warm white
+    [1.00, 0.92, 0.70],  // yellow
+    [1.00, 0.85, 0.60],  // orange
+  ];
+
+  for (let i = 0; i < STAR_COUNT; i++) {
+    // Uniform random on sphere surface
+    const u     = Math.random();
+    const v     = Math.random();
+    const theta = 2 * Math.PI * u;
+    const phi   = Math.acos(2 * v - 1);
+    positions[i*3]   = RADIUS * Math.sin(phi) * Math.cos(theta);
+    positions[i*3+1] = RADIUS * Math.sin(phi) * Math.sin(theta);
+    positions[i*3+2] = RADIUS * Math.cos(phi);
+
+    // Random tint, slightly dimmed
+    const tint  = starTints[Math.floor(Math.random() * starTints.length)];
+    const bright = 0.45 + Math.random() * 0.55;
+    colors[i*3]   = tint[0] * bright;
+    colors[i*3+1] = tint[1] * bright;
+    colors[i*3+2] = tint[2] * bright;
+
+    // Most stars tiny, a few larger, rare bright ones
+    const r = Math.random();
+    sizes[i] = r < 0.92
+      ? 0.6 + Math.random() * 1.2
+      : r < 0.98
+        ? 1.8 + Math.random() * 2.0
+        : 3.0 + Math.random() * 2.5;
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color',    new THREE.BufferAttribute(colors, 3));
+  geo.setAttribute('size',     new THREE.BufferAttribute(sizes,  1));
+
+  const mat = new THREE.PointsMaterial({
+    vertexColors: true,
+    sizeAttenuation: false,  // screen-space sizing so they stay crisp dots
+    transparent: true,
+    opacity: 0.88,
+    depthWrite: false,
+    size: 1.4,
+  });
+
+  scene.add(new THREE.Points(geo, mat));
+
+  // Subtle twinkle — slowly modulate overall opacity with a soft sine
+  let twinkleT = 0;
+  const twinkleTick = () => {
+    twinkleT += 0.004;
+    mat.opacity = 0.72 + Math.sin(twinkleT) * 0.16;
+  };
+  // Register twinkle in animation loop via a global hook
+  window._starTwinkle = twinkleTick;
+})();
+
+// ─── BLACK HOLE ───────────────────────────────────────────────────────────────
+(function buildBlackHole() {
+  // Position: off-center in the background star shell
+  const BH_POS = new THREE.Vector3(3200, -800, -5500);
+
+  // ── Event horizon — pure black sphere, cuts stars behind it ──────────────
+  const horizonGeo = new THREE.SphereGeometry(1, 48, 36);
+  const horizonMat = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    depthWrite: true,
+  });
+  const horizon = new THREE.Mesh(horizonGeo, horizonMat);
+  horizon.scale.setScalar(260);
+  horizon.position.copy(BH_POS);
+  scene.add(horizon);
+
+  // ── Photon sphere — faint blue-white ring right at edge ───────────────────
+  const photonGeo = new THREE.SphereGeometry(1, 48, 36);
+  const photonMat = new THREE.MeshBasicMaterial({
+    color: 0xaaccff,
+    transparent: true,
+    opacity: 0.06,
+    side: THREE.BackSide,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const photon = new THREE.Mesh(photonGeo, photonMat);
+  photon.scale.setScalar(272);
+  photon.position.copy(BH_POS);
+  scene.add(photon);
+
+  // ── Gravitational lensing halos — nested translucent shells ──────────────
+  const haloColors  = [0x99aadd, 0x8899cc, 0x6677aa, 0x445588, 0x334477, 0x223366];
+  const haloScales  = [290, 350, 430, 540, 680, 850];
+  const haloOpacity = [0.05, 0.038, 0.025, 0.016, 0.009, 0.004];
+
+  haloColors.forEach((col, i) => {
+    const geo = new THREE.SphereGeometry(1, 36, 28);
+    const mat = new THREE.MeshBasicMaterial({
+      color: col,
+      transparent: true,
+      opacity: haloOpacity[i],
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.scale.setScalar(haloScales[i]);
+    mesh.position.copy(BH_POS);
+    scene.add(mesh);
+  });
+
+  // ── Accretion disk — flat torus, tilted, glowing orange→white→blue ────────
+  // Build as layered rings: warm inner, bright mid, cool outer
+  const diskLayers = [
+    { inner: 270, outer: 310, color: 0xffffff, opacity: 0.18 }, // white-hot innermost
+    { inner: 305, outer: 370, color: 0xffeedd, opacity: 0.24 }, // bright inner
+    { inner: 365, outer: 440, color: 0xffaa44, opacity: 0.16 }, // warm orange
+    { inner: 435, outer: 530, color: 0xff8833, opacity: 0.12 }, // orange mid
+    { inner: 525, outer: 640, color: 0xcc5511, opacity: 0.08 }, // deep red outer
+    { inner: 635, outer: 760, color: 0x993300, opacity: 0.05 }, // dark red
+    { inner: 755, outer: 900, color: 0x661100, opacity: 0.025 }, // faint far edge
+    { inner: 895, outer: 1050, color: 0x440800, opacity: 0.012 }, // very faint outer halo
+  ];
+
+  const diskTilt = new THREE.Euler(0.38, 0.22, 0.0); // slight tilt, not face-on
+
+  diskLayers.forEach(layer => {
+    const geo = new THREE.RingGeometry(layer.inner, layer.outer, 128, 2);
+    const mat = new THREE.MeshBasicMaterial({
+      color: layer.color,
+      transparent: true,
+      opacity: layer.opacity,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const ring = new THREE.Mesh(geo, mat);
+    ring.position.copy(BH_POS);
+    ring.rotation.copy(diskTilt);
+    scene.add(ring);
+  });
+
+  // ── Disk slow rotation — store refs for animation ─────────────────────────
+  const diskMeshes = [];
+  diskLayers.forEach(layer => {
+    // Already added above; re-create a parallel ref array via scene traversal
+  });
+
+  // ── Relativistic jets — faint beams above and below the disk ──────────────
+  const jetLayers = [
+    { length: 1200, radius: 18, color: 0x88aaff, opacity: 0.04 },
+    { length: 800, radius: 35, color: 0x6688cc, opacity: 0.025 },
+    { length: 500, radius: 55, color: 0x4466aa, opacity: 0.015 },
+  ];
+  const jetMeshes = [];
+  jetLayers.forEach(jet => {
+    const jetGeo = new THREE.CylinderGeometry(jet.radius * 0.3, jet.radius, jet.length, 12, 1, true);
+    const jetMat = new THREE.MeshBasicMaterial({
+      color: jet.color, transparent: true, opacity: jet.opacity,
+      side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    // Top jet
+    const topJet = new THREE.Mesh(jetGeo, jetMat);
+    topJet.position.copy(BH_POS).add(new THREE.Vector3(0, jet.length * 0.5 + 260, 0));
+    topJet.rotation.copy(diskTilt);
+    scene.add(topJet);
+    // Bottom jet
+    const botJet = new THREE.Mesh(jetGeo, jetMat.clone());
+    botJet.position.copy(BH_POS).add(new THREE.Vector3(0, -jet.length * 0.5 - 260, 0));
+    botJet.rotation.copy(diskTilt);
+    botJet.rotation.z += Math.PI;
+    scene.add(botJet);
+    jetMeshes.push(topJet, botJet);
+  });
+
+  // Animate: subtle disk shimmer via opacity oscillation + jet flicker
+  let bhT = 0;
+  const bhTick = () => {
+    bhT += 0.0008;
+    // Photon sphere pulse
+    photonMat.opacity = 0.04 + Math.sin(bhT * 1.3) * 0.02;
+    // Jet flicker
+    jetMeshes.forEach((m, i) => {
+      m.material.opacity = m.material.opacity * (0.85 + Math.sin(bhT * 2.1 + i) * 0.15);
+    });
+  };
+  window._bhTick = bhTick;
+})();
+
+// ─── NEBULA DUST CLOUDS ──────────────────────────────────────────────────────
+// Soft, large, semi-transparent sprite clouds scattered in the background
+(function buildNebulae() {
+  const nebulaColors = [
+    [0x442266, 0.018], [0x224466, 0.015], [0x663322, 0.012],
+    [0x336644, 0.014], [0x553344, 0.016], [0x223355, 0.013],
+    [0x443322, 0.011], [0x334455, 0.010],
+  ];
+  const nebulaGeo = new THREE.PlaneGeometry(1, 1);
+  const nebulaCount = 14;
+
+  for (let i = 0; i < nebulaCount; i++) {
+    const [color, opacity] = nebulaColors[i % nebulaColors.length];
+    // Create a soft radial gradient texture
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 256;
+    const ctx = cv.getContext('2d');
+    const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
+    const c = new THREE.Color(color);
+    grad.addColorStop(0, `rgba(${Math.round(c.r*255)},${Math.round(c.g*255)},${Math.round(c.b*255)},1)`);
+    grad.addColorStop(0.4, `rgba(${Math.round(c.r*255)},${Math.round(c.g*255)},${Math.round(c.b*255)},0.5)`);
+    grad.addColorStop(1, `rgba(${Math.round(c.r*255)},${Math.round(c.g*255)},${Math.round(c.b*255)},0)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 256, 256);
+    const tex = new THREE.CanvasTexture(cv);
+
+    const mat = new THREE.MeshBasicMaterial({
+      map: tex, transparent: true, opacity: opacity,
+      side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(nebulaGeo, mat);
+
+    // Random position on far shell
+    const phi = Math.acos(2 * Math.random() - 1);
+    const theta = Math.random() * Math.PI * 2;
+    const r = 4000 + Math.random() * 3000;
+    mesh.position.set(
+      r * Math.sin(phi) * Math.cos(theta),
+      r * Math.sin(phi) * Math.sin(theta),
+      r * Math.cos(phi)
+    );
+    mesh.lookAt(0, 0, 0);
+    const scale = 1200 + Math.random() * 2400;
+    mesh.scale.set(scale, scale * (0.6 + Math.random() * 0.8), 1);
+    mesh.rotation.z = Math.random() * Math.PI;
+    scene.add(mesh);
+  }
+})();
+
+
+scene.add(new THREE.AmbientLight(0x1a2a44, 4.5));
+const light1 = new THREE.PointLight(0xffd4a0, 3.0, 5000);
+light1.position.set(600, 900, 500);
+scene.add(light1);
+const light2 = new THREE.PointLight(0x4488ff, 1.5, 5000);
+light2.position.set(-700, -400, -400);
+scene.add(light2);
+// Rim light from below for depth
+const light3 = new THREE.PointLight(0xffaa66, 1.0, 4000);
+light3.position.set(0, -800, 200);
+scene.add(light3);
+// Subtle fill from behind
+const light4 = new THREE.DirectionalLight(0x223344, 0.8);
+light4.position.set(-300, 200, -600);
+scene.add(light4);
+
+// ─── PROCEDURAL PLANET TEXTURES ─────────────────────────────────────────────
+// Simple seeded pseudo-random
+function seededRand(seed) {
+  let s = seed;
+  return () => { s = (s * 16807 + 0) % 2147483647; return (s - 1) / 2147483646; };
+}
+
+// Smooth noise via bilinear lerp on random grid
+function buildNoise(rng, gw, gh) {
+  const grid = new Float32Array(gw * gh);
+  for (let i = 0; i < grid.length; i++) grid[i] = rng();
+  return (u, v) => {
+    const x = ((u % 1 + 1) % 1) * (gw - 1);
+    const y = ((v % 1 + 1) % 1) * (gh - 1);
+    const x0 = Math.floor(x) % gw, y0 = Math.floor(y) % gh;
+    const x1 = (x0 + 1) % gw,      y1 = (y0 + 1) % gh;
+    const fx = x - Math.floor(x),   fy = y - Math.floor(y);
+    const s = t => t * t * (3 - 2 * t);
+    return grid[y0*gw+x0]*(1-s(fx))*(1-s(fy)) + grid[y0*gw+x1]*s(fx)*(1-s(fy))
+         + grid[y1*gw+x0]*(1-s(fx))*s(fy)     + grid[y1*gw+x1]*s(fx)*s(fy);
+  };
+}
+
+function fbm(noise, u, v, oct, lac, gain) {
+  let val = 0, amp = 0.5, freq = 1;
+  for (let i = 0; i < oct; i++) {
+    val += noise(u * freq, v * freq) * amp;
+    freq *= lac; amp *= gain;
+  }
+  return val;
+}
+
+// Domain → planet archetype
+const PLANET_TYPES = {
+  "Formal Sciences":           "ice",
+  "Physical Sciences":         "gas_blue",
+  "Earth & Space":             "rocky_orange",
+  "Life Sciences":             "jungle",
+  "Chemistry":                 "acid",
+  "Medicine & Health":         "terracotta",
+  "Social Sciences":           "desert",
+  "Humanities":                "ancient",
+  "Arts & Design":             "violet_cloud",
+  "Engineering & Tech":        "metallic",
+  "Interdisciplinary":         "ocean",
+  "Esoteric & Occult":         "dark_nebula",
+  "Contemplative Traditions":  "amber_gas",
+  "Indigenous & Traditional":  "verdant",
+  "Consciousness & Fringe":    "plasma",
+};
+
+const PLANET_PALETTES = {
+  ice:           [[210,235,255],[170,210,240],[130,180,220],[220,240,255],[255,255,255]],
+  gas_blue:      [[20,60,140],[40,100,200],[80,150,220],[140,190,240],[200,220,255]],
+  rocky_orange:  [[120,60,20],[160,90,40],[200,130,60],[140,80,30],[80,40,15]],
+  jungle:        [[20,80,30],[40,120,50],[60,160,70],[30,100,40],[80,140,60]],
+  acid:          [[40,120,20],[80,180,30],[120,220,60],[60,160,40],[180,240,80]],
+  terracotta:    [[160,70,50],[200,100,70],[180,80,60],[140,60,40],[220,130,90]],
+  desert:        [[200,160,80],[220,190,110],[180,140,60],[160,120,50],[240,210,140]],
+  ancient:       [[140,110,80],[180,150,110],[160,130,90],[120,90,60],[200,170,130]],
+  violet_cloud:  [[80,20,120],[130,50,180],[160,80,200],[100,30,150],[200,130,240]],
+  metallic:      [[80,100,120],[120,140,160],[160,175,190],[60,80,100],[200,210,220]],
+  ocean:         [[10,40,100],[20,80,160],[40,120,200],[10,60,130],[80,160,220]],
+  dark_nebula:   [[60,10,80],[100,20,120],[140,40,160],[80,15,100],[180,80,200]],
+  amber_gas:     [[180,100,20],[220,150,50],[200,120,30],[160,80,15],[240,190,80]],
+  verdant:       [[30,100,50],[50,150,70],[80,180,90],[40,120,60],[100,200,110]],
+  plasma:        [[200,20,100],[240,60,140],[220,40,120],[180,10,80],[255,120,180]],
+};
+
+function makePlanetTexture(domain, nodeId) {
+  const type  = PLANET_TYPES[domain] || 'ocean';
+  const pal   = PLANET_PALETTES[type];
+  const S     = 512;
+  const cv    = document.createElement('canvas');
+  cv.width = S * 2; cv.height = S;
+  const ctx   = cv.getContext('2d');
+  const id    = ctx.createImageData(S * 2, S);
+  const data  = id.data;
+
+  // Seed from node name
+  let seed = 0;
+  for (let i = 0; i < nodeId.length; i++) seed = (seed * 31 + nodeId.charCodeAt(i)) & 0xfffffff;
+  const rng  = seededRand(seed + 1);
+  const rng2 = seededRand(seed + 99);
+  const rng3 = seededRand(seed + 777);
+
+  const n1 = buildNoise(rng,  32, 16);
+  const n2 = buildNoise(rng2, 16, 32);
+  const n3 = buildNoise(rng3, 64, 32);
+  const rng4 = seededRand(seed + 2345);
+  const n4 = buildNoise(rng4, 48, 24);
+
+  // Type-specific rendering
+  const isBanded = ['gas_blue','amber_gas','plasma','violet_cloud','dark_nebula'].includes(type);
+  const isIcy    = type === 'ice';
+  const isRocky  = ['rocky_orange','terracotta','ancient','desert','verdant'].includes(type);
+  const numBands = 4 + Math.floor(rng() * 5);
+  const stormU   = rng(); const stormV = 0.3 + rng() * 0.4;
+  const stormR   = 0.04 + rng() * 0.06;
+  const hasStorm = rng() > 0.35;
+
+  for (let py = 0; py < S; py++) {
+    for (let px = 0; px < S * 2; px++) {
+      const u = px / (S * 2);
+      const v = py / S;
+
+      let t;
+      if (isBanded) {
+        const warp = fbm(n1, u, v, 6, 2.1, 0.5) * 0.4;
+        const band = (Math.sin((v + warp) * Math.PI * numBands) + 1) * 0.5;
+        const detail = fbm(n2, u * 2, v * 2, 5, 2.0, 0.45) * 0.25;
+        const micro = fbm(n4, u * 6, v * 6, 4, 2.3, 0.4) * 0.08;
+        t = Math.max(0, Math.min(1, band + detail + micro));
+      } else if (isRocky) {
+        const crater = fbm(n3, u * 3, v * 3, 7, 2.2, 0.5);
+        const base   = fbm(n1, u, v, 6, 2.0, 0.5);
+        const fine   = fbm(n4, u * 8, v * 8, 4, 2.4, 0.45) * 0.12;
+        t = Math.pow(Math.max(0, base * 0.55 + crater * 0.35 + fine), 0.8);
+      } else if (isIcy) {
+        const crack = Math.abs(fbm(n1, u * 2, v * 2, 7, 2.3, 0.5) - 0.5) * 2;
+        const base  = fbm(n2, u, v, 5, 2.0, 0.4);
+        const vein  = Math.abs(fbm(n4, u * 5, v * 5, 4, 2.5, 0.45) - 0.5) * 0.3;
+        t = Math.max(0, Math.min(1, base * 0.45 + (1 - crack * 0.55) + vein));
+      } else {
+        t = fbm(n1, u * 1.5, v * 1.5, 7, 2.1, 0.5);
+        const detail = fbm(n4, u * 4, v * 4, 5, 2.2, 0.45) * 0.15;
+        t = Math.max(0, Math.min(1, t * 0.75 + fbm(n2, u, v, 5, 2.0, 0.5) * 0.2 + detail));
+      }
+
+      // Storm spot
+      if (hasStorm) {
+        const du = Math.min(Math.abs(u - stormU), 1 - Math.abs(u - stormU));
+        const dv = v - stormV;
+        const sd = Math.sqrt(du*du + dv*dv) / stormR;
+        if (sd < 1) t = Math.max(0, Math.min(1, t * 0.3 + (1 - sd) * 0.7));
+      }
+
+      // Pick color from palette
+      const ci = t * (pal.length - 1);
+      const ci0 = Math.floor(ci), ci1 = Math.min(ci0 + 1, pal.length - 1);
+      const cf = ci - ci0;
+      const c0 = pal[ci0], c1 = pal[ci1];
+      const r = Math.round(c0[0] + (c1[0]-c0[0]) * cf);
+      const g = Math.round(c0[1] + (c1[1]-c0[1]) * cf);
+      const b = Math.round(c0[2] + (c1[2]-c0[2]) * cf);
+
+      // Limb darkening: darken edges of sphere (approximated via equirectangular v→lat)
+      const lat  = (v - 0.5) * Math.PI;
+      const limb = Math.pow(Math.cos(lat), 0.3);
+
+      const i4 = (py * S * 2 + px) * 4;
+      data[i4]   = Math.round(r * limb);
+      data[i4+1] = Math.round(g * limb);
+      data[i4+2] = Math.round(b * limb);
+      data[i4+3] = 255;
+    }
+  }
+  ctx.putImageData(id, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = THREE.RepeatWrapping;
+  return tex;
+}
+
+// ─── NODE MESHES ────────────────────────────────────────────────────────────
+const sphereGeo = new THREE.SphereGeometry(1, 48, 32);
+const atmGeo    = new THREE.SphereGeometry(1, 24, 16); // atmosphere shell
+const nodeMeshes = [];
+
+nodes.forEach(n => {
+  const hex = DOMAINS[n.domain]?.color || '#aaaaaa';
+  const domColor = new THREE.Color(hex);
+
+  // Planet surface — enhanced material
+  const tex = makePlanetTexture(n.domain, n.id);
+  const mat = new THREE.MeshPhongMaterial({
+    map: tex,
+    emissiveMap: tex,
+    emissive: domColor,
+    emissiveIntensity: 0.08,
+    shininess: 50,
+    specular: new THREE.Color(domColor).lerp(new THREE.Color(0xffffff), 0.6),
+    transparent: false,
+    opacity: 1.0,
+  });
+  const mesh = new THREE.Mesh(sphereGeo, mat);
+  mesh.scale.setScalar(n.size * 2.2);
+  mesh.position.set(n.x, n.y, n.z);
+  mesh.userData.node = n;
+  // Slow unique rotation per planet
+  mesh.userData.rotSpeed = 0.0015 + (n.id.charCodeAt(0) % 10) * 0.0003;
+  scene.add(mesh);
+  nodeMeshes.push(mesh);
+  n.mesh = mesh;
+
+  // Atmosphere glow shell — inner layer
+  const atmMat = new THREE.MeshPhongMaterial({
+    color: domColor,
+    emissive: domColor,
+    emissiveIntensity: 0.5,
+    transparent: true,
+    opacity: 0.13,
+    side: THREE.FrontSide,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const atm = new THREE.Mesh(atmGeo, atmMat);
+  atm.scale.setScalar(n.size * 2.2 * 1.18);
+  atm.position.set(n.x, n.y, n.z);
+  atm.userData.isAtm = true;
+  atm.userData.node  = n;
+  scene.add(atm);
+  n.atm = atm;
+  n.atmMat = atmMat;
+
+  // Outer atmosphere haze — softer, larger glow
+  const outerAtmMat = new THREE.MeshBasicMaterial({
+    color: domColor,
+    transparent: true,
+    opacity: 0.045,
+    side: THREE.BackSide,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const outerAtm = new THREE.Mesh(atmGeo, outerAtmMat);
+  outerAtm.scale.setScalar(n.size * 2.2 * 1.45);
+  outerAtm.position.set(n.x, n.y, n.z);
+  scene.add(outerAtm);
+  n.outerAtm = outerAtm;
+
+  // Planetary rings on larger nodes (size >= 18)
+  if (n.size >= 18) {
+    const ringInner = n.size * 2.2 * 1.35;
+    const ringOuter = n.size * 2.2 * 2.0;
+    const ringGeo = new THREE.RingGeometry(ringInner, ringOuter, 64, 1);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: domColor,
+      transparent: true,
+      opacity: 0.12,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.set(n.x, n.y, n.z);
+    // Tilt rings uniquely per node
+    const tiltSeed = n.id.charCodeAt(0) * 0.1;
+    ring.rotation.x = Math.PI * 0.5 + Math.sin(tiltSeed) * 0.4;
+    ring.rotation.y = Math.cos(tiltSeed * 1.3) * 0.3;
+    scene.add(ring);
+    n.ring = ring;
+  }
+});
+
+// ─── EDGE LINES ─────────────────────────────────────────────────────────────
+const edgePosArr = new Float32Array(links.length * 6);
+const edgeGeo = new THREE.BufferGeometry();
+const edgePosAttr = new THREE.BufferAttribute(edgePosArr, 3);
+edgePosAttr.usage = THREE.DynamicDrawUsage;
+edgeGeo.setAttribute('position', edgePosAttr);
+const edgeMat = new THREE.LineBasicMaterial({
+  color: 0xc8bea8, transparent: true, opacity: 0.28,
+});
+const edgeLines = new THREE.LineSegments(edgeGeo, edgeMat);
+scene.add(edgeLines);
+
+// ─── TRAVELING PULSE SYSTEM ──────────────────────────────────────────────────
+// A bright line segment slides along each connector edge — no floating orbs.
+
+const PULSE_POOL      = 32;
+const PULSE_SPEED_MIN = 0.003;
+const PULSE_SPEED_MAX = 0.009;
+const PULSE_TAIL      = 0.09;
+
+const PULSE_COLORS = [
+  new THREE.Color(0xffe8a0),
+  new THREE.Color(0xaad4ff),
+  new THREE.Color(0xffc0e0),
+  new THREE.Color(0xc0ffd8),
+  new THREE.Color(0xffd0a0),
+  new THREE.Color(0xe0c0ff),
+  new THREE.Color(0xa0eeff),
+];
+
+// Neighbor lookup for chain-traveling
+const neighborMap = new Map();
+nodes.forEach(n => neighborMap.set(n.id, []));
+links.forEach(l => {
+  neighborMap.get(l.source.id).push(l.target);
+  neighborMap.get(l.target.id).push(l.source);
+});
+
+const activePulses = [];
+
+// Each pulse gets its own 2-point LineSegments (head + tail point)
+function spawnPulse(srcNode, tgtNode, col) {
+  if (activePulses.length >= PULSE_POOL) return;
+
+  const color = col
+    ? col.clone()
+    : PULSE_COLORS[Math.floor(Math.random() * PULSE_COLORS.length)].clone();
+  const speed = PULSE_SPEED_MIN + Math.random() * (PULSE_SPEED_MAX - PULSE_SPEED_MIN);
+
+  // Core bright segment
+  const posArr = new Float32Array(6); // 2 points × 3
+  const geo    = new THREE.BufferGeometry();
+  const attr   = new THREE.BufferAttribute(posArr, 3);
+  attr.usage   = THREE.DynamicDrawUsage;
+  geo.setAttribute('position', attr);
+
+  const mat = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.9,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const line = new THREE.LineSegments(geo, mat);
+  scene.add(line);
+
+  // Softer wider halo segment (same geometry, different material)
+  const haloMat = new THREE.LineBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.3,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const haloLine = new THREE.LineSegments(geo, haloMat); // shares geo
+  scene.add(haloLine);
+
+  activePulses.push({
+    src: srcNode, tgt: tgtNode,
+    t: 0, speed, color,
+    geo, posArr, mat, haloMat, line, haloLine,
+  });
+}
+
+function lerpEdge(src, tgt, t) {
+  return {
+    x: src.x + (tgt.x - src.x) * t,
+    y: src.y + (tgt.y - src.y) * t,
+    z: src.z + (tgt.z - src.z) * t,
+  };
+}
+
+function updatePulses() {
+  // Randomly spawn new pulses
+  if (Math.random() < 0.012 && activePulses.length < PULSE_POOL) {
+    const candidates = nodes.filter(n => neighborMap.get(n.id).length > 0);
+    if (candidates.length) {
+      const src  = candidates[Math.floor(Math.random() * candidates.length)];
+      const nbrs = neighborMap.get(src.id);
+      const tgt  = nbrs[Math.floor(Math.random() * nbrs.length)];
+      spawnPulse(src, tgt, null);
+    }
+  }
+
+  for (let i = activePulses.length - 1; i >= 0; i--) {
+    const p = activePulses[i];
+    p.t += p.speed;
+
+    const head = Math.min(p.t, 1);
+    const tail = Math.max(p.t - PULSE_TAIL, 0);
+
+    // Fade in as tail leaves 0, fade out as head approaches 1
+    const fadeIn  = Math.min(p.t / (PULSE_TAIL * 0.5), 1);
+    const fadeOut = Math.min((1 - head) / 0.08 + 0.001, 1);
+    const env     = Math.min(fadeIn, fadeOut);
+
+    p.mat.opacity     = env * 0.92;
+    p.haloMat.opacity = env * 0.32;
+
+    // Write head and tail positions into the line segment
+    const hp = lerpEdge(p.src, p.tgt, head);
+    const tp = lerpEdge(p.src, p.tgt, tail);
+    p.posArr[0] = tp.x; p.posArr[1] = tp.y; p.posArr[2] = tp.z;
+    p.posArr[3] = hp.x; p.posArr[4] = hp.y; p.posArr[5] = hp.z;
+    p.geo.attributes.position.needsUpdate = true;
+
+    // Pulse finished
+    if (p.t >= 1 + PULSE_TAIL) {
+      scene.remove(p.line);
+      scene.remove(p.haloLine);
+      p.mat.dispose();
+      p.haloMat.dispose();
+      p.geo.dispose();
+      activePulses.splice(i, 1);
+
+      // 55% chance to chain-travel
+      if (Math.random() < 0.55) {
+        const nbrs = neighborMap.get(p.tgt.id).filter(n => n.id !== p.src.id);
+        if (nbrs.length) {
+          const next = nbrs[Math.floor(Math.random() * nbrs.length)];
+          // Fresh random speed each hop — subtle variation per segment
+          spawnPulse(p.tgt, next, p.color);
+        }
+      }
+    }
+  }
+}
+
+const focusEdgePosArr = new Float32Array(links.length * 6);
+const focusEdgeGeo  = new THREE.BufferGeometry();
+const focusEdgeAttr = new THREE.BufferAttribute(focusEdgePosArr, 3);
+focusEdgeAttr.usage = THREE.DynamicDrawUsage;
+focusEdgeGeo.setAttribute('position', focusEdgeAttr);
+
+// Halo layer — additive, soft wide glow
+const focusEdgeHaloMat = new THREE.LineBasicMaterial({
+  color: 0xffe8a0, transparent: true, opacity: 0.0,
+  blending: THREE.AdditiveBlending, depthWrite: false,
+});
+const focusEdgeHalo = new THREE.LineSegments(focusEdgeGeo, focusEdgeHaloMat);
+scene.add(focusEdgeHalo);
+
+// Core layer — bright sharp line on top
+const focusEdgeCoreMat = new THREE.LineBasicMaterial({
+  color: 0xfff0c0, transparent: true, opacity: 0.0,
+  blending: THREE.AdditiveBlending, depthWrite: false,
+});
+const focusEdgeCore = new THREE.LineSegments(focusEdgeGeo, focusEdgeCoreMat);
+scene.add(focusEdgeCore);
+
+let focusEdgeLinks = []; // subset of links for focused node
+
+function buildFocusEdges(n) {
+  focusEdgeLinks = links.filter(l => l.source.id === n.id || l.target.id === n.id);
+  // Resize buffer if needed
+  const needed = focusEdgeLinks.length * 6;
+  if (focusEdgePosArr.length < needed) {
+    const newArr = new Float32Array(needed);
+    focusEdgeGeo.setAttribute('position', new THREE.BufferAttribute(newArr, 3));
+    focusEdgeGeo.attributes.position.usage = THREE.DynamicDrawUsage;
+  }
+  focusEdgeGeo.setDrawRange(0, focusEdgeLinks.length * 2);
+  const domainColor = new THREE.Color(DOMAINS[n.domain]?.color || '#ffe8a0');
+  focusEdgeHaloMat.color.copy(domainColor);
+  focusEdgeCoreMat.color.copy(domainColor).lerp(new THREE.Color(0xffffff), 0.4);
+  // Start transparent — tickDim fades them in
+  focusEdgeHaloMat.opacity = 0;
+  focusEdgeCoreMat.opacity = 0;
+}
+
+function clearFocusEdges() {
+  focusEdgeLinks = [];
+  focusEdgeHaloMat.opacity = 0.0;
+  focusEdgeCoreMat.opacity = 0.0;
+  focusEdgeGeo.setDrawRange(0, 0);
+}
+clearFocusEdges(); // hidden initially
+
+// ─── MOON SYSTEM ─────────────────────────────────────────────────────────────
+// When a node is focused its neighbors orbit it as glowing moons.
+// Moons are separate meshes (not the original node meshes) so they don't
+// disturb the force simulation.
+
+const moonMeshes   = [];   // raycaster target list (cleared each focus)
+let   moonData     = [];   // per-moon orbit state
+
+const moonSphereGeo = new THREE.SphereGeometry(1, 32, 24);
+const moonRingGeo   = new THREE.RingGeometry(1.55, 1.85, 48);
+const moonHaloGeo   = new THREE.SphereGeometry(1, 20, 14);
+
+function buildMoons(centerNode) {
+  clearMoons();
+  const neighbors = getNeighborNames(centerNode).slice(0, 10);
+  const count     = neighbors.length;
+  if (!count) return;
+
+  const baseOrbitR = centerNode.size * 2.2 * 1.0 + 55; // orbit radius from planet surface
+
+  neighbors.forEach((name, i) => {
+    const n = nodeMap.get(name);
+    if (!n) return;
+
+    const col    = new THREE.Color(DOMAINS[n.domain]?.color || '#aaaaaa');
+    const mSize  = Math.max(2, n.size * 2.2 * 0.19); // 50% smaller
+
+    // Orbit parameters — stagger inclinations & radii for 3D spread
+    const orbitR   = baseOrbitR + (i % 3) * 22;
+    const incl     = (i / count) * Math.PI * 0.9 - Math.PI * 0.45;
+    const phase    = (i / count) * Math.PI * 2;
+    const speed    = 0.0004 + (i * 0.000031);
+    const hasRing  = Math.random() < 0.35; // ~1 in 3 moons gets a ring
+
+    // ── Core moon sphere ─────────────────────────────────────────────────────
+    const mat = new THREE.MeshPhongMaterial({
+      color:    col,
+      emissive: col,
+      emissiveIntensity: 0.55,
+      shininess: 60,
+      transparent: true,
+      opacity: 0,
+    });
+    const mesh = new THREE.Mesh(moonSphereGeo, mat);
+    mesh.scale.setScalar(mSize);
+    mesh.userData.moonNode = n;
+    scene.add(mesh);
+    moonMeshes.push(mesh);
+
+    // ── Glowing halo shell ───────────────────────────────────────────────────
+    const haloMat = new THREE.MeshBasicMaterial({
+      color: col,
+      transparent: true,
+      opacity: 0.18,
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const halo = new THREE.Mesh(moonHaloGeo, haloMat);
+    halo.scale.setScalar(mSize * 2.0);
+    scene.add(halo);
+
+    // ── Orbital ring — only on randomly selected moons ───────────────────────
+    let ring = null, ringMat = null;
+    if (hasRing) {
+      ringMat = new THREE.MeshBasicMaterial({
+        color: col,
+        transparent: true,
+        opacity: 0.55,
+        side: THREE.DoubleSide,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      ring = new THREE.Mesh(moonRingGeo, ringMat);
+      ring.scale.setScalar(mSize);
+      scene.add(ring);
+    }
+
+    // ── HTML label ───────────────────────────────────────────────────────────
+    const label = document.createElement('div');
+    label.className    = 'moon-label';
+    label.textContent  = n.id;
+    label.style.color  = DOMAINS[n.domain]?.color || '#e8d89a';
+    label.dataset.moonIdx = moonData.length;
+    label.addEventListener('click', e => {
+      e.stopPropagation();
+      focusNode(n);
+    });
+    document.body.appendChild(label);
+
+    moonData.push({ n, mesh, halo, ring, mat, haloMat, ringMat, label,
+                    orbitR, incl, phase, speed, mSize, angle: phase, hasRing,
+                    moonAlpha: 0, fadeDelay: i * 80 + 600 }); // staggered fade-in
+  });
+}
+
+function clearMoons() {
+  moonData.forEach(m => {
+    scene.remove(m.mesh);  m.mat.dispose();
+    scene.remove(m.halo);  m.haloMat.dispose();
+    if (m.ring) { scene.remove(m.ring); m.ringMat.dispose(); }
+    m.label.remove();
+  });
+  moonData = [];
+  moonMeshes.length = 0;
+}
+
+function updateMoons() {
+  if (!moonData.length) return;
+  const cx = focusedNode.x, cy = focusedNode.y, cz = focusedNode.z;
+  const now = performance.now();
+
+  moonData.forEach(m => {
+    // Staggered fade-in per moon
+    if (m._spawnTime === undefined) m._spawnTime = now;
+    const elapsed = now - m._spawnTime;
+    const targetAlpha = elapsed > m.fadeDelay ? 1.0 : 0.0;
+    m.moonAlpha += (targetAlpha - m.moonAlpha) * 0.055;
+
+    m.mat.opacity = m.moonAlpha;
+
+    m.angle += m.speed;
+
+    const cosI = Math.cos(m.incl), sinI = Math.sin(m.incl);
+    const ox = Math.cos(m.angle) * m.orbitR;
+    const oy = Math.sin(m.angle) * m.orbitR * sinI;
+    const oz = Math.sin(m.angle) * m.orbitR * cosI;
+    const wx = cx + ox, wy = cy + oy, wz = cz + oz;
+
+    m.mesh.position.set(wx, wy, wz);
+    m.mesh.rotation.y += 0.008;
+    m.halo.position.set(wx, wy, wz);
+
+    if (m.ring) {
+      m.ring.position.set(wx, wy, wz);
+      m.ring.rotation.x = Math.PI / 2 + m.incl * 0.6;
+      m.ring.rotation.z = m.angle * 0.3;
+      m.ringMat.opacity = m.moonAlpha * 0.55;
+    }
+
+    const t = now * 0.001;
+    m.haloMat.opacity = m.moonAlpha * (0.12 + Math.sin(t * 1.1 + m.phase) * 0.07);
+
+    const sp = toScreen(new THREE.Vector3(wx, wy, wz));
+    const vis = sp.x > 0 && sp.x < window.innerWidth && sp.y > 0 && sp.y < window.innerHeight;
+    m.label.style.left    = sp.x + 'px';
+    m.label.style.top     = (sp.y + m.mSize + 8) + 'px';
+    m.label.style.opacity = vis ? (m.moonAlpha * 0.9).toFixed(3) : '0';
+  });
+}
+
+// ─── LEGEND ─────────────────────────────────────────────────────────────────
+const legendEl = document.getElementById('legend');
+Object.entries(DOMAINS).forEach(([name, d]) => {
+  const item = document.createElement('div');
+  item.className = 'legend-item';
+  item.innerHTML = `<div class="legend-dot" style="background:${d.color}"></div><span>${name}</span>`;
+  legendEl.appendChild(item);
+});
+
+// ─── FORCE SIMULATION ───────────────────────────────────────────────────────
+let alpha = 1.0;
+const ALPHA_DECAY   = 0.016;
+const ALPHA_MIN     = 0.004; // keep gently alive forever
+const VEL_DECAY     = 0.58;
+const REP_STR       = 7500;
+const LINK_TARGET   = 88;
+const LINK_STR      = 0.28;
+const CLUSTER_STR   = 0.022;
+
+// Hover forces queued each frame
+const hoverForces = new Map();
+
+let settled = false;
+const settlingEl = document.getElementById('settling');
+
+function simTick() {
+  const a = Math.max(alpha, ALPHA_MIN);
+
+  // Repulsion (O(n²))
+  for (let i = 0; i < nodes.length; i++) {
+    const p = nodes[i];
+    for (let j = i + 1; j < nodes.length; j++) {
+      const q = nodes[j];
+      const dx = p.x - q.x, dy = p.y - q.y, dz = p.z - q.z;
+      const d2 = dx*dx + dy*dy + dz*dz + 1;
+      const f = REP_STR * a / d2;
+      p.vx += dx*f; p.vy += dy*f; p.vz += dz*f;
+      q.vx -= dx*f; q.vy -= dy*f; q.vz -= dz*f;
+    }
+  }
+
+  // Link attraction
+  for (const l of links) {
+    const s = l.source, t = l.target;
+    const dx = t.x-s.x, dy = t.y-s.y, dz = t.z-s.z;
+    const d = Math.sqrt(dx*dx + dy*dy + dz*dz) + 0.01;
+    const f = (d - LINK_TARGET) * LINK_STR * a / d;
+    s.vx += dx*f; s.vy += dy*f; s.vz += dz*f;
+    t.vx -= dx*f; t.vy -= dy*f; t.vz -= dz*f;
+  }
+
+  // Domain clustering
+  for (const n of nodes) {
+    const c = DOMAIN_CENTERS[n.domain];
+    if (!c) continue;
+    n.vx += (c[0] - n.x) * CLUSTER_STR * a;
+    n.vy += (c[1] - n.y) * CLUSTER_STR * a;
+    n.vz += (c[2] - n.z) * CLUSTER_STR * a;
+  }
+
+  // Hover attraction forces
+  for (const [id, f] of hoverForces) {
+    const n = nodeMap.get(id);
+    if (n) { n.vx += f.x; n.vy += f.y; n.vz += f.z; }
+  }
+  hoverForces.clear();
+
+  // Focused node — smooth float from rest position.
+  // No abrupt phase switches: just a gentle sinusoidal drift that starts
+  // immediately and eases in over ~90 frames so the node doesn't snap.
+  if (focusedNode && focusedNode._restX !== undefined) {
+    const n = focusedNode;
+    const t   = performance.now() * 0.001;
+    const amp = n.size * 1.4;
+
+    // Ease-in blend: 0→1 over first ~1.5s so the float starts invisibly slow
+    if (n._floatStart === undefined) n._floatStart = t;
+    const elapsed = t - n._floatStart;
+    const blend   = Math.min(elapsed / 1.5, 1);
+    const ease    = blend * blend * (3 - 2 * blend); // smoothstep
+
+    const floatX = n._restX + Math.sin(t * 0.7)  * amp * ease;
+    const floatY = n._restY + Math.sin(t * 0.53) * amp * ease * 0.8;
+    const floatZ = n._restZ + Math.sin(t * 0.41) * amp * ease * 0.6;
+
+    n.x += (floatX - n.x) * 0.06;
+    n.y += (floatY - n.y) * 0.06;
+    n.z += (floatZ - n.z) * 0.06;
+    n.vx = 0; n.vy = 0; n.vz = 0;
+  }
+
+  // Integrate — coasting nodes use gentler decay so they drift rather than snap
+  const now = performance.now();
+  const COAST_MS  = 1400; // how long a node coasts after leaving hover zone
+  const COAST_DECAY = 0.97; // much gentler than VEL_DECAY=0.58
+  for (const n of nodes) {
+    let decay = VEL_DECAY;
+    if (n._hoverReleaseTime) {
+      const age = now - n._hoverReleaseTime;
+      if (age < COAST_MS) {
+        // Blend from coast decay → normal decay over the coast window
+        const t = age / COAST_MS;
+        decay = COAST_DECAY + (VEL_DECAY - COAST_DECAY) * (t * t);
+      } else {
+        delete n._hoverReleaseTime;
+      }
+    }
+    n.vx *= decay; n.vy *= decay; n.vz *= decay;
+    n.x += n.vx; n.y += n.vy; n.z += n.vz;
+  }
+
+  if (alpha > ALPHA_MIN) {
+    alpha -= ALPHA_DECAY * (alpha - ALPHA_MIN);
+    if (alpha <= ALPHA_MIN + 0.001 && !settled) {
+      settled = true;
+      settlingEl.style.opacity = '0';
+      setTimeout(() => settlingEl.remove(), 1200);
+    }
+  }
+}
+
+function updateScene() {
+  for (const n of nodes) {
+    n.mesh.position.set(n.x, n.y, n.z);
+    n.mesh.rotation.y += n.mesh.userData.rotSpeed;
+    if (n.atm) n.atm.position.set(n.x, n.y, n.z);
+    if (n.outerAtm) n.outerAtm.position.set(n.x, n.y, n.z);
+    if (n.ring) {
+      n.ring.position.set(n.x, n.y, n.z);
+      n.ring.rotation.z += 0.0003; // slow ring rotation
+    }
+  }
+  updateMoons();
+  let idx = 0;
+  for (const l of links) {
+    edgePosArr[idx++] = l.source.x; edgePosArr[idx++] = l.source.y; edgePosArr[idx++] = l.source.z;
+    edgePosArr[idx++] = l.target.x; edgePosArr[idx++] = l.target.y; edgePosArr[idx++] = l.target.z;
+  }
+  edgeGeo.attributes.position.needsUpdate = true;
+
+  // Update focused glow edges
+  if (focusEdgeLinks.length > 0) {
+    const pos = focusEdgeGeo.attributes.position;
+    const arr = pos.array;
+    let fi = 0;
+    for (const l of focusEdgeLinks) {
+      arr[fi++] = l.source.x; arr[fi++] = l.source.y; arr[fi++] = l.source.z;
+      arr[fi++] = l.target.x; arr[fi++] = l.target.y; arr[fi++] = l.target.z;
+    }
+    pos.needsUpdate = true;
+  }
+}
+
+// ─── CAMERA / ORBIT ─────────────────────────────────────────────────────────
+let camTheta = 0.5, camPhi = 1.25, camRadius = 1600;
+const lookTarget = new THREE.Vector3();
+let isDragging = false, prevX = 0, prevY = 0, mouseDownX = 0, mouseDownY = 0;
+let autoRotate = true;
+let lastInteraction = 0;
+const RESUME_DELAY = 2800; // ms before rotation resumes after drag
+
+function setCamFromSpherical() {
+  camera.position.set(
+    camRadius * Math.sin(camPhi) * Math.sin(camTheta),
+    camRadius * Math.cos(camPhi),
+    camRadius * Math.sin(camPhi) * Math.cos(camTheta)
+  );
+  camera.lookAt(lookTarget);
+}
+setCamFromSpherical();
+
+// Camera animation — general purpose (used for unfocus)
+let camAnim = null;
+const _v3a = new THREE.Vector3(), _v3b = new THREE.Vector3();
+
+function animateCamTo(endPos, endLook, frames) {
+  camAnim = {
+    startPos: camera.position.clone(),
+    endPos: endPos.clone(),
+    startLook: lookTarget.clone(),
+    endLook: endLook.clone(),
+    t: 0, frames
+  };
+  focusCamAnim = null; // cancel focus anim if active
+}
+
+// Two-phase focus camera: zoom in → decelerate → pull back 25% → hold
+let focusCamAnim = null;
+
+function startFocusCamAnim(nodePos) {
+  camAnim = null;
+  const dir      = camera.position.clone().sub(nodePos).normalize();
+  const closePos = nodePos.clone().add(dir.clone().multiplyScalar(180));  // close stop
+  const holdPos  = nodePos.clone().add(dir.clone().multiplyScalar(230));  // hold = 25% back
+  focusCamAnim = {
+    startPos:  camera.position.clone(),
+    startLook: lookTarget.clone(),
+    nodePos:   nodePos.clone(),
+    closePos, holdPos,
+    phase: 'zoomIn',  // zoomIn → pullBack → done
+    t: 0,
+    zoomFrames: 75,   // frames to zoom in
+    pullFrames:  55,  // frames to pull back
+  };
+}
+
+canvas.addEventListener('pointerdown', e => {
+  // Don't orbit if clicking on the info panel
+  if (e.target !== canvas) return;
+  isDragging = true;
+  lastInteraction = performance.now();
+  prevX = mouseDownX = e.clientX;
+  prevY = mouseDownY = e.clientY;
+  canvas.setPointerCapture(e.pointerId);
+  if (camAnim) camAnim = null;
+});
+canvas.addEventListener('pointerup', e => {
+  isDragging = false;
+  canvas.releasePointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+  if (isDragging) {
+    const dx = e.clientX - prevX, dy = e.clientY - prevY;
+    camTheta -= dx * 0.006;
+    camPhi = Math.max(0.08, Math.min(Math.PI - 0.08, camPhi - dy * 0.006));
+    prevX = e.clientX; prevY = e.clientY;
+    setCamFromSpherical();
+  }
+  doHover(e);
+});
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  camRadius *= 1 + e.deltaY * 0.0018;
+  camRadius = Math.max(180, Math.min(5000, camRadius));
+  setCamFromSpherical();
+}, { passive: false });
+
+// ─── HOVER ──────────────────────────────────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+raycaster.params.Points = { threshold: 10 };
+const mouse2d = new THREE.Vector2();
+let hoveredNode = null;
+const hoverLabelEl = document.getElementById('hover-label');
+const _closest = new THREE.Vector3();
+
+function toScreen(worldPos) {
+  const v = worldPos.clone().project(camera);
+  return {
+    x: (v.x + 1) / 2 * window.innerWidth,
+    y: -(v.y - 1) / 2 * window.innerHeight
+  };
+}
+
+function doHover(e) {
+  mouse2d.x = (e.clientX / window.innerWidth)  * 2 - 1;
+  mouse2d.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse2d, camera);
+  const ray = raycaster.ray;
+
+  // Raycast for exact hits
+  const hits = raycaster.intersectObjects(nodeMeshes);
+  const newHover = hits.length ? hits[0].object.userData.node : null;
+
+  if (hoveredNode !== newHover) {
+    if (hoveredNode && hoveredNode !== focusedNode) {
+      hoveredNode.mesh.material.emissiveIntensity = 0.12;
+    }
+    hoveredNode = newHover;
+    if (hoveredNode) {
+      hoveredNode.mesh.material.emissiveIntensity = 0.75;
+      const sp = toScreen(new THREE.Vector3(hoveredNode.x, hoveredNode.y, hoveredNode.z));
+      hoverLabelEl.style.left  = sp.x + 'px';
+      hoverLabelEl.style.top   = (sp.y - 34) + 'px';
+      hoverLabelEl.textContent = hoveredNode.id;
+      hoverLabelEl.style.opacity = '1';
+    } else {
+      hoverLabelEl.style.opacity = '0';
+    }
+  } else if (hoveredNode) {
+    // Keep label position updated
+    const sp = toScreen(new THREE.Vector3(hoveredNode.x, hoveredNode.y, hoveredNode.z));
+    hoverLabelEl.style.left = sp.x + 'px';
+    hoverLabelEl.style.top  = (sp.y - 34) + 'px';
+  }
+
+  // Hover attraction: attract nearby nodes toward mouse ray (skip focused node)
+  // Track which nodes are currently attracted so we can stamp a release time on departure
+  const attractedThisFrame = new Set();
+  for (const n of nodes) {
+    if (focusedNode && n.id === focusedNode.id) continue;
+    const nPos = _v3a.set(n.x, n.y, n.z);
+    ray.closestPointToPoint(nPos, _closest);
+    const dist = nPos.distanceTo(_closest);
+    const maxR = 130;
+    if (dist < maxR) {
+      const strength = Math.pow(1 - dist / maxR, 2) * 2.2;
+      const dir = _v3b.copy(_closest).sub(nPos);
+      const len = dir.length();
+      if (len > 0.01) {
+        dir.divideScalar(len);
+        hoverForces.set(n.id, { x: dir.x * strength, y: dir.y * strength, z: dir.z * strength });
+        attractedThisFrame.add(n.id);
+        n._wasAttracted = true;
+        delete n._hoverReleaseTime; // actively attracted — no coast
+      }
+    }
+  }
+  // Stamp release time on nodes that just left the attraction zone
+  for (const n of nodes) {
+    if (n._wasAttracted && !attractedThisFrame.has(n.id)) {
+      n._hoverReleaseTime = performance.now();
+      delete n._wasAttracted;
+    }
+  }
+}
+
+// ─── CLICK / FOCUS ──────────────────────────────────────────────────────────
+let focusedNode = null;
+
+const nodeInfoEl   = document.getElementById('node-info');
+const nodeInfoName = document.getElementById('node-info-name');
+const nodeInfoDom  = document.getElementById('node-info-domain');
+const nodeInfoDesc = document.getElementById('node-info-desc');
+
+// ─── FOCUS LABEL TEXTURE ────────────────────────────────────────────────────
+// ─── FLOATING FOCUS LABEL ───────────────────────────────────────────────────
+const focusLabelEl = document.createElement('div');
+focusLabelEl.id = 'focus-label';
+focusLabelEl.style.cssText = `
+  position: fixed;
+  pointer-events: none;
+  z-index: 120;
+  text-align: center;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  font-family: 'Cinzel', serif;
+  font-size: clamp(16px, 2.2vw, 32px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.25;
+  color: #f0e4b0;
+  text-shadow:
+    0 0 18px rgba(0,0,0,1),
+    0 0 8px  rgba(0,0,0,1),
+    0 2px 4px rgba(0,0,0,0.9);
+  max-width: 220px;
+  white-space: normal;
+  word-break: break-word;
+`;
+document.body.appendChild(focusLabelEl);
+
+function applyFocusLabel(n) {
+  focusLabelEl.textContent = n.id;
+  focusLabelEl.style.color = DOMAINS[n.domain]?.color || '#f0e4b0';
+  focusLabelEl.style.opacity = '0'; // panel shows name — label hidden while focused
+}
+
+function clearFocusLabel() {
+  focusLabelEl.style.opacity = '0';
+}
+
+// Called every frame to keep label locked in front of the focused node
+function updateFocusLabelPos() {
+  if (!focusedNode) return;
+  const pos = new THREE.Vector3(focusedNode.x, focusedNode.y, focusedNode.z);
+  const r = focusedNode.size * 2.2; // sphere radius in world units
+  // Offset toward camera so it floats just in front of the sphere surface
+  const toCamera = camera.position.clone().sub(pos).normalize();
+  const frontPos = pos.clone().add(toCamera.multiplyScalar(r * 1.35));
+  const v = frontPos.project(camera);
+  const sx = (v.x + 1) / 2 * window.innerWidth;
+  const sy = -(v.y - 1) / 2 * window.innerHeight;
+  focusLabelEl.style.left = sx + 'px';
+  focusLabelEl.style.top  = sy + 'px';
+}
+
+const nodeInfoRelated = document.getElementById('node-info-related');
+const nodeInfoWiki    = document.getElementById('node-info-wiki');
+const leaderLine = document.getElementById('leader-line');
+const leaderDot  = document.getElementById('leader-dot');
+
+function getNeighborNames(n) {
+  const seen = new Set();
+  links.forEach(l => {
+    if (l.source.id === n.id && nodeMap.has(l.target.id)) seen.add(l.target.id);
+    if (l.target.id === n.id && nodeMap.has(l.source.id)) seen.add(l.source.id);
+  });
+  return Array.from(seen);
+}
+
+function positionPanel(screenX, screenY) {
+  const panel = nodeInfoEl;
+  const W = window.innerWidth, H = window.innerHeight;
+  const pw = 576, ph = panel.offsetHeight || 320;
+  const margin = 28;
+
+  // Pin to the corner OPPOSITE the node so it's always out of the way
+  const goRight = screenX < W / 2;
+  const goDown  = screenY < H / 2;
+
+  // Corner anchoring — panel hugs the screen edge, not the node
+  const panelX = goRight ? margin : W - pw - margin;
+  const panelY = goDown  ? margin + 60 : H - ph - margin;
+
+  // Hard clamp — never let any edge escape the viewport
+  const clampedX = Math.max(margin, Math.min(W - pw - margin, panelX));
+  const clampedY = Math.max(margin, Math.min(H - ph - margin, panelY));
+
+  panel.style.left = clampedX + 'px';
+  panel.style.top  = clampedY + 'px';
+
+  const anchorX = goRight ? clampedX + pw : clampedX;
+  const anchorY = Math.max(clampedY + 20, Math.min(clampedY + ph - 20, screenY));
+
+  leaderLine.setAttribute('x1', screenX);
+  leaderLine.setAttribute('y1', screenY);
+  leaderLine.setAttribute('x2', anchorX);
+  leaderLine.setAttribute('y2', anchorY);
+  leaderDot.setAttribute('cx', screenX);
+  leaderDot.setAttribute('cy', screenY);
+}
+
+function showInfo(n, screenX, screenY) {
+  nodeInfoName.textContent = n.id;
+  nodeInfoDom.textContent  = n.domain;
+  nodeInfoDom.style.color  = DOMAINS[n.domain]?.color || '#aaa';
+  nodeInfoDesc.textContent = NODE_DESCRIPTIONS[n.id] || '';
+
+  // Wikipedia link — encode spaces as underscores, standard WP convention
+  const wikiSlug = encodeURIComponent(n.id.replace(/ /g, '_'));
+  nodeInfoWiki.href = `https://en.wikipedia.org/wiki/${wikiSlug}`;
+  nodeInfoWiki.textContent = `↗ Wikipedia: ${n.id}`;
+
+  // Related chips
+  nodeInfoRelated.innerHTML = '';
+  const neighbors = getNeighborNames(n).slice(0, 12);
+  neighbors.forEach(name => {
+    const chip = document.createElement('span');
+    chip.className = 'related-chip';
+    chip.textContent = name;
+    const col = DOMAINS[nodeMap.get(name)?.domain]?.color || '#aaa';
+    chip.style.borderColor = col + '55';
+    chip.addEventListener('click', e => {
+      e.stopPropagation();
+      focusNode(nodeMap.get(name));
+    });
+    nodeInfoRelated.appendChild(chip);
+  });
+
+  nodeInfoEl.classList.add('visible');
+  leaderLine.style.display = 'block';
+  leaderDot.style.display  = 'block';
+
+  // Position after adding content (need next frame for height)
+  requestAnimationFrame(() => positionPanel(screenX, screenY));
+}
+
+function hideInfo() {
+  nodeInfoEl.classList.remove('visible');
+  leaderLine.style.display = 'none';
+  leaderDot.style.display  = 'none';
+}
+
+// Hide leader initially
+leaderLine.style.display = 'none';
+leaderDot.style.display  = 'none';
+
+function dimToNeighbors(n) {
+  const nb = new Set([n.id]);
+  links.forEach(l => {
+    if (l.source.id === n.id) nb.add(l.target.id);
+    if (l.target.id === n.id) nb.add(l.source.id);
+  });
+  nodes.forEach(m => {
+    const inNb = nb.has(m.id);
+    m._targetOpacity    = inNb ? 1.0 : 0.05;
+    m._targetAtmOpacity = inNb ? (m.id === n.id ? 0.35 : 0.1) : 0.01;
+    m.mesh.material.transparent = true;
+  });
+  edgeMat.opacity = 0.06;
+}
+function resetDim() {
+  nodes.forEach(n => {
+    n._targetOpacity    = 1.0;
+    n._targetAtmOpacity = 0.13;
+  });
+  edgeMat.opacity = 0.28;
+}
+// Call this every frame to lerp toward targets
+function tickDim() {
+  nodes.forEach(n => {
+    if (n._targetOpacity === undefined) return;
+    const cur = n.mesh.material.opacity;
+    const tgt = n._targetOpacity;
+    if (Math.abs(cur - tgt) > 0.002) {
+      const next = cur + (tgt - cur) * 0.08;
+      n.mesh.material.opacity = next;
+      if (tgt >= 1.0 && next > 0.98) {
+        n.mesh.material.opacity = 1.0;
+        n.mesh.material.transparent = false;
+      }
+    }
+    if (n.atmMat && n._targetAtmOpacity !== undefined) {
+      n.atmMat.opacity += (n._targetAtmOpacity - n.atmMat.opacity) * 0.08;
+    }
+  });
+  // Fade focus edges in/out smoothly
+  if (focusEdgeLinks.length > 0) {
+    focusEdgeHaloMat.opacity += (0.55 - focusEdgeHaloMat.opacity) * 0.06;
+    focusEdgeCoreMat.opacity += (0.92 - focusEdgeCoreMat.opacity) * 0.06;
+  } else {
+    focusEdgeHaloMat.opacity *= 0.88;
+    focusEdgeCoreMat.opacity *= 0.88;
+  }
+}
+
+function getNodeScreenPos(n) {
+  const pos = new THREE.Vector3(n.x, n.y, n.z);
+  const toCamera = camera.position.clone().sub(pos).normalize();
+  const frontPos = pos.clone().add(toCamera.multiplyScalar(n.size * 2.2 * 1.1));
+  const v = frontPos.project(camera);
+  return {
+    x: (v.x + 1) / 2 * window.innerWidth,
+    y: -(v.y - 1) / 2 * window.innerHeight
+  };
+}
+
+function focusNode(n) {
+  if (focusedNode) {
+    delete focusedNode._restX;
+    delete focusedNode._restY;
+    delete focusedNode._restZ;
+    delete focusedNode._floatStart;
+    clearFocusLabel();
+    clearFocusEdges();
+    clearMoons();
+    resetDim();
+  }
+  focusCamAnim = null;
+  focusedNode  = n;
+  n._restX = n.x; n._restY = n.y; n._restZ = n.z;
+  n._floatStart = undefined;
+  dimToNeighbors(n);
+  buildFocusEdges(n);
+  buildMoons(n);
+  playChime(n.domain);
+  applyFocusLabel(n);
+  startFocusCamAnim(new THREE.Vector3(n.x, n.y, n.z));
+  setTimeout(() => {
+    if (focusedNode === n) {
+      const sp = getNodeScreenPos(n);
+      showInfo(n, sp.x, sp.y);
+    }
+  }, 700);
+}
+
+canvas.addEventListener('click', e => {
+  const dx = e.clientX - mouseDownX, dy = e.clientY - mouseDownY;
+  if (Math.sqrt(dx*dx + dy*dy) > 6) return;
+
+  mouse2d.x = (e.clientX / window.innerWidth)  * 2 - 1;
+  mouse2d.y = -(e.clientY / window.innerHeight) * 2 + 1;
+  raycaster.setFromCamera(mouse2d, camera);
+
+  // Check moons first
+  if (moonMeshes.length) {
+    const moonHits = raycaster.intersectObjects(moonMeshes);
+    if (moonHits.length > 0) {
+      const moonNode = moonHits[0].object.userData.moonNode;
+      if (moonNode) { focusNode(moonNode); return; }
+    }
+  }
+
+  const hits = raycaster.intersectObjects(nodeMeshes);
+
+  if (hits.length > 0) {
+    const n = hits[0].object.userData.node;
+    if (focusedNode === n) {
+      delete focusedNode._restX; delete focusedNode._restY; delete focusedNode._restZ;
+      delete focusedNode._floatStart;
+      focusCamAnim = null;
+      clearFocusLabel(); clearFocusEdges(); clearMoons();
+      focusedNode = null;
+      resetDim();
+      hideInfo();
+      const endPos = new THREE.Vector3(
+        camRadius * Math.sin(camPhi) * Math.sin(camTheta),
+        camRadius * Math.cos(camPhi),
+        camRadius * Math.sin(camPhi) * Math.cos(camTheta)
+      );
+      animateCamTo(endPos, new THREE.Vector3(0,0,0), 70);
+    } else {
+      focusNode(n);
+    }
+  } else if (focusedNode) {
+    delete focusedNode._restX; delete focusedNode._restY; delete focusedNode._restZ;
+    delete focusedNode._floatStart;
+    focusCamAnim = null;
+    clearFocusLabel(); clearFocusEdges(); clearMoons();
+    focusedNode = null;
+    resetDim();
+    hideInfo();
+    const endPos = new THREE.Vector3(
+      camRadius * Math.sin(camPhi) * Math.sin(camTheta),
+      camRadius * Math.cos(camPhi),
+      camRadius * Math.sin(camPhi) * Math.cos(camTheta)
+    );
+    animateCamTo(endPos, new THREE.Vector3(0,0,0), 70);
+  }
+});
+
+// ─── AUDIO ───────────────────────────────────────────────────────────────────
+let audioCtx = null;
+let audioStarted = false;
+
+// Domain → chime root frequency (pentatonic-ish spread)
+const DOMAIN_FREQS = {
+  "Formal Sciences":           65.41,   // C2
+  "Physical Sciences":         73.42,   // D2
+  "Earth & Space":             82.41,   // E2
+  "Life Sciences":             87.31,   // F2
+  "Chemistry":                 98.00,   // G2
+  "Medicine & Health":         110.00,  // A2
+  "Social Sciences":           123.47,  // B2
+  "Humanities":                130.81,  // C3
+  "Arts & Design":             146.83,  // D3
+  "Engineering & Tech":        55.00,   // A1
+  "Interdisciplinary":         61.74,   // B1
+  "Esoteric & Occult":         46.25,   // F#1
+  "Contemplative Traditions":  51.91,   // Ab1
+  "Indigenous & Traditional":  58.27,   // Bb1
+  "Consciousness & Fringe":    38.89,   // Eb1
+};
+
+function startAudio() {
+  if (audioStarted) return;
+  audioStarted = true;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  // ── Reverb convolver (synthetic IR) ──────────────────────────────────────
+  const revLen  = audioCtx.sampleRate * 4.5;
+  const revBuf  = audioCtx.createBuffer(2, revLen, audioCtx.sampleRate);
+  for (let c = 0; c < 2; c++) {
+    const d = revBuf.getChannelData(c);
+    for (let i = 0; i < revLen; i++) {
+      d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / revLen, 2.2);
+    }
+  }
+  const reverb = audioCtx.createConvolver();
+  reverb.buffer = revBuf;
+
+  // Master volume — slider and mute both control this
+  const masterGain = audioCtx.createGain();
+  masterGain.gain.value = parseFloat(document.getElementById('vol-slider').value);
+  masterGain.connect(audioCtx.destination);
+  audioCtx._masterGain = masterGain;
+
+  const reverbGain = audioCtx.createGain();
+  reverbGain.gain.value = 0.55;
+  reverb.connect(reverbGain);
+  reverbGain.connect(masterGain);
+
+  const dryGain = audioCtx.createGain();
+  dryGain.gain.value = 0.18;
+  dryGain.connect(masterGain);
+
+  // ── Ambient pad layer ─────────────────────────────────────────────────────
+  // Slow-evolving drone: stacked detuned sine oscillators
+  const padNotes = [65.41, 130.81, 196.00, 261.63, 329.63]; // C2 pentatonic
+
+  padNotes.forEach((freq, idx) => {
+    const count = 3;
+    for (let v = 0; v < count; v++) {
+      const osc = audioCtx.createOscillator();
+      osc.type = v === 0 ? 'sine' : 'triangle';
+      osc.frequency.value = freq * (1 + (v - 1) * 0.003); // slight detune
+
+      // Slow LFO tremolo per voice
+      const lfo = audioCtx.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.value = 0.03 + idx * 0.007 + v * 0.013;
+      const lfoGain = audioCtx.createGain();
+      lfoGain.gain.value = 0.004;
+      lfo.connect(lfoGain);
+
+      const voiceGain = audioCtx.createGain();
+      voiceGain.gain.value = 0.012 / count;
+      lfoGain.connect(voiceGain.gain);
+
+      osc.connect(voiceGain);
+      voiceGain.connect(reverb);
+      voiceGain.connect(dryGain);
+
+      osc.start();
+      lfo.start();
+    }
+  });
+
+  // ── Slow melodic breath: random pentatonic notes fading in/out ────────────
+  const pentatonic = [130.81, 146.83, 164.81, 196.00, 220.00,
+                      261.63, 293.66, 329.63, 392.00, 440.00];
+
+  function breathNote() {
+    if (!audioCtx) return;
+    const freq = pentatonic[Math.floor(Math.random() * pentatonic.length)];
+    const dur  = 5 + Math.random() * 8;
+    const wait = 3 + Math.random() * 9;
+
+    const osc  = audioCtx.createOscillator();
+    osc.type   = 'sine';
+    osc.frequency.value = freq;
+
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0, audioCtx.currentTime);
+    g.gain.linearRampToValueAtTime(0.022, audioCtx.currentTime + dur * 0.3);
+    g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + dur);
+
+    osc.connect(g);
+    g.connect(reverb);
+    osc.start();
+    osc.stop(audioCtx.currentTime + dur);
+
+    setTimeout(breathNote, (wait + dur * 0.6) * 1000);
+  }
+  breathNote();
+  setTimeout(breathNote, 2000);
+  setTimeout(breathNote, 5500);
+
+  // Store refs for chime
+  audioCtx._reverb  = reverb;
+  audioCtx._revGain = reverbGain;
+}
+
+function playChime(domain) {
+  if (!audioCtx) return;
+  const root = DOMAIN_FREQS[domain] || 65.41;
+  const now  = audioCtx.currentTime;
+
+  // Soft tone: pure harmonic series, sine waves only, slow swell
+  // Ratios 1× 2× 3× give a warm organ/pad quality — no inharmonic bell clang
+  const partials = [1, 2, 3, 4];
+  const amps     = [1.0, 0.28, 0.10, 0.04];
+  const attackT  = 0.35;   // slow soft attack
+  const holdT    = 1.0;
+  const decayT   = 4.5;
+
+  partials.forEach((ratio, i) => {
+    const osc = audioCtx.createOscillator();
+    osc.type  = 'sine';
+    osc.frequency.value = root * ratio;
+
+    // Slight vibrato on fundamental for warmth
+    if (i === 0) {
+      const vib = audioCtx.createOscillator();
+      vib.frequency.value = 4.5;
+      const vibGain = audioCtx.createGain();
+      vibGain.gain.value = root * 0.003;
+      vib.connect(vibGain);
+      vibGain.connect(osc.frequency);
+      vib.start(now);
+      vib.stop(now + attackT + holdT + decayT);
+    }
+
+    const g  = audioCtx.createGain();
+    const pk = 0.055 * amps[i];
+    g.gain.setValueAtTime(0, now);
+    g.gain.linearRampToValueAtTime(pk, now + attackT);          // slow swell in
+    g.gain.linearRampToValueAtTime(pk * 0.85, now + attackT + holdT); // gentle hold
+    g.gain.linearRampToValueAtTime(0.0001, now + attackT + holdT + decayT); // long fade
+
+    osc.connect(g);
+    g.connect(audioCtx._reverb);
+    g.connect(audioCtx._masterGain);
+    osc.start(now);
+    osc.stop(now + attackT + holdT + decayT + 0.2);
+  });
+}
+
+// Boot audio on first user interaction
+document.addEventListener('pointerdown', () => startAudio(), { once: true });
+
+
+function animate() {
+  requestAnimationFrame(animate);
+
+  if (window._starTwinkle) window._starTwinkle();
+  if (window._bhTick) window._bhTick();
+  simTick();
+  tickDim();        // FIX 1: was never called — instant opacity snaps are now lerped
+  updateScene();
+  updatePulses();
+
+  // FIX 2: suppress auto-rotation entirely while a node is focused
+  const canAutoRotate = !focusedNode && !focusCamAnim;
+
+  // General camera animation (unfocus)
+  if (camAnim) {
+    camAnim.t++;
+    const t    = Math.min(camAnim.t / camAnim.frames, 1);
+    const ease = t < 0.5 ? 2*t*t : -1 + (4-2*t)*t;
+    camera.position.lerpVectors(camAnim.startPos, camAnim.endPos, ease);
+    lookTarget.lerpVectors(camAnim.startLook, camAnim.endLook, ease);
+    camera.lookAt(lookTarget);
+    if (camAnim.t >= camAnim.frames) {
+      camAnim = null;
+      // FIX 3: sync spherical coords from final camera position after unfocus
+      const p = camera.position;
+      camRadius = p.length();
+      camPhi    = Math.acos(Math.max(-1, Math.min(1, p.y / camRadius)));
+      camTheta  = Math.atan2(p.x, p.z);
+    }
+  }
+
+  // Two-phase focus camera: zoom in → pull back 25%
+  if (focusCamAnim) {
+    const fc = focusCamAnim;
+    fc.t++;
+
+    // FIX 5: keep nodePos locked to where the float will settle, not where
+    // the node was at click time. Update it from focusedNode each frame.
+    if (focusedNode) {
+      fc.nodePos.set(focusedNode.x, focusedNode.y, focusedNode.z);
+      // Recompute close/hold along the same direction
+      const dir = fc.startPos.clone().sub(fc.nodePos).normalize();
+      fc.closePos.copy(fc.nodePos).addScaledVector(dir, 180);
+      fc.holdPos .copy(fc.nodePos).addScaledVector(dir, 230);
+    }
+
+    if (fc.phase === 'zoomIn') {
+      const raw  = Math.min(fc.t / fc.zoomFrames, 1);
+      const ease = 1 - Math.pow(1 - raw, 3); // cubic ease-out
+      camera.position.lerpVectors(fc.startPos, fc.closePos, ease);
+      // FIX 4: lerp lookTarget smoothly rather than hard lookAt each frame
+      lookTarget.lerp(fc.nodePos, 0.08);
+      camera.lookAt(lookTarget);
+      if (fc.t >= fc.zoomFrames) {
+        fc.phase     = 'pullBack';
+        fc.t         = 0;
+        fc.pullStart = camera.position.clone();
+      }
+
+    } else if (fc.phase === 'pullBack') {
+      const raw  = Math.min(fc.t / fc.pullFrames, 1);
+      const ease = 0.5 - 0.5 * Math.cos(raw * Math.PI); // sine ease-in-out
+      camera.position.lerpVectors(fc.pullStart, fc.holdPos, ease);
+      lookTarget.lerp(fc.nodePos, 0.06);
+      camera.lookAt(lookTarget);
+      if (fc.t >= fc.pullFrames) {
+        fc.phase = 'hold';
+        // FIX 3: sync spherical coords so orbit system knows where we ended up
+        const p = camera.position;
+        camRadius = p.length();
+        camPhi    = Math.acos(Math.max(-1, Math.min(1, p.y / camRadius)));
+        camTheta  = Math.atan2(p.x, p.z);
+        // FIX 5: now that camera is settled, lock node rest to its actual position
+        if (focusedNode) {
+          focusedNode._restX = focusedNode.x;
+          focusedNode._restY = focusedNode.y;
+          focusedNode._restZ = focusedNode.z;
+          focusedNode._floatStart = undefined; // restart float ease from here
+        }
+      }
+
+    } else {
+      // Hold — gently track the floating node without jitter (FIX 4)
+      if (focusedNode) {
+        lookTarget.lerp(new THREE.Vector3(focusedNode.x, focusedNode.y, focusedNode.z), 0.03);
+        camera.lookAt(lookTarget);
+      }
+    }
+  }
+
+  // Auto-rotation — suppressed while focused (FIX 2)
+  if (canAutoRotate) {
+    const idle = !isDragging && (performance.now() - lastInteraction > RESUME_DELAY);
+    const rotBlend = idle ? Math.min(1, (performance.now() - lastInteraction - RESUME_DELAY) / 1200) : 0;
+    if (rotBlend > 0) {
+      camTheta += 0.00045 * rotBlend;
+      camPhi = Math.max(0.08, Math.min(Math.PI - 0.08,
+        camPhi + Math.sin(performance.now() * 0.00008) * 0.00012 * rotBlend
+      ));
+      setCamFromSpherical();
+    }
+  }
+
+  renderer.render(scene, camera);
+  updateFocusLabelPos();
+  // Keep leader dot locked on node surface
+  if (focusedNode && nodeInfoEl.classList.contains('visible')) {
+    const sp = getNodeScreenPos(focusedNode);
+    leaderDot.setAttribute('cx', sp.x);
+    leaderDot.setAttribute('cy', sp.y);
+    leaderLine.setAttribute('x1', sp.x);
+    leaderLine.setAttribute('y1', sp.y);
+  }
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// ─── AUDIO CONTROLS ──────────────────────────────────────────────────────────
+const volSlider = document.getElementById('vol-slider');
+const muteBtn   = document.getElementById('mute-btn');
+let isMuted     = false;
+let lastVolume  = parseFloat(volSlider.value);
+
+// Update slider fill track CSS variable
+function updateSliderTrack(val) {
+  volSlider.style.setProperty('--pct', (val * 100).toFixed(1) + '%');
+}
+updateSliderTrack(lastVolume);
+
+volSlider.addEventListener('input', () => {
+  lastVolume = parseFloat(volSlider.value);
+  updateSliderTrack(lastVolume);
+  if (audioCtx?._masterGain) {
+    audioCtx._masterGain.gain.setTargetAtTime(isMuted ? 0 : lastVolume, audioCtx.currentTime, 0.05);
+  }
+  if (lastVolume > 0 && isMuted) {
+    isMuted = false;
+    muteBtn.textContent = '♪';
+    muteBtn.style.opacity = '1';
+  }
+});
+
+muteBtn.addEventListener('click', () => {
+  isMuted = !isMuted;
+  if (audioCtx?._masterGain) {
+    audioCtx._masterGain.gain.setTargetAtTime(isMuted ? 0 : lastVolume, audioCtx.currentTime, 0.08);
+  }
+  muteBtn.textContent = isMuted ? '♩' : '♪';
+  muteBtn.style.opacity = isMuted ? '0.35' : '1';
+});
+</script>
+
+<script>
+// ─── TITLE SPRITE ─────────────────────────────────────────────────────────────
+// A tiny comet crawls along the baseline of the title text, left to right,
+// then disappears and restarts after a random pause. Subtle — you have to
+// be watching to catch it.
+
+(function() {
+  const canvas  = document.getElementById('title-sprite');
+  const ctx     = canvas.getContext('2d');
+  const titleEl = document.getElementById('title');
+
+  // Size canvas to full viewport
+  function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // Sprite state
+  let spriteT      = 0;      // 0..1 along the title width
+  let spriteActive = false;
+  let spriteSpeed  = 0;
+  let nextLaunch   = 0;
+  const TAIL_LEN   = 0.055;  // tail length as fraction of title width
+
+  function scheduleNext() {
+    // Random pause 4–14 seconds between passes
+    nextLaunch = performance.now() + 4000 + Math.random() * 10000;
+    spriteActive = false;
+  }
+  scheduleNext();
+  // First pass sooner so it's noticed
+  nextLaunch = performance.now() + 1800;
+
+  function tick(now) {
+    requestAnimationFrame(tick);
+
+    // Get title bounds each frame (handles font load / resize)
+    const rect = titleEl.getBoundingClientRect();
+    const x0   = rect.left;
+    const x1   = rect.right;
+    const y    = rect.top + rect.height * 0.82; // baseline-ish
+    const W    = x1 - x0;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!spriteActive) {
+      if (now >= nextLaunch) {
+        spriteActive = true;
+        spriteT      = 0;
+        // Slightly varying speed each pass — 6–11 seconds to cross
+        spriteSpeed  = 1 / ((6 + Math.random() * 5) * 60);
+      }
+      return;
+    }
+
+    spriteT += spriteSpeed;
+    if (spriteT > 1 + TAIL_LEN) { scheduleNext(); return; }
+
+    const headX = x0 + spriteT * W;
+    const tailX = x0 + Math.max(0, spriteT - TAIL_LEN) * W;
+
+    // Fade in at start, fade out at end
+    const fadeIn  = Math.min(spriteT / (TAIL_LEN * 0.6), 1);
+    const fadeOut = Math.min((1 - spriteT) / 0.08 + 0.001, 1);
+    const alpha   = Math.min(fadeIn, fadeOut) * 0.72;
+
+    // ── Tail gradient ────────────────────────────────────────────────────────
+    const grad = ctx.createLinearGradient(tailX, y, headX, y);
+    grad.addColorStop(0,   `rgba(232,216,154,0)`);
+    grad.addColorStop(0.6, `rgba(232,216,154,${(alpha * 0.3).toFixed(3)})`);
+    grad.addColorStop(1,   `rgba(255,245,200,${alpha.toFixed(3)})`);
+
+    ctx.save();
+    ctx.strokeStyle = grad;
+    ctx.lineWidth   = 1.5;
+    ctx.shadowColor = 'rgba(255,240,180,0.9)';
+    ctx.shadowBlur  = 6;
+    ctx.beginPath();
+    ctx.moveTo(tailX, y);
+    ctx.lineTo(headX, y);
+    ctx.stroke();
+
+    // ── Head glow dot ────────────────────────────────────────────────────────
+    if (spriteT <= 1) {
+      const radial = ctx.createRadialGradient(headX, y, 0, headX, y, 5);
+      radial.addColorStop(0,   `rgba(255,255,220,${alpha.toFixed(3)})`);
+      radial.addColorStop(0.4, `rgba(232,216,154,${(alpha * 0.5).toFixed(3)})`);
+      radial.addColorStop(1,   'rgba(232,216,154,0)');
+      ctx.fillStyle  = radial;
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(headX, y, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  requestAnimationFrame(tick);
+})();
+</script>
+</body>
+</html>
