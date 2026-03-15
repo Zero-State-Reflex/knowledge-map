@@ -2274,23 +2274,38 @@ function positionPanel(screenX, screenY) {
 // Wikipedia image cache to avoid re-fetching
 const wikiImageCache = new Map();
 
-function fetchWikiImage(title) {
-  if (wikiImageCache.has(title)) return Promise.resolve(wikiImageCache.get(title));
-  // Clean up titles with parenthetical suffixes like "Pharmacology (Med)"
+async function fetchWikiImage(title) {
+  if (wikiImageCache.has(title)) return wikiImageCache.get(title);
   const cleanTitle = title.replace(/\s*\((?:Med|Interdis\.)\)\s*$/, '').trim();
   const slug = encodeURIComponent(cleanTitle.replace(/ /g, '_'));
-  // Use MediaWiki API with origin=* to allow file:// and any CORS origin
-  const url = `https://en.wikipedia.org/w/api.php?action=query&titles=${slug}&prop=pageimages&format=json&pithumbsize=500&origin=*`;
-  return fetch(url)
-    .then(r => r.ok ? r.json() : null)
-    .then(data => {
-      if (!data?.query?.pages) throw new Error('no pages');
-      const pages = Object.values(data.query.pages);
-      const thumb = pages[0]?.thumbnail?.source || '';
-      wikiImageCache.set(title, thumb);
-      return thumb;
-    })
-    .catch(() => { wikiImageCache.set(title, ''); return ''; });
+  const api = 'https://en.wikipedia.org/w/api.php';
+  try {
+    // Step 1: Try pageimages (lead image)
+    const r1 = await fetch(`${api}?action=query&titles=${slug}&prop=pageimages&piprop=thumbnail&pithumbsize=500&format=json&origin=*`);
+    const d1 = await r1.json();
+    const p1 = Object.values(d1?.query?.pages || {})[0];
+    if (p1?.thumbnail?.source) {
+      wikiImageCache.set(title, p1.thumbnail.source);
+      return p1.thumbnail.source;
+    }
+    // Step 2: Fall back to first article image (skip SVGs and icons)
+    const r2 = await fetch(`${api}?action=query&titles=${slug}&prop=images&imlimit=15&format=json&origin=*`);
+    const d2 = await r2.json();
+    const p2 = Object.values(d2?.query?.pages || {})[0];
+    const imgs = (p2?.images || [])
+      .map(im => im.title)
+      .filter(t => /\.(jpg|jpeg|png|gif)$/i.test(t))
+      .filter(t => !/icon|logo|symbol|flag|edit|lock|question|disambig|commons|stub|wiki/i.test(t));
+    if (imgs.length === 0) { wikiImageCache.set(title, ''); return ''; }
+    // Step 3: Get thumbnail URL for the best candidate
+    const fileSlug = encodeURIComponent(imgs[0]);
+    const r3 = await fetch(`${api}?action=query&titles=${fileSlug}&prop=imageinfo&iiprop=url&iiurlwidth=500&format=json&origin=*`);
+    const d3 = await r3.json();
+    const p3 = Object.values(d3?.query?.pages || {})[0];
+    const thumb = p3?.imageinfo?.[0]?.thumburl || '';
+    wikiImageCache.set(title, thumb);
+    return thumb;
+  } catch(e) { wikiImageCache.set(title, ''); return ''; }
 }
 
 function showInfo(n, screenX, screenY) {
