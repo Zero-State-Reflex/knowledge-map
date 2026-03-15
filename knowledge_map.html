@@ -98,6 +98,8 @@
   #legend {
     position:fixed; bottom:24px; left:24px; z-index:100;
     display:flex; flex-direction:column; gap:7px; max-height:80vh; overflow:hidden;
+    background:rgba(0,0,0,0.80); backdrop-filter:blur(2px);
+    padding:16px 18px; border-radius:10px;
   }
   .legend-item {
     display:flex; align-items:center; gap:9px; font-size:13px;
@@ -1854,6 +1856,11 @@ Object.entries(DOMAINS).forEach(([name, d]) => {
   const item = document.createElement('div');
   item.className = 'legend-item';
   item.innerHTML = `<div class="legend-dot" style="background:${d.color}"></div><span>${name}</span>`;
+  item.addEventListener('click', () => {
+    // Focus the largest node in this domain
+    const domainNodes = nodes.filter(n => n.domain === name).sort((a, b) => b.size - a.size);
+    if (domainNodes.length) focusNode(domainNodes[0]);
+  });
   legendEl.appendChild(item);
 });
 
