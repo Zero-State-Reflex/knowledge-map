@@ -2276,15 +2276,19 @@ const wikiImageCache = new Map();
 
 function fetchWikiImage(title) {
   if (wikiImageCache.has(title)) return Promise.resolve(wikiImageCache.get(title));
-  const slug = encodeURIComponent(title.replace(/ /g, '_'));
-  return fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${slug}`)
+  // Clean up titles with parenthetical suffixes like "Pharmacology (Med)"
+  const cleanTitle = title.replace(/\s*\((?:Med|Interdis\.)\)\s*$/, '').trim();
+  const slug = encodeURIComponent(cleanTitle.replace(/ /g, '_'));
+  // Use MediaWiki API with origin=* to allow file:// and any CORS origin
+  const url = `https://en.wikipedia.org/w/api.php?action=query&titles=${slug}&prop=pageimages&format=json&pithumbsize=500&origin=*`;
+  return fetch(url)
     .then(r => r.ok ? r.json() : null)
     .then(data => {
-      const url = data?.thumbnail?.source || '';
-      // Request a larger image: replace width in URL
-      const hiRes = url ? url.replace(/\/\d+px-/, '/500px-') : '';
-      wikiImageCache.set(title, hiRes);
-      return hiRes;
+      if (!data?.query?.pages) throw new Error('no pages');
+      const pages = Object.values(data.query.pages);
+      const thumb = pages[0]?.thumbnail?.source || '';
+      wikiImageCache.set(title, thumb);
+      return thumb;
     })
     .catch(() => { wikiImageCache.set(title, ''); return ''; });
 }
