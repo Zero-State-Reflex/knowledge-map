@@ -5,7 +5,7 @@
 import * as THREE from 'three';
 import { DOMAINS, NODE_DESCRIPTIONS } from './data.js';
 import { startAudio, audioCtx } from './audio.js';
-import { renderer, scene, camera } from './scene.js';
+import { renderer, scene, camera, composer, bloomPass } from './scene.js';
 import {
   nodes, nodeMap, links, nodeMeshes,
   edgeMat, edgeGeo, edgePosArr,
@@ -497,7 +497,7 @@ function animate() {
     }
   }
 
-  renderer.render(scene, camera);
+  composer.render();
   updateFocusLabelPos();
   // Keep leader dot locked on node surface
   if (focusedNode && nodeInfoEl.classList.contains('visible')) {
@@ -514,6 +514,7 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
 });
 
 // ─── AUDIO CONTROLS ──────────────────────────────────────────────────────────

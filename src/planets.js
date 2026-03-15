@@ -72,7 +72,7 @@ export const PLANET_PALETTES = {
 export function makePlanetTexture(domain, nodeId) {
   const type  = PLANET_TYPES[domain] || 'ocean';
   const pal   = PLANET_PALETTES[type];
-  const S     = 512;
+  const S     = 1024;
   const cv    = document.createElement('canvas');
   cv.width = S * 2; cv.height = S;
   const ctx   = cv.getContext('2d');
@@ -86,11 +86,11 @@ export function makePlanetTexture(domain, nodeId) {
   const rng2 = seededRand(seed + 99);
   const rng3 = seededRand(seed + 777);
 
-  const n1 = buildNoise(rng,  32, 16);
-  const n2 = buildNoise(rng2, 16, 32);
-  const n3 = buildNoise(rng3, 64, 32);
+  const n1 = buildNoise(rng,  64, 32);
+  const n2 = buildNoise(rng2, 32, 64);
+  const n3 = buildNoise(rng3, 128, 64);
   const rng4 = seededRand(seed + 2345);
-  const n4 = buildNoise(rng4, 48, 24);
+  const n4 = buildNoise(rng4, 96, 48);
 
   // Type-specific rendering
   const isBanded = ['gas_blue','amber_gas','plasma','violet_cloud','dark_nebula'].includes(type);
@@ -111,17 +111,17 @@ export function makePlanetTexture(domain, nodeId) {
         const warp = fbm(n1, u, v, 6, 2.1, 0.5) * 0.4;
         const band = (Math.sin((v + warp) * Math.PI * numBands) + 1) * 0.5;
         const detail = fbm(n2, u * 2, v * 2, 5, 2.0, 0.45) * 0.25;
-        const micro = fbm(n4, u * 6, v * 6, 4, 2.3, 0.4) * 0.08;
+        const micro = fbm(n4, u * 6, v * 6, 6, 2.3, 0.4) * 0.08;
         t = Math.max(0, Math.min(1, band + detail + micro));
       } else if (isRocky) {
         const crater = fbm(n3, u * 3, v * 3, 7, 2.2, 0.5);
         const base   = fbm(n1, u, v, 6, 2.0, 0.5);
-        const fine   = fbm(n4, u * 8, v * 8, 4, 2.4, 0.45) * 0.12;
+        const fine   = fbm(n4, u * 8, v * 8, 6, 2.4, 0.45) * 0.12;
         t = Math.pow(Math.max(0, base * 0.55 + crater * 0.35 + fine), 0.8);
       } else if (isIcy) {
         const crack = Math.abs(fbm(n1, u * 2, v * 2, 7, 2.3, 0.5) - 0.5) * 2;
         const base  = fbm(n2, u, v, 5, 2.0, 0.4);
-        const vein  = Math.abs(fbm(n4, u * 5, v * 5, 4, 2.5, 0.45) - 0.5) * 0.3;
+        const vein  = Math.abs(fbm(n4, u * 5, v * 5, 6, 2.5, 0.45) - 0.5) * 0.3;
         t = Math.max(0, Math.min(1, base * 0.45 + (1 - crack * 0.55) + vein));
       } else {
         t = fbm(n1, u * 1.5, v * 1.5, 7, 2.1, 0.5);

@@ -1,5 +1,8 @@
 // ─── THREE.JS SCENE SETUP ───────────────────────────────────────────────────
 import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 
 // ─── RENDERER, SCENE, CAMERA ────────────────────────────────────────────────
 const canvas = document.getElementById('c');
@@ -15,7 +18,7 @@ export const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window
 
 // ─── STAR FIELD ──────────────────────────────────────────────────────────────
 (function buildStars() {
-  const STAR_COUNT = 12000;
+  const STAR_COUNT = 10000;
   const RADIUS     = 9000; // far shell, always behind everything
 
   const positions = new Float32Array(STAR_COUNT * 3);
@@ -274,3 +277,16 @@ scene.add(light2);
 const light3 = new THREE.PointLight(0x664422, 0.3, 4000);
 light3.position.set(0, -1000, 300);
 scene.add(light3);
+
+// ─── POST-PROCESSING: Bloom ─────────────────────────────────────────────────
+export const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  0.35,   // strength — subtle glow
+  0.6,    // radius — how far bloom spreads
+  0.75    // threshold — only bright things bloom
+);
+composer.addPass(bloomPass);
+export { bloomPass };

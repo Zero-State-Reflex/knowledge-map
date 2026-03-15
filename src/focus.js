@@ -178,9 +178,9 @@ export function getNodeScreenPos(n) {
 export const moonMeshes   = [];   // raycaster target list (cleared each focus)
 export let   moonData     = [];   // per-moon orbit state
 
-const moonSphereGeo = new THREE.SphereGeometry(1, 32, 24);
+const moonSphereGeo = new THREE.SphereGeometry(1, 32, 20);
 const moonRingGeo   = new THREE.RingGeometry(1.55, 1.85, 48);
-const moonHaloGeo   = new THREE.SphereGeometry(1, 20, 14);
+const moonHaloGeo   = new THREE.SphereGeometry(1, 32, 20);
 
 // focusNode reference for moon label click — set by focusNode itself
 let _focusNodeFn = null;

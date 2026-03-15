@@ -45,8 +45,8 @@ EDGES_DEF.forEach(([a, b]) => {
 });
 
 // ─── NODE MESHES ────────────────────────────────────────────────────────────
-const sphereGeo = new THREE.SphereGeometry(1, 48, 32);
-const atmGeo    = new THREE.SphereGeometry(1, 24, 16); // atmosphere shell
+const sphereGeo = new THREE.SphereGeometry(1, 64, 48);
+const atmGeo    = new THREE.SphereGeometry(1, 32, 24); // atmosphere shell
 export const nodeMeshes = [];
 
 nodes.forEach(n => {
