@@ -1850,6 +1850,194 @@ function updateMoons() {
   });
 }
 
+// ─── ORBITING SPACESHIP ──────────────────────────────────────────────────────
+let shipGroup = null;
+let shipData = null;
+let shipTrailPoints = [];
+const shipTrailMax = 40;
+let shipMeshForRaycast = null; // the hitbox mesh for raycasting
+
+function buildShip() {
+  clearShip();
+  if (!focusedNode) return;
+
+  const n = focusedNode;
+  const domColor = new THREE.Color(DOMAINS[n.domain]?.color || '#c8b89a');
+
+  shipGroup = new THREE.Group();
+
+  // ── Fuselage — elongated cone ──
+  const bodyGeo = new THREE.ConeGeometry(1.8, 8, 6);
+  const bodyMat = new THREE.MeshPhongMaterial({
+    color: 0x888899,
+    emissive: domColor,
+    emissiveIntensity: 0.08,
+    shininess: 60,
+    specular: new THREE.Color(0x444444),
+  });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.rotation.x = Math.PI / 2; // point forward along Z
+  shipGroup.add(body);
+
+  // ── Wings — two flat triangles ──
+  const wingGeo = new THREE.BufferGeometry();
+  const wingVerts = new Float32Array([
+    0, 0, -2,   -6, 0, 2,   0, 0, 2,  // left wing
+    0, 0, -2,    6, 0, 2,   0, 0, 2,  // right wing
+  ]);
+  wingGeo.setAttribute('position', new THREE.BufferAttribute(wingVerts, 3));
+  wingGeo.computeVertexNormals();
+  const wingMat = new THREE.MeshPhongMaterial({
+    color: 0x667788,
+    emissive: domColor,
+    emissiveIntensity: 0.05,
+    side: THREE.DoubleSide,
+  });
+  const wings = new THREE.Mesh(wingGeo, wingMat);
+  shipGroup.add(wings);
+
+  // ── Engine glow — small bright sphere at the back ──
+  const engineGeo = new THREE.SphereGeometry(1.2, 8, 6);
+  const engineMat = new THREE.MeshBasicMaterial({
+    color: domColor,
+    transparent: true,
+    opacity: 0.8,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const engine = new THREE.Mesh(engineGeo, engineMat);
+  engine.position.z = 4;
+  shipGroup.add(engine);
+
+  // ── Engine halo ──
+  const haloGeo = new THREE.SphereGeometry(2.5, 8, 6);
+  const haloMat = new THREE.MeshBasicMaterial({
+    color: domColor,
+    transparent: true,
+    opacity: 0.2,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const halo = new THREE.Mesh(haloGeo, haloMat);
+  halo.position.z = 4.5;
+  shipGroup.add(halo);
+
+  // ── Invisible hitbox for raycasting (larger than visual) ──
+  const hitGeo = new THREE.SphereGeometry(8, 8, 6);
+  const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+  shipMeshForRaycast = new THREE.Mesh(hitGeo, hitMat);
+  shipMeshForRaycast.userData.isShip = true;
+  shipGroup.add(shipMeshForRaycast);
+
+  scene.add(shipGroup);
+
+  // Orbit params — faster and more tilted than moons
+  const orbitR = n.size * 2.2 * 1.0 + 45;
+  shipData = {
+    orbitR,
+    angle: Math.random() * Math.PI * 2,
+    speed: 0.006,
+    incl: 0.7 + Math.random() * 0.5,
+    alpha: 0,
+    engineMat,
+    haloMat,
+    spawnTime: performance.now(),
+  };
+
+  // Build engine trail line
+  shipTrailPoints = [];
+}
+
+function clearShip() {
+  if (shipGroup) {
+    scene.remove(shipGroup);
+    shipGroup.traverse(child => {
+      if (child.geometry) child.geometry.dispose();
+      if (child.material) child.material.dispose();
+    });
+    shipGroup = null;
+    shipData = null;
+    shipMeshForRaycast = null;
+  }
+  if (shipTrailLine) {
+    scene.remove(shipTrailLine);
+    shipTrailGeo.dispose();
+    shipTrailMat.dispose();
+    shipTrailLine = null;
+  }
+  shipTrailPoints = [];
+}
+
+// Engine trail
+const shipTrailGeo = new THREE.BufferGeometry();
+const shipTrailPositions = new Float32Array(shipTrailMax * 3);
+shipTrailGeo.setAttribute('position', new THREE.BufferAttribute(shipTrailPositions, 3));
+shipTrailGeo.setDrawRange(0, 0);
+let shipTrailMat = new THREE.LineBasicMaterial({
+  color: 0xc8b89a,
+  transparent: true,
+  opacity: 0.3,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
+});
+let shipTrailLine = null;
+
+function updateShip() {
+  if (!shipData || !shipGroup || !focusedNode) return;
+
+  const cx = focusedNode.x, cy = focusedNode.y, cz = focusedNode.z;
+  const now = performance.now();
+  const elapsed = now - shipData.spawnTime;
+
+  // Fade in
+  shipData.alpha += ((elapsed > 800 ? 1.0 : 0.0) - shipData.alpha) * 0.04;
+
+  shipData.angle += shipData.speed;
+
+  const cosI = Math.cos(shipData.incl), sinI = Math.sin(shipData.incl);
+  const ox = Math.cos(shipData.angle) * shipData.orbitR;
+  const oy = Math.sin(shipData.angle) * shipData.orbitR * sinI;
+  const oz = Math.sin(shipData.angle) * shipData.orbitR * cosI;
+  const wx = cx + ox, wy = cy + oy, wz = cz + oz;
+
+  shipGroup.position.set(wx, wy, wz);
+
+  // Point ship in direction of travel (tangent to orbit)
+  const nextAngle = shipData.angle + 0.05;
+  const nx = Math.cos(nextAngle) * shipData.orbitR;
+  const ny = Math.sin(nextAngle) * shipData.orbitR * sinI;
+  const nz = Math.sin(nextAngle) * shipData.orbitR * cosI;
+  shipGroup.lookAt(cx + nx, cy + ny, cz + nz);
+
+  // Scale and opacity
+  shipGroup.scale.setScalar(shipData.alpha * 1.0);
+  shipData.engineMat.opacity = shipData.alpha * (0.6 + Math.sin(now * 0.01) * 0.2);
+  shipData.haloMat.opacity = shipData.alpha * (0.15 + Math.sin(now * 0.008) * 0.08);
+
+  // Update trail color to match domain
+  const domColor = DOMAINS[focusedNode.domain]?.color || '#c8b89a';
+  shipTrailMat.color.set(domColor);
+
+  // Engine trail
+  shipTrailPoints.push(wx, wy, wz);
+  if (shipTrailPoints.length > shipTrailMax * 3) {
+    shipTrailPoints.splice(0, 3);
+  }
+  const count = shipTrailPoints.length / 3;
+  for (let i = 0; i < count; i++) {
+    shipTrailPositions[i * 3]     = shipTrailPoints[i * 3];
+    shipTrailPositions[i * 3 + 1] = shipTrailPoints[i * 3 + 1];
+    shipTrailPositions[i * 3 + 2] = shipTrailPoints[i * 3 + 2];
+  }
+  shipTrailGeo.attributes.position.needsUpdate = true;
+  shipTrailGeo.setDrawRange(0, count);
+
+  if (!shipTrailLine && count > 1) {
+    shipTrailLine = new THREE.Line(shipTrailGeo, shipTrailMat);
+    scene.add(shipTrailLine);
+  }
+}
+
 // ─── LEGEND ─────────────────────────────────────────────────────────────────
 const legendEl = document.getElementById('legend');
 Object.entries(DOMAINS).forEach(([name, d]) => {
@@ -1988,6 +2176,7 @@ function updateScene() {
     }
   }
   updateMoons();
+  updateShip();
   let idx = 0;
   for (const l of links) {
     edgePosArr[idx++] = l.source.x; edgePosArr[idx++] = l.source.y; edgePosArr[idx++] = l.source.z;
@@ -2113,6 +2302,24 @@ function doHover(e) {
   mouse2d.y = -(e.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(mouse2d, camera);
   const ray = raycaster.ray;
+
+  // Check spaceship hover for pointer cursor
+  let shipHovered = false;
+  if (shipMeshForRaycast && focusedNode) {
+    const shipHits = raycaster.intersectObject(shipMeshForRaycast, true);
+    if (shipHits.length > 0) {
+      shipHovered = true;
+      canvas.style.cursor = 'pointer';
+      hoverLabelEl.textContent = 'Explore on Wikipedia →';
+      const sp = toScreen(shipGroup.position);
+      hoverLabelEl.style.left = sp.x + 'px';
+      hoverLabelEl.style.top = (sp.y - 24) + 'px';
+      hoverLabelEl.style.opacity = '1';
+    }
+  }
+  if (!shipHovered && canvas.style.cursor === 'pointer') {
+    canvas.style.cursor = 'grab';
+  }
 
   // Raycast for exact hits
   const hits = raycaster.intersectObjects(nodeMeshes);
@@ -2506,6 +2713,7 @@ function focusNode(n) {
     clearFocusLabel();
     clearFocusEdges();
     clearMoons();
+    clearShip();
     resetDim();
   }
   focusCamAnim = null;
@@ -2515,6 +2723,7 @@ function focusNode(n) {
   dimToNeighbors(n);
   buildFocusEdges(n);
   buildMoons(n);
+  buildShip();
   playChime(n.domain);
   applyFocusLabel(n);
   startFocusCamAnim(new THREE.Vector3(n.x, n.y, n.z));
@@ -2534,7 +2743,17 @@ canvas.addEventListener('click', e => {
   mouse2d.y = -(e.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(mouse2d, camera);
 
-  // Check moons first
+  // Check spaceship first
+  if (shipMeshForRaycast && focusedNode) {
+    const shipHits = raycaster.intersectObject(shipMeshForRaycast, true);
+    if (shipHits.length > 0) {
+      const slug = encodeURIComponent(focusedNode.id.replace(/\s*\((?:Med|Interdis\.)\)\s*$/, '').trim().replace(/ /g, '_'));
+      window.open(`https://en.wikipedia.org/wiki/${slug}#See_also`, '_blank');
+      return;
+    }
+  }
+
+  // Check moons
   if (moonMeshes.length) {
     const moonHits = raycaster.intersectObjects(moonMeshes);
     if (moonHits.length > 0) {
@@ -2551,7 +2770,7 @@ canvas.addEventListener('click', e => {
       delete focusedNode._restX; delete focusedNode._restY; delete focusedNode._restZ;
       delete focusedNode._floatStart;
       focusCamAnim = null;
-      clearFocusLabel(); clearFocusEdges(); clearMoons();
+      clearFocusLabel(); clearFocusEdges(); clearMoons(); clearShip();
       focusedNode = null;
       resetDim();
       hideInfo();
