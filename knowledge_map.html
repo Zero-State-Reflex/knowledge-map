@@ -1040,247 +1040,134 @@ const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerH
   window._starTwinkle = twinkleTick;
 })();
 
-// ─── BLACK HOLE — Ray-marched Schwarzschild with gravitational lensing ───────
+// ─── BLACK HOLE ───────────────────────────────────────────────────────────────
 (function buildBlackHole() {
-  // Position: visible from the default camera angle, behind the knowledge graph
-  const BH_POS = new THREE.Vector3(800, -400, -3500);
+  // Position: off-center in the background star shell
+  const BH_POS = new THREE.Vector3(3200, -800, -5500);
 
-  const RS = 80.0;          // Schwarzschild radius
-  const DISK_TILT = 1.15;   // radians — tilted ~66° so disk is clearly visible
-  const SPHERE_R = 2800.0;  // radius of the rendering volume sphere
+  // ── Event horizon — pure black sphere, cuts stars behind it ──────────────
+  const horizonGeo = new THREE.SphereGeometry(1, 48, 36);
+  const horizonMat = new THREE.MeshBasicMaterial({
+    color: 0x000000,
+    depthWrite: true,
+  });
+  const horizon = new THREE.Mesh(horizonGeo, horizonMat);
+  horizon.scale.setScalar(260);
+  horizon.position.copy(BH_POS);
+  scene.add(horizon);
 
-  const bhVertexShader = `
-    varying vec3 vWorldPos;
-    void main() {
-      vec4 wp = modelMatrix * vec4(position, 1.0);
-      vWorldPos = wp.xyz;
-      gl_Position = projectionMatrix * viewMatrix * wp;
-    }
-  `;
-
-  const bhFragmentShader = `
-    precision highp float;
-
-    uniform vec3 uBHPos;
-    uniform float uRS;
-    uniform float uTime;
-    uniform float uDiskTilt;
-    uniform float uSphereR;
-
-    varying vec3 vWorldPos;
-
-    // ── Hash & procedural stars ────────────────────────────────────────────
-    float hash(vec3 p) {
-      p = fract(p * vec3(443.8975, 397.2973, 491.1871));
-      p += dot(p, p.yzx + 19.19);
-      return fract((p.x + p.y) * p.z);
-    }
-    float hash2(vec2 p) {
-      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-    }
-
-    vec3 starField(vec3 dir) {
-      vec3 col = vec3(0.0);
-      // Convert direction to spherical UV for more uniform distribution
-      float phi = atan(dir.z, dir.x);
-      float theta = acos(clamp(dir.y, -1.0, 1.0));
-      vec2 uv = vec2(phi / 6.2832 + 0.5, theta / 3.14159);
-
-      // Dense star layer
-      for (int layer = 0; layer < 4; layer++) {
-        float scale = 150.0 + float(layer) * 200.0;
-        vec2 cell = floor(uv * scale);
-        vec2 f = fract(uv * scale);
-        float h = hash2(cell + float(layer) * 73.0);
-        float threshold = 0.97 - float(layer) * 0.005;
-        if (h > threshold) {
-          vec2 starCenter = vec2(0.2 + h * 0.6, 0.2 + fract(h * 7.3) * 0.6);
-          float d = length(f - starCenter);
-          float sz = 0.04 + fract(h * 31.0) * 0.08;
-          float brightness = smoothstep(sz, 0.0, d);
-          brightness *= 0.4 + fract(h * 17.0) * 0.6;
-          // Color temperature
-          float temp = fract(h * 13.7);
-          vec3 tint = temp < 0.3 ? vec3(0.6, 0.75, 1.0)
-                    : temp < 0.6 ? vec3(1.0, 0.98, 0.95)
-                    : vec3(1.0, 0.88, 0.7);
-          col += tint * brightness;
-        }
-      }
-      return col;
-    }
-
-    // ── Blackbody approximation ───────────────────────────────────────────
-    vec3 blackbody(float temp) {
-      float t = temp / 1000.0;
-      vec3 col;
-      col.r = t < 6.6 ? 1.0 : clamp(1.292 * pow(t - 6.0, -0.1332), 0.0, 1.0);
-      col.g = t < 6.6 ? clamp(0.39 * log(t) - 0.634, 0.0, 1.0)
-                       : clamp(1.129 * pow(t - 6.0, -0.0755), 0.0, 1.0);
-      col.b = t > 19.0 ? 1.0
-            : t > 2.0  ? clamp(0.543 * log(t - 1.0) - 0.397, 0.0, 1.0)
-            : 0.0;
-      return col;
-    }
-
-    // ── Disk noise for turbulence ─────────────────────────────────────────
-    float diskNoise(float r, float angle) {
-      return 0.7 + 0.3 * sin(angle * 6.0 + r * 0.05 + uTime * 0.3)
-                 + 0.15 * sin(angle * 13.0 - r * 0.08 + uTime * 0.7)
-                 + 0.1 * sin(angle * 21.0 + r * 0.12 - uTime * 0.5);
-    }
-
-    // ── Disk tilt rotation (around X) ─────────────────────────────────────
-    mat3 diskRotation(float a) {
-      float c = cos(a), s = sin(a);
-      return mat3(1,0,0, 0,c,-s, 0,s,c);
-    }
-
-    void main() {
-      // Ray starts at the sphere surface, not at the camera
-      vec3 surfacePos = vWorldPos - uBHPos;
-      vec3 rayDir = normalize(vWorldPos - cameraPosition);
-
-      mat3 diskRot = diskRotation(uDiskTilt);
-      mat3 diskRotInv = diskRotation(-uDiskTilt);
-
-      vec3 pos = diskRot * surfacePos;
-      vec3 vel = normalize(diskRot * rayDir);
-
-      float rs = uRS;
-      float diskInner = 3.0 * rs;   // ISCO
-      float diskOuter = 22.0 * rs;  // extended disk
-
-      vec3 color = vec3(0.0);
-      float alpha = 0.0;
-      float prevY = pos.y;
-      bool hitDisk = false;
-
-      // ── Ray march ───────────────────────────────────────────────────────
-      for (int i = 0; i < 300; i++) {
-        float r = length(pos);
-
-        // Captured by event horizon
-        if (r < rs * 1.01) {
-          color = mix(color, vec3(0.0), hitDisk ? 0.5 : 1.0);
-          alpha = 1.0;
-          break;
-        }
-
-        // Escaped the volume
-        if (r > uSphereR * 1.05) {
-          vec3 escapedDir = diskRotInv * normalize(pos);
-          vec3 stars = starField(escapedDir);
-          color += stars;
-          alpha = 1.0;
-          break;
-        }
-
-        // ── Accretion disk: detect y=0 plane crossing ─────────────────
-        float curY = pos.y;
-        if (i > 0 && prevY * curY < 0.0) {
-          // Interpolate to find crossing point
-          float frac = abs(prevY) / (abs(prevY) + abs(curY));
-          float diskR = length(vec2(pos.x, pos.z));
-
-          if (diskR > diskInner && diskR < diskOuter) {
-            hitDisk = true;
-
-            // Temperature profile: T ~ r^(-3/4), hotter inward
-            float temp = 15000.0 * pow(diskInner / diskR, 0.75);
-            temp = max(temp, 1800.0);
-
-            // Turbulence
-            float diskAngle = atan(pos.z, pos.x) + uTime * 0.08;
-            float turb = diskNoise(diskR, diskAngle);
-
-            // Density: strong at inner edge, fading outward
-            float rNorm = (diskR - diskInner) / (diskOuter - diskInner);
-            float density = exp(-rNorm * 1.8) * turb;
-            // Thin bright caustic at ISCO
-            density += 0.6 * exp(-pow((diskR - diskInner) / (rs * 0.8), 2.0));
-            density = clamp(density, 0.0, 2.0);
-
-            // ── Doppler beaming ──────────────────────────────────────
-            float orbitalV = sqrt(rs / (2.0 * diskR));
-            orbitalV = min(orbitalV, 0.5); // cap for stability
-            vec3 orbDir = normalize(vec3(-pos.z, 0.0, pos.x));
-            float viewDot = dot(vel, orbDir);
-            float doppler = sqrt((1.0 + orbitalV * viewDot) /
-                                 max(1.0 - orbitalV * viewDot, 0.01));
-            doppler = clamp(doppler, 0.25, 4.0);
-
-            // Doppler-shifted color
-            vec3 diskCol = blackbody(temp * doppler);
-            float dopplerBright = pow(doppler, 3.0);
-
-            // Gravitational redshift
-            float gravRedshift = sqrt(max(1.0 - rs / diskR, 0.01));
-
-            // Final disk contribution
-            float brightness = density * dopplerBright * gravRedshift * 3.5;
-            color += diskCol * brightness;
-          }
-        }
-        prevY = curY;
-
-        // ── Schwarzschild geodesic acceleration ───────────────────────
-        float r2 = r * r;
-        float r3 = r2 * r;
-        vec3 acc = -0.5 * rs * pos / r3;
-        vec3 h = cross(pos, vel);
-        float h2 = dot(h, h);
-        acc *= (1.0 + 3.0 * h2 / r2);
-
-        // Adaptive step: tiny near BH, larger far away
-        float dt = 0.25 * (r - rs);
-        dt = clamp(dt, 1.0, 50.0);
-
-        // Velocity Verlet
-        vec3 newPos = pos + vel * dt + 0.5 * acc * dt * dt;
-        float newR = length(newPos);
-        vec3 newAcc = -0.5 * rs * newPos / (newR * newR * newR);
-        vec3 newH = cross(newPos, vel + acc * dt);
-        newAcc *= (1.0 + 3.0 * dot(newH, newH) / (newR * newR));
-        vel += 0.5 * (acc + newAcc) * dt;
-        vel = normalize(vel);
-        pos = newPos;
-      }
-
-      if (alpha < 0.01) discard;
-
-      // Tone mapping (Reinhard)
-      color = color / (color + vec3(1.0));
-      // Gamma
-      color = pow(color, vec3(0.92));
-
-      gl_FragColor = vec4(color, alpha);
-    }
-  `;
-
-  const bhGeo = new THREE.SphereGeometry(SPHERE_R, 64, 48);
-  const bhMat = new THREE.ShaderMaterial({
-    uniforms: {
-      uBHPos:     { value: BH_POS },
-      uRS:        { value: RS },
-      uTime:      { value: 0.0 },
-      uDiskTilt:  { value: DISK_TILT },
-      uSphereR:   { value: SPHERE_R },
-    },
-    vertexShader: bhVertexShader,
-    fragmentShader: bhFragmentShader,
+  // ── Photon sphere — faint blue-white ring right at edge ───────────────────
+  const photonGeo = new THREE.SphereGeometry(1, 48, 36);
+  const photonMat = new THREE.MeshBasicMaterial({
+    color: 0xaaccff,
     transparent: true,
+    opacity: 0.06,
+    side: THREE.BackSide,
+    blending: THREE.AdditiveBlending,
     depthWrite: false,
-    side: THREE.DoubleSide,
+  });
+  const photon = new THREE.Mesh(photonGeo, photonMat);
+  photon.scale.setScalar(272);
+  photon.position.copy(BH_POS);
+  scene.add(photon);
+
+  // ── Gravitational lensing halos — nested translucent shells ──────────────
+  const haloColors  = [0x99aadd, 0x8899cc, 0x6677aa, 0x445588, 0x334477, 0x223366];
+  const haloScales  = [290, 350, 430, 540, 680, 850];
+  const haloOpacity = [0.05, 0.038, 0.025, 0.016, 0.009, 0.004];
+
+  haloColors.forEach((col, i) => {
+    const geo = new THREE.SphereGeometry(1, 36, 28);
+    const mat = new THREE.MeshBasicMaterial({
+      color: col,
+      transparent: true,
+      opacity: haloOpacity[i],
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.scale.setScalar(haloScales[i]);
+    mesh.position.copy(BH_POS);
+    scene.add(mesh);
   });
 
-  const bhMesh = new THREE.Mesh(bhGeo, bhMat);
-  bhMesh.position.copy(BH_POS);
-  scene.add(bhMesh);
+  // ── Accretion disk — flat torus, tilted, glowing orange→white→blue ────────
+  // Build as layered rings: warm inner, bright mid, cool outer
+  const diskLayers = [
+    { inner: 270, outer: 310, color: 0xffffff, opacity: 0.18 }, // white-hot innermost
+    { inner: 305, outer: 370, color: 0xffeedd, opacity: 0.24 }, // bright inner
+    { inner: 365, outer: 440, color: 0xffaa44, opacity: 0.16 }, // warm orange
+    { inner: 435, outer: 530, color: 0xff8833, opacity: 0.12 }, // orange mid
+    { inner: 525, outer: 640, color: 0xcc5511, opacity: 0.08 }, // deep red outer
+    { inner: 635, outer: 760, color: 0x993300, opacity: 0.05 }, // dark red
+    { inner: 755, outer: 900, color: 0x661100, opacity: 0.025 }, // faint far edge
+    { inner: 895, outer: 1050, color: 0x440800, opacity: 0.012 }, // very faint outer halo
+  ];
 
-  window._bhTick = () => {
-    bhMat.uniforms.uTime.value += 0.016;
+  const diskTilt = new THREE.Euler(0.38, 0.22, 0.0); // slight tilt, not face-on
+
+  diskLayers.forEach(layer => {
+    const geo = new THREE.RingGeometry(layer.inner, layer.outer, 128, 2);
+    const mat = new THREE.MeshBasicMaterial({
+      color: layer.color,
+      transparent: true,
+      opacity: layer.opacity,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const ring = new THREE.Mesh(geo, mat);
+    ring.position.copy(BH_POS);
+    ring.rotation.copy(diskTilt);
+    scene.add(ring);
+  });
+
+  // ── Disk slow rotation — store refs for animation ─────────────────────────
+  const diskMeshes = [];
+  diskLayers.forEach(layer => {
+    // Already added above; re-create a parallel ref array via scene traversal
+  });
+
+  // ── Relativistic jets — faint beams above and below the disk ──────────────
+  const jetLayers = [
+    { length: 1200, radius: 18, color: 0x88aaff, opacity: 0.04 },
+    { length: 800, radius: 35, color: 0x6688cc, opacity: 0.025 },
+    { length: 500, radius: 55, color: 0x4466aa, opacity: 0.015 },
+  ];
+  const jetMeshes = [];
+  jetLayers.forEach(jet => {
+    const jetGeo = new THREE.CylinderGeometry(jet.radius * 0.3, jet.radius, jet.length, 12, 1, true);
+    const jetMat = new THREE.MeshBasicMaterial({
+      color: jet.color, transparent: true, opacity: jet.opacity,
+      side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    // Top jet
+    const topJet = new THREE.Mesh(jetGeo, jetMat);
+    topJet.position.copy(BH_POS).add(new THREE.Vector3(0, jet.length * 0.5 + 260, 0));
+    topJet.rotation.copy(diskTilt);
+    scene.add(topJet);
+    // Bottom jet
+    const botJet = new THREE.Mesh(jetGeo, jetMat.clone());
+    botJet.position.copy(BH_POS).add(new THREE.Vector3(0, -jet.length * 0.5 - 260, 0));
+    botJet.rotation.copy(diskTilt);
+    botJet.rotation.z += Math.PI;
+    scene.add(botJet);
+    jetMeshes.push(topJet, botJet);
+  });
+
+  // Animate: subtle disk shimmer via opacity oscillation + jet flicker
+  let bhT = 0;
+  const bhTick = () => {
+    bhT += 0.0008;
+    // Photon sphere pulse
+    photonMat.opacity = 0.04 + Math.sin(bhT * 1.3) * 0.02;
+    // Jet flicker
+    jetMeshes.forEach((m, i) => {
+      m.material.opacity = m.material.opacity * (0.85 + Math.sin(bhT * 2.1 + i) * 0.15);
+    });
   };
+  window._bhTick = bhTick;
 })();
 
 // ─── NEBULA DUST CLOUDS ──────────────────────────────────────────────────────
