@@ -11,6 +11,7 @@ import {
   neighborMap, updatePulses, simTick, updateScene,
   hoverForces, setFocusedNodeGetter,
   focusEdgeLinks, focusEdgeGeo, focusEdgePosArr,
+  deferTextureGeneration,
 } from './graph.js';
 import {
   focusedNode, focusNode, unfocusNode,
@@ -387,8 +388,15 @@ canvas.addEventListener('click', e => {
 document.addEventListener('pointerdown', () => startAudio(), { once: true });
 
 // ─── MAIN ANIMATE LOOP ─────────────────────────────────────────────────────
+let texturesQueued = false;
 function animate() {
   requestAnimationFrame(animate);
+
+  // After first render, kick off deferred texture generation
+  if (!texturesQueued) {
+    texturesQueued = true;
+    deferTextureGeneration();
+  }
 
   if (window._starTwinkle) window._starTwinkle();
   if (window._bhTick) window._bhTick();

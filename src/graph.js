@@ -5,6 +5,21 @@ import { DOMAINS, NODES_RAW, EDGES_DEF, DOMAIN_CENTERS } from './data.js';
 import { makePlanetTexture } from './planets.js';
 import { scene } from './scene.js';
 
+// ─── DEFERRED TEXTURE GENERATION ────────────────────────────────────────────
+// Call after first render to progressively generate planet textures
+export function deferTextureGeneration() {
+  let i = 0;
+  function next() {
+    if (i >= nodes.length) return;
+    const n = nodes[i++];
+    const tex = makePlanetTexture(n.domain, n.id);
+    n.mesh.material.map = tex;
+    n.mesh.material.needsUpdate = true;
+    setTimeout(next, 0);
+  }
+  setTimeout(next, 0);
+}
+
 // ─── BUILD GRAPH ────────────────────────────────────────────────────────────
 export const nodeMap = new Map();
 NODES_RAW.forEach(([name, domain, size]) => {
@@ -37,10 +52,9 @@ nodes.forEach(n => {
   const hex = DOMAINS[n.domain]?.color || '#aaaaaa';
   const domColor = new THREE.Color(hex);
 
-  // Planet surface — tuned for visible texture detail
-  const tex = makePlanetTexture(n.domain, n.id);
+  // Planet surface — starts flat, texture applied later via deferTextureGeneration()
   const mat = new THREE.MeshPhongMaterial({
-    map: tex,
+    color: domColor,
     emissive: domColor,
     emissiveIntensity: 0.015,
     shininess: 18,
