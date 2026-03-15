@@ -1,4 +1,6 @@
 // ─── PROCEDURAL PLANET TEXTURES ─────────────────────────────────────────────
+import * as THREE from 'three';
+
 // Simple seeded pseudo-random
 export function seededRand(seed) {
   let s = seed;

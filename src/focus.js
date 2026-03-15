@@ -1,6 +1,7 @@
 // ─── FOCUS MODULE ────────────────────────────────────────────────────────────
 // focusNode, moon system, camera animation, dimming, focus edges.
 
+import * as THREE from 'three';
 import { DOMAINS } from './data.js';
 import { scene, camera } from './scene.js';
 import {

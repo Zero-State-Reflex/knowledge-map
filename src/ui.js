@@ -2,6 +2,7 @@
 // Panels, labels, legend, title sprite, hover, click handlers, audio controls,
 // wiki images, the main animate loop.
 
+import * as THREE from 'three';
 import { DOMAINS, NODE_DESCRIPTIONS } from './data.js';
 import { startAudio, audioCtx } from './audio.js';
 import { renderer, scene, camera } from './scene.js';
@@ -30,8 +31,8 @@ import {
   toScreen, getNodeScreenPos,
   moonMeshes, moonData, updateMoons,
   clearFocusLabel, updateFocusLabelPos,
-  tickDim, resetDim, clearMoons, clearFocusEdges,
-  buildFocusEdges, dimToNeighbors,
+  tickDim, resetDim, clearMoons,
+  dimToNeighbors,
   getNeighborNames,
   setShowInfoFn,
   _v3a, _v3b,

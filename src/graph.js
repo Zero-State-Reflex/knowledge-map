@@ -1,6 +1,7 @@
 // ─── GRAPH MODULE ────────────────────────────────────────────────────────────
 // Force simulation, node building with meshes, edge lines, pulse system.
 
+import * as THREE from 'three';
 import { DOMAINS, NODES_RAW, EDGES_DEF, DOMAIN_CENTERS } from './data.js';
 import { makePlanetTexture } from './planets.js';
 import { scene } from './scene.js';

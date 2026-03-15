@@ -1,4 +1,5 @@
 // ─── THREE.JS SCENE SETUP ───────────────────────────────────────────────────
+import * as THREE from 'three';
 
 // ─── RENDERER, SCENE, CAMERA ────────────────────────────────────────────────
 const canvas = document.getElementById('c');
