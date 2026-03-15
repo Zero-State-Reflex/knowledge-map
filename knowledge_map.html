@@ -7,6 +7,54 @@
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   body { background:#04060f; overflow:hidden; width:100vw; height:100vh; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; color:#e8e0d0; }
+
+  /* ── Loading Screen ── */
+  #loading-screen {
+    position:fixed; inset:0; z-index:10000;
+    background:#04060f;
+    display:flex; align-items:center; justify-content:center; flex-direction:column;
+    transition:opacity 0.8s ease;
+  }
+  #loading-screen.hidden { opacity:0; pointer-events:none; }
+
+  .atom { position:relative; width:120px; height:120px; }
+
+  /* Nucleus */
+  .atom-nucleus {
+    position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+    width:12px; height:12px; border-radius:50%;
+    background:rgba(232,216,154,0.9);
+    box-shadow:0 0 12px rgba(232,216,154,0.4), 0 0 30px rgba(232,216,154,0.15);
+  }
+
+  /* Orbit rings */
+  .atom-orbit {
+    position:absolute; top:50%; left:50%;
+    border:1px solid rgba(200,180,120,0.12);
+    border-radius:50%;
+    animation:atom-spin linear infinite;
+  }
+  .atom-orbit:nth-child(2) { width:80px; height:80px; margin:-40px 0 0 -40px; animation-duration:2.4s; }
+  .atom-orbit:nth-child(3) { width:100px; height:100px; margin:-50px 0 0 -50px; animation-duration:3.2s; transform:rotate(60deg); animation-name:atom-spin-2; }
+  .atom-orbit:nth-child(4) { width:110px; height:110px; margin:-55px 0 0 -55px; animation-duration:4.0s; transform:rotate(-30deg); animation-name:atom-spin-3; }
+
+  /* Electrons */
+  .atom-electron {
+    position:absolute; width:6px; height:6px; border-radius:50%;
+    background:rgba(200,180,120,0.8);
+    box-shadow:0 0 6px rgba(200,180,120,0.5);
+    top:-3px; left:50%; margin-left:-3px;
+  }
+
+  @keyframes atom-spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+  @keyframes atom-spin-2 { from { transform:rotate(60deg); } to { transform:rotate(420deg); } }
+  @keyframes atom-spin-3 { from { transform:rotate(-30deg); } to { transform:rotate(330deg); } }
+
+  .loading-label {
+    margin-top:28px;
+    font-size:11px; letter-spacing:0.12em; text-transform:uppercase;
+    color:rgba(200,180,120,0.45);
+  }
   #c { display:block; width:100%; height:100%; cursor:grab; }
   #c:active { cursor:grabbing; }
   #title-bar {
@@ -146,6 +194,15 @@
 </style>
 </head>
 <body>
+<div id="loading-screen">
+  <div class="atom">
+    <div class="atom-nucleus"></div>
+    <div class="atom-orbit"><div class="atom-electron"></div></div>
+    <div class="atom-orbit"><div class="atom-electron"></div></div>
+    <div class="atom-orbit"><div class="atom-electron"></div></div>
+  </div>
+  <div class="loading-label">Loading</div>
+</div>
 <canvas id="c"></canvas>
 <svg id="leader-svg">
   <line id="leader-line" x1="0" y1="0" x2="0" y2="0"/>
@@ -2950,8 +3007,16 @@ function playChime(domain) {
 document.addEventListener('pointerdown', () => startAudio(), { once: true });
 
 
+let _loadingDismissed = false;
 function animate() {
   requestAnimationFrame(animate);
+
+  // Dismiss loading screen after first render
+  if (!_loadingDismissed) {
+    _loadingDismissed = true;
+    const ls = document.getElementById('loading-screen');
+    if (ls) { ls.classList.add('hidden'); setTimeout(() => ls.remove(), 900); }
+  }
 
   if (window._starTwinkle) window._starTwinkle();
   if (window._bhTick) window._bhTick();
