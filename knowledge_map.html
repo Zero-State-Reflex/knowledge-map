@@ -40,6 +40,16 @@
     position:fixed; z-index:120; pointer-events:auto;
   }
   #node-info.visible { opacity:1; }
+  #node-info-img-wrap {
+    width:100%; max-height:200px; overflow:hidden; border-radius:8px;
+    margin-bottom:16px; display:none; background:rgba(255,255,255,0.03);
+  }
+  #node-info-img-wrap.visible { display:block; }
+  #node-info-img {
+    width:100%; height:auto; max-height:200px; object-fit:cover; display:block;
+    opacity:0; transition:opacity 0.4s ease;
+  }
+  #node-info-img.loaded { opacity:1; }
   #node-info-name { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:30px; font-weight:700; letter-spacing:0.12em; color:#e8d89a; margin-bottom:8px; }
   #node-info-domain { font-size:11px; letter-spacing:0.25em; text-transform:uppercase; margin-bottom:20px; }
   #node-info-desc { font-size:15px; line-height:1.75; color:rgba(215,205,185,0.88); letter-spacing:0.02em; margin-bottom:22px; }
@@ -144,6 +154,7 @@
 <canvas id="title-sprite"></canvas>
 <div id="subtitle">drag · scroll · click to explore</div>
 <div id="node-info">
+  <div id="node-info-img-wrap"><img id="node-info-img" src="" alt=""></div>
   <div id="node-info-name"></div>
   <div id="node-info-domain"></div>
   <div id="node-info-desc"></div>
@@ -2260,11 +2271,46 @@ function positionPanel(screenX, screenY) {
   leaderDot.setAttribute('cy', screenY);
 }
 
+// Wikipedia image cache to avoid re-fetching
+const wikiImageCache = new Map();
+
+function fetchWikiImage(title) {
+  if (wikiImageCache.has(title)) return Promise.resolve(wikiImageCache.get(title));
+  const slug = encodeURIComponent(title.replace(/ /g, '_'));
+  return fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${slug}`)
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      const url = data?.thumbnail?.source || '';
+      // Request a larger image: replace width in URL
+      const hiRes = url ? url.replace(/\/\d+px-/, '/500px-') : '';
+      wikiImageCache.set(title, hiRes);
+      return hiRes;
+    })
+    .catch(() => { wikiImageCache.set(title, ''); return ''; });
+}
+
 function showInfo(n, screenX, screenY) {
   nodeInfoName.textContent = n.id;
   nodeInfoDom.textContent  = n.domain;
   nodeInfoDom.style.color  = DOMAINS[n.domain]?.color || '#aaa';
   nodeInfoDesc.textContent = NODE_DESCRIPTIONS[n.id] || '';
+
+  // Wikipedia image
+  const imgWrap = document.getElementById('node-info-img-wrap');
+  const imgEl   = document.getElementById('node-info-img');
+  imgWrap.classList.remove('visible');
+  imgEl.classList.remove('loaded');
+  imgEl.src = '';
+
+  fetchWikiImage(n.id).then(url => {
+    if (url && focusedNode === n) {
+      imgEl.src = url;
+      imgEl.alt = n.id;
+      imgWrap.classList.add('visible');
+      imgEl.onload = () => imgEl.classList.add('loaded');
+      imgEl.onerror = () => imgWrap.classList.remove('visible');
+    }
+  });
 
   // Wikipedia link — encode spaces as underscores, standard WP convention
   const wikiSlug = encodeURIComponent(n.id.replace(/ /g, '_'));
