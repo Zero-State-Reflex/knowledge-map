@@ -1044,11 +1044,12 @@ const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerH
 
 // ─── BLACK HOLE — Ray-marched Schwarzschild with gravitational lensing ───────
 (function buildBlackHole() {
-  const BH_POS = new THREE.Vector3(3200, -800, -5500);
+  // Position: visible from the default camera angle, behind the knowledge graph
+  const BH_POS = new THREE.Vector3(800, -400, -3500);
 
-  // Schwarzschild radius controls — the "mass" in geometric units
-  const RS = 120.0; // Schwarzschild radius
-  const DISK_TILT = 0.38; // radians — tilt of accretion disk
+  const RS = 80.0;          // Schwarzschild radius
+  const DISK_TILT = 1.15;   // radians — tilted ~66° so disk is clearly visible
+  const SPHERE_R = 2800.0;  // radius of the rendering volume sphere
 
   const bhVertexShader = `
     varying vec3 vWorldPos;
@@ -1063,216 +1064,210 @@ const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerH
     precision highp float;
 
     uniform vec3 uBHPos;
-    uniform float uRS;       // Schwarzschild radius
+    uniform float uRS;
     uniform float uTime;
-    uniform float uDiskTilt; // disk inclination
+    uniform float uDiskTilt;
+    uniform float uSphereR;
 
     varying vec3 vWorldPos;
 
-    // ── Procedural star field ──────────────────────────────────────────────
+    // ── Hash & procedural stars ────────────────────────────────────────────
     float hash(vec3 p) {
       p = fract(p * vec3(443.8975, 397.2973, 491.1871));
       p += dot(p, p.yzx + 19.19);
       return fract((p.x + p.y) * p.z);
     }
+    float hash2(vec2 p) {
+      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+    }
 
     vec3 starField(vec3 dir) {
-      // Grid-based stars on unit sphere
       vec3 col = vec3(0.0);
-      // Multiple scales for dense + sparse stars
-      for (int scale = 0; scale < 3; scale++) {
-        float gridSize = 80.0 + float(scale) * 120.0;
-        vec3 cell = floor(dir * gridSize);
-        vec3 f = fract(dir * gridSize);
-        float h = hash(cell + float(scale) * 777.0);
-        if (h > 0.985) {
-          // Star exists in this cell
-          vec3 starPos = vec3(0.3 + h * 0.4);
-          float d = length(f - starPos);
-          float brightness = smoothstep(0.15, 0.0, d) * (0.3 + h * 0.7);
-          // Color temperature variation
-          vec3 tint = mix(
-            vec3(0.7, 0.8, 1.0),   // blue-white
-            vec3(1.0, 0.9, 0.7),   // warm yellow
-            fract(h * 13.7)
-          );
-          col += tint * brightness * (float(scale) == 0.0 ? 1.0 : 0.4);
+      // Convert direction to spherical UV for more uniform distribution
+      float phi = atan(dir.z, dir.x);
+      float theta = acos(clamp(dir.y, -1.0, 1.0));
+      vec2 uv = vec2(phi / 6.2832 + 0.5, theta / 3.14159);
+
+      // Dense star layer
+      for (int layer = 0; layer < 4; layer++) {
+        float scale = 150.0 + float(layer) * 200.0;
+        vec2 cell = floor(uv * scale);
+        vec2 f = fract(uv * scale);
+        float h = hash2(cell + float(layer) * 73.0);
+        float threshold = 0.97 - float(layer) * 0.005;
+        if (h > threshold) {
+          vec2 starCenter = vec2(0.2 + h * 0.6, 0.2 + fract(h * 7.3) * 0.6);
+          float d = length(f - starCenter);
+          float sz = 0.04 + fract(h * 31.0) * 0.08;
+          float brightness = smoothstep(sz, 0.0, d);
+          brightness *= 0.4 + fract(h * 17.0) * 0.6;
+          // Color temperature
+          float temp = fract(h * 13.7);
+          vec3 tint = temp < 0.3 ? vec3(0.6, 0.75, 1.0)
+                    : temp < 0.6 ? vec3(1.0, 0.98, 0.95)
+                    : vec3(1.0, 0.88, 0.7);
+          col += tint * brightness;
         }
       }
       return col;
     }
 
-    // ── Blackbody approximation (temperature → RGB) ───────────────────────
+    // ── Blackbody approximation ───────────────────────────────────────────
     vec3 blackbody(float temp) {
-      // Attempt to approximate Planck spectrum → sRGB
-      // temp in range ~1000..40000 K
       float t = temp / 1000.0;
       vec3 col;
-      // Red
-      if (t < 6.6) col.r = 1.0;
-      else col.r = clamp(1.292 * pow(t - 6.0, -0.1332), 0.0, 1.0);
-      // Green
-      if (t < 6.6) col.g = clamp(0.39 * log(t) - 0.634, 0.0, 1.0);
-      else col.g = clamp(1.129 * pow(t - 6.0, -0.0755), 0.0, 1.0);
-      // Blue
-      if (t > 19.0) col.b = 1.0;
-      else if (t > 2.0) col.b = clamp(0.543 * log(t - 1.0) - 0.397, 0.0, 1.0);
-      else col.b = 0.0;
+      col.r = t < 6.6 ? 1.0 : clamp(1.292 * pow(t - 6.0, -0.1332), 0.0, 1.0);
+      col.g = t < 6.6 ? clamp(0.39 * log(t) - 0.634, 0.0, 1.0)
+                       : clamp(1.129 * pow(t - 6.0, -0.0755), 0.0, 1.0);
+      col.b = t > 19.0 ? 1.0
+            : t > 2.0  ? clamp(0.543 * log(t - 1.0) - 0.397, 0.0, 1.0)
+            : 0.0;
       return col;
     }
 
-    // ── Disk rotation matrix (tilt around X axis) ─────────────────────────
-    mat3 diskRotation(float angle) {
-      float c = cos(angle), s = sin(angle);
-      return mat3(
-        1.0, 0.0, 0.0,
-        0.0,  c,  -s,
-        0.0,  s,   c
-      );
+    // ── Disk noise for turbulence ─────────────────────────────────────────
+    float diskNoise(float r, float angle) {
+      return 0.7 + 0.3 * sin(angle * 6.0 + r * 0.05 + uTime * 0.3)
+                 + 0.15 * sin(angle * 13.0 - r * 0.08 + uTime * 0.7)
+                 + 0.1 * sin(angle * 21.0 + r * 0.12 - uTime * 0.5);
+    }
+
+    // ── Disk tilt rotation (around X) ─────────────────────────────────────
+    mat3 diskRotation(float a) {
+      float c = cos(a), s = sin(a);
+      return mat3(1,0,0, 0,c,-s, 0,s,c);
     }
 
     void main() {
-      vec3 rayOrigin = cameraPosition - uBHPos;
+      // Ray starts at the sphere surface, not at the camera
+      vec3 surfacePos = vWorldPos - uBHPos;
       vec3 rayDir = normalize(vWorldPos - cameraPosition);
 
-      // Disk tilt rotation — rotate coordinate system so disk is in y=0 plane
       mat3 diskRot = diskRotation(uDiskTilt);
       mat3 diskRotInv = diskRotation(-uDiskTilt);
 
-      vec3 pos = diskRot * rayOrigin;
-      vec3 vel = diskRot * rayDir;
+      vec3 pos = diskRot * surfacePos;
+      vec3 vel = normalize(diskRot * rayDir);
 
       float rs = uRS;
-      float rs2 = rs * rs;
-
-      // ISCO = innermost stable circular orbit = 3 * rs for Schwarzschild
-      float diskInner = 3.0 * rs;
-      float diskOuter = 18.0 * rs;
+      float diskInner = 3.0 * rs;   // ISCO
+      float diskOuter = 22.0 * rs;  // extended disk
 
       vec3 color = vec3(0.0);
       float alpha = 0.0;
+      float prevY = pos.y;
+      bool hitDisk = false;
 
-      float prevY = pos.y; // track disk plane crossings
-
-      // ── Ray march with Schwarzschild geodesic acceleration ──────────────
-      for (int i = 0; i < 256; i++) {
+      // ── Ray march ───────────────────────────────────────────────────────
+      for (int i = 0; i < 300; i++) {
         float r = length(pos);
 
-        // Event horizon — ray captured
+        // Captured by event horizon
         if (r < rs * 1.01) {
-          color = vec3(0.0);
+          color = mix(color, vec3(0.0), hitDisk ? 0.5 : 1.0);
           alpha = 1.0;
           break;
         }
 
-        // Escaped to background — sample star field
-        if (r > 6000.0) {
+        // Escaped the volume
+        if (r > uSphereR * 1.05) {
           vec3 escapedDir = diskRotInv * normalize(pos);
-          color = starField(escapedDir);
+          vec3 stars = starField(escapedDir);
+          color += stars;
           alpha = 1.0;
           break;
         }
 
-        // ── Accretion disk intersection (check y=0 plane crossing) ──────
+        // ── Accretion disk: detect y=0 plane crossing ─────────────────
         float curY = pos.y;
-        if (prevY * curY < 0.0 && i > 0) {
-          // Crossed the disk plane — interpolate exact crossing point
-          float t_cross = -prevY / (curY - prevY);
-          // We'd need the previous position — approximate with current step
+        if (i > 0 && prevY * curY < 0.0) {
+          // Interpolate to find crossing point
+          float frac = abs(prevY) / (abs(prevY) + abs(curY));
           float diskR = length(vec2(pos.x, pos.z));
 
           if (diskR > diskInner && diskR < diskOuter) {
-            // Disk temperature: hotter near center, T ~ r^(-3/4) for thin disk
+            hitDisk = true;
+
+            // Temperature profile: T ~ r^(-3/4), hotter inward
+            float temp = 15000.0 * pow(diskInner / diskR, 0.75);
+            temp = max(temp, 1800.0);
+
+            // Turbulence
+            float diskAngle = atan(pos.z, pos.x) + uTime * 0.08;
+            float turb = diskNoise(diskR, diskAngle);
+
+            // Density: strong at inner edge, fading outward
             float rNorm = (diskR - diskInner) / (diskOuter - diskInner);
-            float temp = 12000.0 * pow(diskInner / diskR, 0.75);
-            temp = max(temp, 1500.0);
+            float density = exp(-rNorm * 1.8) * turb;
+            // Thin bright caustic at ISCO
+            density += 0.6 * exp(-pow((diskR - diskInner) / (rs * 0.8), 2.0));
+            density = clamp(density, 0.0, 2.0);
 
-            vec3 diskCol = blackbody(temp);
-
-            // Disk density: peaks near inner edge, falls off
-            float density = exp(-rNorm * 2.5) * (1.0 - smoothstep(0.0, 0.08, rNorm - 0.0));
-            density = max(density, 0.05 * (1.0 - rNorm)); // faint outer region
-
-            // ── Doppler beaming ────────────────────────────────────────
-            // Orbital velocity at radius r (Keplerian: v = sqrt(rs/2r))
+            // ── Doppler beaming ──────────────────────────────────────
             float orbitalV = sqrt(rs / (2.0 * diskR));
-            // Orbital direction (tangent to circle in xz plane, counter-clockwise)
+            orbitalV = min(orbitalV, 0.5); // cap for stability
             vec3 orbDir = normalize(vec3(-pos.z, 0.0, pos.x));
-            // Add time-based rotation
-            float angle = uTime * 0.15;
-            float ca = cos(angle), sa = sin(angle);
-            orbDir = vec3(orbDir.x * ca - orbDir.z * sa, 0.0, orbDir.x * sa + orbDir.z * ca);
+            float viewDot = dot(vel, orbDir);
+            float doppler = sqrt((1.0 + orbitalV * viewDot) /
+                                 max(1.0 - orbitalV * viewDot, 0.01));
+            doppler = clamp(doppler, 0.25, 4.0);
 
-            // Doppler factor: approaching side brighter
-            float viewDot = dot(normalize(vel), orbDir);
-            float doppler = sqrt((1.0 + orbitalV * viewDot) / (1.0 - orbitalV * viewDot));
-            doppler = clamp(doppler, 0.3, 3.0);
-
-            // Apply Doppler: shifts temperature and intensity
-            float dopplerTemp = temp * doppler;
-            diskCol = blackbody(dopplerTemp);
-            float dopplerBright = pow(doppler, 3.0); // relativistic beaming ~ D^3
+            // Doppler-shifted color
+            vec3 diskCol = blackbody(temp * doppler);
+            float dopplerBright = pow(doppler, 3.0);
 
             // Gravitational redshift
-            float gravRedshift = sqrt(1.0 - rs / diskR);
+            float gravRedshift = sqrt(max(1.0 - rs / diskR, 0.01));
 
-            // ── Combine ────────────────────────────────────────────────
-            float brightness = density * dopplerBright * gravRedshift * 1.8;
+            // Final disk contribution
+            float brightness = density * dopplerBright * gravRedshift * 3.5;
             color += diskCol * brightness;
-            // Don't break — let light continue through the thin disk
-            // (allows seeing the disk from both sides due to lensing)
           }
         }
         prevY = curY;
 
-        // ── Schwarzschild acceleration (with relativistic correction) ───
-        float r3 = r * r * r;
+        // ── Schwarzschild geodesic acceleration ───────────────────────
+        float r2 = r * r;
+        float r3 = r2 * r;
         vec3 acc = -0.5 * rs * pos / r3;
-        // Relativistic correction: h² term
         vec3 h = cross(pos, vel);
         float h2 = dot(h, h);
-        acc *= (1.0 + 3.0 * h2 / (r * r));
+        acc *= (1.0 + 3.0 * h2 / r2);
 
-        // ── Adaptive step size — smaller near the BH ──────────────────
-        float dt = 0.3 * r;
-        dt = clamp(dt, 2.0, 80.0);
+        // Adaptive step: tiny near BH, larger far away
+        float dt = 0.25 * (r - rs);
+        dt = clamp(dt, 1.0, 50.0);
 
-        // ── Velocity Verlet integration ───────────────────────────────
+        // Velocity Verlet
         vec3 newPos = pos + vel * dt + 0.5 * acc * dt * dt;
         float newR = length(newPos);
-        float newR3 = newR * newR * newR;
-        vec3 newAcc = -0.5 * rs * newPos / newR3;
+        vec3 newAcc = -0.5 * rs * newPos / (newR * newR * newR);
         vec3 newH = cross(newPos, vel + acc * dt);
-        float newH2 = dot(newH, newH);
-        newAcc *= (1.0 + 3.0 * newH2 / (newR * newR));
+        newAcc *= (1.0 + 3.0 * dot(newH, newH) / (newR * newR));
         vel += 0.5 * (acc + newAcc) * dt;
-        // Renormalize velocity (light travels at c=1)
         vel = normalize(vel);
         pos = newPos;
       }
 
-      // If we never hit anything, transparent
-      if (alpha < 0.01) {
-        discard;
-      }
+      if (alpha < 0.01) discard;
 
-      // Tone mapping
-      color = color / (color + vec3(1.0)); // Reinhard
-      // Slight blue tint to shadows for the cold of space
-      color = mix(color, color * vec3(0.85, 0.9, 1.1), 1.0 - dot(color, vec3(0.333)));
+      // Tone mapping (Reinhard)
+      color = color / (color + vec3(1.0));
+      // Gamma
+      color = pow(color, vec3(0.92));
 
       gl_FragColor = vec4(color, alpha);
     }
   `;
 
-  // Large sphere mesh to contain the black hole visual
-  const bhGeo = new THREE.SphereGeometry(3200, 64, 48);
+  const bhGeo = new THREE.SphereGeometry(SPHERE_R, 64, 48);
   const bhMat = new THREE.ShaderMaterial({
     uniforms: {
       uBHPos:     { value: BH_POS },
       uRS:        { value: RS },
       uTime:      { value: 0.0 },
       uDiskTilt:  { value: DISK_TILT },
+      uSphereR:   { value: SPHERE_R },
     },
     vertexShader: bhVertexShader,
     fragmentShader: bhFragmentShader,
@@ -1285,7 +1280,6 @@ const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerH
   bhMesh.position.copy(BH_POS);
   scene.add(bhMesh);
 
-  // Animation tick — update time uniform
   window._bhTick = () => {
     bhMat.uniforms.uTime.value += 0.016;
   };
