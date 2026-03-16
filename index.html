@@ -3208,6 +3208,95 @@ function startAudio() {
   setTimeout(breathNote, 2000);
   setTimeout(breathNote, 5500);
 
+  // ── Relaxing beat — lo-fi downtempo ~70 BPM ────────────────────────────────
+  const BPM = 70;
+  const beatInterval = 60 / BPM;
+  const beatGain = audioCtx.createGain();
+  beatGain.gain.value = 0.35;
+  beatGain.connect(reverb);
+  beatGain.connect(dryGain);
+
+  function synthKick(time) {
+    // Sub-bass thump: sine that pitches down rapidly
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(150, time);
+    osc.frequency.exponentialRampToValueAtTime(35, time + 0.12);
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.4, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.35);
+    osc.connect(g);
+    g.connect(beatGain);
+    osc.start(time);
+    osc.stop(time + 0.4);
+  }
+
+  function synthHat(time) {
+    // Filtered noise burst — soft hi-hat
+    const bufLen = audioCtx.sampleRate * 0.06;
+    const buf = audioCtx.createBuffer(1, bufLen, audioCtx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < bufLen; i++) d[i] = (Math.random() * 2 - 1);
+    const src = audioCtx.createBufferSource();
+    src.buffer = buf;
+    // Highpass to make it sizzle
+    const hp = audioCtx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 7000;
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.12, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.08);
+    src.connect(hp);
+    hp.connect(g);
+    g.connect(beatGain);
+    src.start(time);
+  }
+
+  function synthRim(time) {
+    // Short bright click — triangle wave ping
+    const osc = audioCtx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.value = 800;
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0.08, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.06);
+    osc.connect(g);
+    g.connect(beatGain);
+    osc.start(time);
+    osc.stop(time + 0.08);
+  }
+
+  // Schedule beats in a loop
+  // Pattern per bar (4 beats): kick on 1, hat on 1-and, 2-and, 3-and, 4-and, rim on 3
+  let nextBeatTime = audioCtx.currentTime + 1.0; // start after 1 sec
+
+  function scheduleBeat() {
+    if (!audioCtx) return;
+    const now = audioCtx.currentTime;
+    // Schedule ahead by 2 seconds for smooth playback
+    while (nextBeatTime < now + 2.0) {
+      const half = beatInterval / 2;
+      // Beat 1: kick
+      synthKick(nextBeatTime);
+      // And of 1: hat
+      synthHat(nextBeatTime + half);
+      // Beat 2: nothing (space)
+      // And of 2: hat
+      synthHat(nextBeatTime + beatInterval + half);
+      // Beat 3: rim
+      synthRim(nextBeatTime + beatInterval * 2);
+      // And of 3: hat
+      synthHat(nextBeatTime + beatInterval * 2 + half);
+      // Beat 4: nothing
+      // And of 4: hat (softer)
+      synthHat(nextBeatTime + beatInterval * 3 + half);
+
+      nextBeatTime += beatInterval * 4; // advance one bar
+    }
+    setTimeout(scheduleBeat, 500);
+  }
+  scheduleBeat();
+
   // Store refs for chime
   audioCtx._reverb  = reverb;
   audioCtx._revGain = reverbGain;
