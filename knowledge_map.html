@@ -1915,6 +1915,125 @@ function updateMoons() {
   });
 }
 
+// ─── KNOWLEDGE RIPPLE — cascading discovery wave ─────────────────────────────
+const rippleWaves = [];     // active expanding ring meshes
+const rippleFlashes = [];   // nodes scheduled to flash
+const rippleRingGeo = new THREE.RingGeometry(0.95, 1.0, 64);
+
+function startKnowledgeRipple(originNode) {
+  // BFS outward from origin — schedule each layer to flash with increasing delay
+  const visited = new Set([originNode.id]);
+  const queue = [{ node: originNode, depth: 0 }];
+  const maxDepth = 4;
+
+  while (queue.length > 0) {
+    const { node: current, depth } = queue.shift();
+    if (depth > maxDepth) continue;
+
+    // Schedule this node to flash
+    const delay = depth * 280; // ms between each wave
+    const domColor = DOMAINS[current.domain]?.color || '#c8b89a';
+    rippleFlashes.push({
+      node: current,
+      color: new THREE.Color(domColor),
+      startTime: performance.now() + delay,
+      duration: 600,
+      intensity: Math.max(0.15, 1.0 - depth * 0.2),
+      started: false,
+    });
+
+    // Spawn expanding ring at this node (except at depth 0 — origin gets a bigger one)
+    if (depth === 0) {
+      spawnRippleRing(current, domColor, 1.0);
+    } else {
+      setTimeout(() => spawnRippleRing(current, domColor, 0.6 - depth * 0.1), delay);
+    }
+
+    // Queue neighbors
+    const nbrs = neighborMap.get(current.id) || [];
+    for (const nbr of nbrs) {
+      if (!visited.has(nbr.id) && depth + 1 <= maxDepth) {
+        visited.add(nbr.id);
+        queue.push({ node: nbr, depth: depth + 1 });
+      }
+    }
+  }
+}
+
+function spawnRippleRing(node, colorHex, brightness) {
+  const color = new THREE.Color(colorHex);
+  const mat = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: brightness * 0.5,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const ring = new THREE.Mesh(rippleRingGeo, mat);
+  ring.position.set(node.x, node.y, node.z);
+  // Face the camera
+  ring.lookAt(camera.position);
+  ring.scale.setScalar(node.size * 2.2);
+  scene.add(ring);
+
+  rippleWaves.push({
+    mesh: ring,
+    mat,
+    startTime: performance.now(),
+    duration: 1200,
+    maxScale: node.size * 2.2 * 6,
+    startScale: node.size * 2.2,
+    node,
+  });
+}
+
+function updateKnowledgeRipple() {
+  const now = performance.now();
+
+  // Update expanding rings
+  for (let i = rippleWaves.length - 1; i >= 0; i--) {
+    const w = rippleWaves[i];
+    const t = (now - w.startTime) / w.duration;
+    if (t >= 1) {
+      scene.remove(w.mesh);
+      w.mat.dispose();
+      rippleWaves.splice(i, 1);
+      continue;
+    }
+    const ease = 1 - Math.pow(1 - t, 2); // ease-out
+    const scale = w.startScale + (w.maxScale - w.startScale) * ease;
+    w.mesh.scale.setScalar(scale);
+    w.mesh.position.set(w.node.x, w.node.y, w.node.z);
+    w.mesh.lookAt(camera.position);
+    w.mat.opacity = (1 - t) * 0.4;
+  }
+
+  // Update node flashes — brief emissive boost
+  for (let i = rippleFlashes.length - 1; i >= 0; i--) {
+    const f = rippleFlashes[i];
+    if (now < f.startTime) continue;
+    const t = (now - f.startTime) / f.duration;
+    if (t >= 1) {
+      // Reset emissive
+      f.node.mesh.material.emissiveIntensity = 0.015;
+      if (f.node.atmMat) f.node.atmMat.opacity = 0.06;
+      rippleFlashes.splice(i, 1);
+      continue;
+    }
+    if (!f.started) {
+      f.started = true;
+      // Brief bright flash on the node's atmosphere
+    }
+    // Sine pulse: quick rise, slow fade
+    const pulse = Math.sin(t * Math.PI) * f.intensity;
+    f.node.mesh.material.emissiveIntensity = 0.015 + pulse * 0.15;
+    if (f.node.atmMat) {
+      f.node.atmMat.opacity = 0.06 + pulse * 0.2;
+    }
+  }
+}
+
 // ─── ORBITING SPACESHIP ──────────────────────────────────────────────────────
 let shipGroup = null;
 let shipData = null;
@@ -2768,6 +2887,7 @@ function focusNode(n) {
   buildFocusEdges(n);
   buildMoons(n);
   buildShip();
+  startKnowledgeRipple(n);
   playChime(n.domain);
   applyFocusLabel(n);
   startFocusCamAnim(new THREE.Vector3(n.x, n.y, n.z));
@@ -3032,6 +3152,7 @@ function animate() {
   tickDim();        // FIX 1: was never called — instant opacity snaps are now lerped
   updateScene();
   updatePulses();
+  updateKnowledgeRipple();
 
   // FIX 2: suppress auto-rotation entirely while a node is focused
   const canAutoRotate = !focusedNode && !focusCamAnim;
