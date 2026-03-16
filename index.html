@@ -176,21 +176,19 @@
   #settling { position:fixed; bottom:60px; right:24px; font-size:8px; color:rgba(140,180,140,0.5); letter-spacing:0.1em; z-index:100; transition:opacity 1s; }
 
   #audio-controls {
-    position:fixed; bottom:24px; left:50%; transform:translateX(-50%);
-    display:flex; align-items:center; gap:12px; z-index:200;
-    background:rgba(4,6,15,0.72); border:1px solid rgba(200,180,120,0.14);
-    border-radius:20px; padding:7px 16px; backdrop-filter:blur(8px);
+    position:fixed; top:18px; left:260px; z-index:200;
+    display:flex; align-items:center; gap:10px;
     pointer-events:auto;
   }
   #mute-btn {
-    background:none; border:none; cursor:pointer; padding:0;
-    color:rgba(200,185,140,0.65); font-size:16px; line-height:1;
-    transition:color 0.2s; width:20px; text-align:center; flex-shrink:0;
+    background:none; border:none; cursor:pointer; padding:4px;
+    color:rgba(200,185,140,0.55); font-size:22px; line-height:1;
+    transition:color 0.2s, transform 0.15s;
   }
-  #mute-btn:hover { color:rgba(232,216,154,0.95); }
+  #mute-btn:hover { color:rgba(232,216,154,0.95); transform:scale(1.1); }
   #vol-slider {
     -webkit-appearance:none; appearance:none;
-    width:90px; height:2px; border-radius:2px; outline:none; cursor:pointer;
+    width:70px; height:2px; border-radius:2px; outline:none; cursor:pointer;
     background: linear-gradient(to right,
       rgba(232,216,154,0.7) 0%, rgba(232,216,154,0.7) var(--pct,60%),
       rgba(120,110,80,0.3) var(--pct,60%), rgba(120,110,80,0.3) 100%);
@@ -3140,12 +3138,12 @@ function startAudio() {
   audioCtx._masterGain = masterGain;
 
   const reverbGain = audioCtx.createGain();
-  reverbGain.gain.value = 0.55;
+  reverbGain.gain.value = 1.4;
   reverb.connect(reverbGain);
   reverbGain.connect(masterGain);
 
   const dryGain = audioCtx.createGain();
-  dryGain.gain.value = 0.18;
+  dryGain.gain.value = 0.6;
   dryGain.connect(masterGain);
 
   // ── Ambient pad layer ─────────────────────────────────────────────────────
@@ -3168,7 +3166,7 @@ function startAudio() {
       lfo.connect(lfoGain);
 
       const voiceGain = audioCtx.createGain();
-      voiceGain.gain.value = 0.012 / count;
+      voiceGain.gain.value = 0.04 / count;
       lfoGain.connect(voiceGain.gain);
 
       osc.connect(voiceGain);
@@ -3196,7 +3194,7 @@ function startAudio() {
 
     const g = audioCtx.createGain();
     g.gain.setValueAtTime(0, audioCtx.currentTime);
-    g.gain.linearRampToValueAtTime(0.022, audioCtx.currentTime + dur * 0.3);
+    g.gain.linearRampToValueAtTime(0.07, audioCtx.currentTime + dur * 0.3);
     g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + dur);
 
     osc.connect(g);
@@ -3246,7 +3244,7 @@ function playChime(domain) {
     }
 
     const g  = audioCtx.createGain();
-    const pk = 0.055 * amps[i];
+    const pk = 0.15 * amps[i];
     g.gain.setValueAtTime(0, now);
     g.gain.linearRampToValueAtTime(pk, now + attackT);          // slow swell in
     g.gain.linearRampToValueAtTime(pk * 0.85, now + attackT + holdT); // gentle hold
