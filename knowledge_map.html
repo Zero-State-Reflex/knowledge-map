@@ -102,13 +102,16 @@
   }
   #node-info.visible { opacity:1; }
   #node-info-drag {
-    display:flex; flex-direction:column; align-items:center; gap:3px;
-    padding:8px 0 12px; cursor:grab; user-select:none;
+    display:flex; flex-direction:column; align-items:center; gap:2.5px;
+    padding:5px 0 6px; cursor:grab; user-select:none;
+    width:33%; margin:0 auto;
+    position:relative; top:-20px; margin-bottom:-14px;
   }
   #node-info-drag:active { cursor:grabbing; }
   #node-info-drag span {
-    display:block; width:28px; height:2px; border-radius:1px;
-    background:rgba(200,180,120,0.25);
+    display:block; width:100%; height:1.5px; border-radius:1px;
+    background:rgba(200,180,120,0.2);
+    transition:background 0.15s;
   }
   #node-info-drag:hover span { background:rgba(200,180,120,0.45); }
   #node-info-img-wrap {
