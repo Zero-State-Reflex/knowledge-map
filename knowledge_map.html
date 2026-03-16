@@ -198,6 +198,48 @@
     width:11px; height:11px; border-radius:50%;
     background:rgba(232,216,154,0.85); cursor:pointer; border:none;
   }
+
+  /* ── Search Bar ── */
+  #search-wrap {
+    position:fixed; top:16px; right:18px; z-index:200;
+    display:flex; align-items:center;
+  }
+  #search-input {
+    width:0; opacity:0; padding:0;
+    background:rgba(4,6,15,0.85); border:1px solid rgba(200,180,120,0.2);
+    border-radius:16px; color:#e8e0d0;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px;
+    outline:none; backdrop-filter:blur(8px);
+    transition:width 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+  }
+  #search-input.open {
+    width:220px; opacity:1; padding:8px 14px;
+  }
+  #search-input::placeholder { color:rgba(200,180,120,0.35); }
+  #search-btn {
+    background:none; border:none; cursor:pointer;
+    color:rgba(200,180,120,0.5); font-size:18px;
+    padding:6px 8px; transition:color 0.2s;
+  }
+  #search-btn:hover { color:rgba(232,216,154,0.9); }
+  #search-results {
+    position:fixed; top:48px; right:18px; z-index:200;
+    background:rgba(4,6,15,0.9); border:1px solid rgba(200,180,120,0.15);
+    border-radius:10px; backdrop-filter:blur(8px);
+    max-height:300px; overflow-y:auto; display:none;
+    min-width:220px;
+  }
+  #search-results.visible { display:block; }
+  .search-result {
+    padding:10px 14px; cursor:pointer; font-size:13px;
+    color:rgba(220,210,185,0.8); transition:background 0.15s;
+    border-bottom:1px solid rgba(200,180,120,0.06);
+  }
+  .search-result:last-child { border-bottom:none; }
+  .search-result:hover { background:rgba(200,180,120,0.08); }
+  .search-result .sr-domain {
+    font-size:10px; color:rgba(200,180,120,0.4); margin-top:2px;
+  }
 </style>
 </head>
 <body>
@@ -233,6 +275,11 @@
 <div id="legend"></div>
 <div id="instructions">drag → spin<br>scroll → zoom<br>hover → attract<br>click → explore</div>
 <div id="settling">● settling…</div>
+<div id="search-wrap">
+  <input type="text" id="search-input" placeholder="Search disciplines...">
+  <button id="search-btn" title="Search">&#x2315;</button>
+</div>
+<div id="search-results"></div>
 <div id="audio-controls">
   <button id="mute-btn" title="Mute / Unmute">♪</button>
   <input id="vol-slider" type="range" min="0" max="1" step="0.01" value="0.6" title="Volume">
@@ -2888,6 +2935,7 @@ function focusNode(n) {
   buildMoons(n);
   buildShip();
   startKnowledgeRipple(n);
+  addTrailPoint(n);
   playChime(n.domain);
   applyFocusLabel(n);
   startFocusCamAnim(new THREE.Vector3(n.x, n.y, n.z));
@@ -3135,6 +3183,241 @@ function playChime(domain) {
 document.addEventListener('pointerdown', () => startAudio(), { once: true });
 
 
+// ─── SHOOTING STARS ──────────────────────────────────────────────────────────
+const shootingStars = [];
+
+function spawnShootingStar() {
+  // Random start position on the far star shell
+  const phi = Math.acos(2 * Math.random() - 1);
+  const theta = Math.random() * Math.PI * 2;
+  const r = 7000 + Math.random() * 1500;
+  const sx = r * Math.sin(phi) * Math.cos(theta);
+  const sy = r * Math.sin(phi) * Math.sin(theta);
+  const sz = r * Math.cos(phi);
+
+  // Random direction with some downward bias
+  const dx = (Math.random() - 0.5) * 2;
+  const dy = -0.3 - Math.random() * 0.7;
+  const dz = (Math.random() - 0.5) * 2;
+  const len = Math.sqrt(dx*dx + dy*dy + dz*dz);
+
+  const speed = 18 + Math.random() * 25;
+  const tailLen = 120 + Math.random() * 200;
+
+  // Trail geometry — line from head to tail
+  const posArr = new Float32Array(6);
+  const geo = new THREE.BufferGeometry();
+  const attr = new THREE.BufferAttribute(posArr, 3);
+  attr.usage = THREE.DynamicDrawUsage;
+  geo.setAttribute('position', attr);
+
+  // Warm white-gold color
+  const brightness = 0.5 + Math.random() * 0.5;
+  const color = new THREE.Color(
+    brightness,
+    brightness * (0.9 + Math.random() * 0.1),
+    brightness * (0.7 + Math.random() * 0.2)
+  );
+
+  const mat = new THREE.LineBasicMaterial({
+    color, transparent: true, opacity: 0,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const line = new THREE.Line(geo, mat);
+  scene.add(line);
+
+  shootingStars.push({
+    x: sx, y: sy, z: sz,
+    dx: dx/len, dy: dy/len, dz: dz/len,
+    speed, tailLen,
+    posArr, geo, mat, line,
+    life: 0,
+    maxLife: 60 + Math.random() * 80,
+  });
+}
+
+function updateShootingStars() {
+  // Randomly spawn
+  if (Math.random() < 0.008 && shootingStars.length < 3) {
+    spawnShootingStar();
+  }
+
+  for (let i = shootingStars.length - 1; i >= 0; i--) {
+    const s = shootingStars[i];
+    s.life++;
+    s.x += s.dx * s.speed;
+    s.y += s.dy * s.speed;
+    s.z += s.dz * s.speed;
+
+    const tx = s.x - s.dx * s.tailLen;
+    const ty = s.y - s.dy * s.tailLen;
+    const tz = s.z - s.dz * s.tailLen;
+
+    s.posArr[0] = tx; s.posArr[1] = ty; s.posArr[2] = tz;
+    s.posArr[3] = s.x; s.posArr[4] = s.y; s.posArr[5] = s.z;
+    s.geo.attributes.position.needsUpdate = true;
+
+    // Fade in then out
+    const fadeIn = Math.min(s.life / 8, 1);
+    const fadeOut = Math.max(0, 1 - (s.life - s.maxLife + 15) / 15);
+    s.mat.opacity = fadeIn * fadeOut * 0.6;
+
+    if (s.life > s.maxLife) {
+      scene.remove(s.line);
+      s.mat.dispose();
+      s.geo.dispose();
+      shootingStars.splice(i, 1);
+    }
+  }
+}
+
+// ─── EXPLORATION TRAIL ──────────────────────────────────────────────────────
+const trailHistory = []; // { x, y, z, time, color }
+const trailSegments = []; // active THREE.Line objects
+const TRAIL_FADE_MS = 20000; // trails last 20 seconds
+
+function addTrailPoint(node) {
+  const domColor = DOMAINS[node.domain]?.color || '#c8b89a';
+  trailHistory.push({
+    x: node.x, y: node.y, z: node.z,
+    time: performance.now(),
+    color: new THREE.Color(domColor),
+    nodeId: node.id,
+  });
+
+  // If we have at least 2 points, create a line segment from prev to current
+  if (trailHistory.length >= 2) {
+    const prev = trailHistory[trailHistory.length - 2];
+    const curr = trailHistory[trailHistory.length - 1];
+
+    const posArr = new Float32Array([
+      prev.x, prev.y, prev.z,
+      curr.x, curr.y, curr.z,
+    ]);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+
+    // Gradient from prev color to current color — use current
+    const mat = new THREE.LineBasicMaterial({
+      color: curr.color,
+      transparent: true,
+      opacity: 0.5,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const line = new THREE.Line(geo, mat);
+    scene.add(line);
+
+    trailSegments.push({
+      line, mat, geo,
+      startTime: performance.now(),
+    });
+  }
+}
+
+function updateExplorationTrail() {
+  const now = performance.now();
+  for (let i = trailSegments.length - 1; i >= 0; i--) {
+    const seg = trailSegments[i];
+    const age = now - seg.startTime;
+    if (age > TRAIL_FADE_MS) {
+      scene.remove(seg.line);
+      seg.mat.dispose();
+      seg.geo.dispose();
+      trailSegments.splice(i, 1);
+      continue;
+    }
+    // Fade out over time
+    const t = age / TRAIL_FADE_MS;
+    seg.mat.opacity = (1 - t * t) * 0.45; // quadratic fade
+  }
+  // Clean old history
+  while (trailHistory.length > 0 && now - trailHistory[0].time > TRAIL_FADE_MS) {
+    trailHistory.shift();
+  }
+}
+
+// ─── SEARCH ──────────────────────────────────────────────────────────────────
+const searchInput = document.getElementById('search-input');
+const searchBtn = document.getElementById('search-btn');
+const searchResults = document.getElementById('search-results');
+
+searchBtn.addEventListener('click', () => {
+  searchInput.classList.toggle('open');
+  if (searchInput.classList.contains('open')) {
+    searchInput.focus();
+  } else {
+    searchInput.value = '';
+    searchResults.classList.remove('visible');
+  }
+});
+
+searchInput.addEventListener('input', () => {
+  const q = searchInput.value.trim().toLowerCase();
+  if (q.length < 1) {
+    searchResults.classList.remove('visible');
+    return;
+  }
+  const matches = nodes.filter(n =>
+    n.id.toLowerCase().includes(q)
+  ).slice(0, 10);
+
+  if (matches.length === 0) {
+    searchResults.classList.remove('visible');
+    return;
+  }
+
+  searchResults.innerHTML = matches.map(n => {
+    const domColor = DOMAINS[n.domain]?.color || '#aaa';
+    return `<div class="search-result" data-id="${n.id}">
+      ${esc(n.id)}
+      <div class="sr-domain" style="color:${domColor}">${esc(n.domain)}</div>
+    </div>`;
+  }).join('');
+  searchResults.classList.add('visible');
+
+  // Click handlers
+  searchResults.querySelectorAll('.search-result').forEach(el => {
+    el.addEventListener('click', () => {
+      const node = nodeMap.get(el.dataset.id);
+      if (node) {
+        focusNode(node);
+        searchInput.value = '';
+        searchInput.classList.remove('open');
+        searchResults.classList.remove('visible');
+      }
+    });
+  });
+});
+
+searchInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    searchInput.value = '';
+    searchInput.classList.remove('open');
+    searchResults.classList.remove('visible');
+  }
+  if (e.key === 'Enter') {
+    const first = searchResults.querySelector('.search-result');
+    if (first) first.click();
+  }
+});
+
+// Close search when clicking elsewhere
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#search-wrap') && !e.target.closest('#search-results')) {
+    searchResults.classList.remove('visible');
+  }
+});
+
+// Keyboard shortcut: / to open search
+document.addEventListener('keydown', (e) => {
+  if (e.key === '/' && document.activeElement !== searchInput) {
+    e.preventDefault();
+    searchInput.classList.add('open');
+    searchInput.focus();
+  }
+});
+
 let _loadingDismissed = false;
 function animate() {
   requestAnimationFrame(animate);
@@ -3153,6 +3436,8 @@ function animate() {
   updateScene();
   updatePulses();
   updateKnowledgeRipple();
+  updateShootingStars();
+  updateExplorationTrail();
 
   // FIX 2: suppress auto-rotation entirely while a node is focused
   const canAutoRotate = !focusedNode && !focusCamAnim;
