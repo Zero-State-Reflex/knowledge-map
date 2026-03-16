@@ -3630,6 +3630,11 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  // Reposition info panel to stay within the new viewport
+  if (focusedNode && nodeInfoEl.classList.contains('visible')) {
+    const sp = getNodeScreenPos(focusedNode);
+    positionPanel(sp.x, sp.y);
+  }
 });
 
 // ─── AUDIO CONTROLS ──────────────────────────────────────────────────────────
