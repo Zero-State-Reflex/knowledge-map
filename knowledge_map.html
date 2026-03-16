@@ -290,6 +290,42 @@
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
+// ─── QUALITY TIER — auto-detect mobile for performance ──────────────────────
+const isMobileDevice = /Android|iPhone|iPad|iPod|webOS|BlackBerry|Opera Mini|IEMobile/i.test(navigator.userAgent)
+  || (navigator.maxTouchPoints > 1 && window.innerWidth < 1024);
+
+const Q = isMobileDevice ? {
+  // Mobile — aggressive optimization
+  texSize:        128,    // 256×128 canvas (vs 1024×512 desktop)
+  texOctaves:     3,      // fBm octaves
+  noiseGrid:      [8, 4], // base noise grid
+  sphereSegs:     [16, 12],
+  atmSegs:        [10, 8],
+  moonSegs:       [10, 8],
+  starCount:      3000,
+  nebulaCount:    4,
+  pulsePool:      8,
+  maxMoons:       5,
+  pixelRatio:     Math.min(window.devicePixelRatio, 1.5),
+  trailMax:       15,
+  shootingMax:    1,
+} : {
+  // Desktop — full quality
+  texSize:        512,
+  texOctaves:     6,
+  noiseGrid:      [32, 16],
+  sphereSegs:     [48, 32],
+  atmSegs:        [24, 16],
+  moonSegs:       [24, 16],
+  starCount:      12000,
+  nebulaCount:    14,
+  pulsePool:      32,
+  maxMoons:       10,
+  pixelRatio:     Math.min(window.devicePixelRatio, 3),
+  trailMax:       40,
+  shootingMax:    3,
+};
+
 const DOMAINS = {
   "Formal Sciences":         { color: "#c8b89a", cx: 0.5,  cy: 0.2  },  // warm parchment
   "Physical Sciences":       { color: "#8faa8b", cx: 0.75, cy: 0.3  },  // sage green
@@ -1090,7 +1126,7 @@ EDGES_DEF.forEach(([a, b]) => {
 // ─── THREE.JS SETUP ─────────────────────────────────────────────────────────
 const canvas = document.getElementById('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 3));
+renderer.setPixelRatio(Q.pixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x020408, 1);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -1101,7 +1137,7 @@ const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerH
 
 // ─── STAR FIELD ──────────────────────────────────────────────────────────────
 (function buildStars() {
-  const STAR_COUNT = 12000;
+  const STAR_COUNT = Q.starCount;
   const RADIUS     = 9000; // far shell, always behind everything
 
   const positions = new Float32Array(STAR_COUNT * 3);
@@ -1308,7 +1344,7 @@ const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerH
     [0x443322, 0.011], [0x334455, 0.010],
   ];
   const nebulaGeo = new THREE.PlaneGeometry(1, 1);
-  const nebulaCount = 14;
+  const nebulaCount = Q.nebulaCount;
 
   for (let i = 0; i < nebulaCount; i++) {
     const [color, opacity] = nebulaColors[i % nebulaColors.length];
@@ -1435,7 +1471,7 @@ const PLANET_PALETTES = {
 function makePlanetTexture(domain, nodeId) {
   const type  = PLANET_TYPES[domain] || 'ocean';
   const pal   = PLANET_PALETTES[type];
-  const S     = 512;
+  const S     = Q.texSize;
   const cv    = document.createElement('canvas');
   cv.width = S * 2; cv.height = S;
   const ctx   = cv.getContext('2d');
@@ -1449,11 +1485,12 @@ function makePlanetTexture(domain, nodeId) {
   const rng2 = seededRand(seed + 99);
   const rng3 = seededRand(seed + 777);
 
-  const n1 = buildNoise(rng,  32, 16);
-  const n2 = buildNoise(rng2, 16, 32);
-  const n3 = buildNoise(rng3, 64, 32);
+  const gw = Q.noiseGrid[0], gh = Q.noiseGrid[1];
+  const n1 = buildNoise(rng,  gw, gh);
+  const n2 = buildNoise(rng2, gh, gw);
+  const n3 = buildNoise(rng3, gw * 2, gh * 2);
   const rng4 = seededRand(seed + 2345);
-  const n4 = buildNoise(rng4, 48, 24);
+  const n4 = buildNoise(rng4, Math.round(gw * 1.5), Math.round(gh * 1.5));
 
   // Type-specific rendering
   const isBanded = ['gas_blue','amber_gas','plasma','violet_cloud','dark_nebula'].includes(type);
@@ -1470,25 +1507,27 @@ function makePlanetTexture(domain, nodeId) {
       const v = py / S;
 
       let t;
+      const oct = Q.texOctaves;
+      const oct2 = Math.max(2, oct - 1);
       if (isBanded) {
-        const warp = fbm(n1, u, v, 6, 2.1, 0.5) * 0.4;
+        const warp = fbm(n1, u, v, oct, 2.1, 0.5) * 0.4;
         const band = (Math.sin((v + warp) * Math.PI * numBands) + 1) * 0.5;
-        const detail = fbm(n2, u * 2, v * 2, 5, 2.0, 0.45) * 0.25;
-        const micro = fbm(n4, u * 6, v * 6, 4, 2.3, 0.4) * 0.08;
+        const detail = fbm(n2, u * 2, v * 2, oct2, 2.0, 0.45) * 0.25;
+        const micro = fbm(n4, u * 6, v * 6, oct2, 2.3, 0.4) * 0.08;
         t = Math.max(0, Math.min(1, band + detail + micro));
       } else if (isRocky) {
-        const crater = fbm(n3, u * 3, v * 3, 7, 2.2, 0.5);
-        const base   = fbm(n1, u, v, 6, 2.0, 0.5);
-        const fine   = fbm(n4, u * 8, v * 8, 4, 2.4, 0.45) * 0.12;
+        const crater = fbm(n3, u * 3, v * 3, oct, 2.2, 0.5);
+        const base   = fbm(n1, u, v, oct, 2.0, 0.5);
+        const fine   = fbm(n4, u * 8, v * 8, oct2, 2.4, 0.45) * 0.12;
         t = Math.pow(Math.max(0, base * 0.55 + crater * 0.35 + fine), 0.8);
       } else if (isIcy) {
-        const crack = Math.abs(fbm(n1, u * 2, v * 2, 7, 2.3, 0.5) - 0.5) * 2;
-        const base  = fbm(n2, u, v, 5, 2.0, 0.4);
-        const vein  = Math.abs(fbm(n4, u * 5, v * 5, 4, 2.5, 0.45) - 0.5) * 0.3;
+        const crack = Math.abs(fbm(n1, u * 2, v * 2, oct, 2.3, 0.5) - 0.5) * 2;
+        const base  = fbm(n2, u, v, oct2, 2.0, 0.4);
+        const vein  = Math.abs(fbm(n4, u * 5, v * 5, oct2, 2.5, 0.45) - 0.5) * 0.3;
         t = Math.max(0, Math.min(1, base * 0.45 + (1 - crack * 0.55) + vein));
       } else {
-        t = fbm(n1, u * 1.5, v * 1.5, 7, 2.1, 0.5);
-        const detail = fbm(n4, u * 4, v * 4, 5, 2.2, 0.45) * 0.15;
+        t = fbm(n1, u * 1.5, v * 1.5, oct, 2.1, 0.5);
+        const detail = fbm(n4, u * 4, v * 4, oct2, 2.2, 0.45) * 0.15;
         t = Math.max(0, Math.min(1, t * 0.75 + fbm(n2, u, v, 5, 2.0, 0.5) * 0.2 + detail));
       }
 
@@ -1597,18 +1636,17 @@ function makeMoonTexture(domain, nodeId) {
 }
 
 // ─── NODE MESHES ────────────────────────────────────────────────────────────
-const sphereGeo = new THREE.SphereGeometry(1, 48, 32);
-const atmGeo    = new THREE.SphereGeometry(1, 24, 16); // atmosphere shell
+const sphereGeo = new THREE.SphereGeometry(1, Q.sphereSegs[0], Q.sphereSegs[1]);
+const atmGeo    = new THREE.SphereGeometry(1, Q.atmSegs[0], Q.atmSegs[1]);
 const nodeMeshes = [];
 
 nodes.forEach(n => {
   const hex = DOMAINS[n.domain]?.color || '#aaaaaa';
   const domColor = new THREE.Color(hex);
 
-  // Planet surface — tuned for visible texture detail
-  const tex = makePlanetTexture(n.domain, n.id);
+  // Planet surface — starts flat, texture applied deferred after first render
   const mat = new THREE.MeshPhongMaterial({
-    map: tex,
+    color: domColor,
     emissive: domColor,
     emissiveIntensity: 0.015,
     shininess: 18,
@@ -1644,7 +1682,8 @@ nodes.forEach(n => {
   n.atm = atm;
   n.atmMat = atmMat;
 
-  // Outer atmosphere haze — very faint, large glow halo
+  // Outer atmosphere haze — skip on mobile
+  if (isMobileDevice) { n.outerAtm = null; } else {
   const outerAtmMat = new THREE.MeshBasicMaterial({
     color: domColor,
     transparent: true,
@@ -1658,9 +1697,10 @@ nodes.forEach(n => {
   outerAtm.position.set(n.x, n.y, n.z);
   scene.add(outerAtm);
   n.outerAtm = outerAtm;
+  }
 
-  // Planetary rings on larger nodes (size >= 18)
-  if (n.size >= 18) {
+  // Planetary rings on larger nodes (size >= 18) — skip on mobile
+  if (n.size >= 18 && !isMobileDevice) {
     const ringInner = n.size * 2.2 * 1.35;
     const ringOuter = n.size * 2.2 * 2.0;
     const ringGeo = new THREE.RingGeometry(ringInner, ringOuter, 64, 1);
@@ -1698,7 +1738,7 @@ scene.add(edgeLines);
 // ─── TRAVELING PULSE SYSTEM ──────────────────────────────────────────────────
 // A bright line segment slides along each connector edge — no floating orbs.
 
-const PULSE_POOL      = 32;
+const PULSE_POOL      = Q.pulsePool;
 const PULSE_SPEED_MIN = 0.003;
 const PULSE_SPEED_MAX = 0.009;
 const PULSE_TAIL      = 0.09;
@@ -1889,13 +1929,13 @@ clearFocusEdges(); // hidden initially
 const moonMeshes   = [];   // raycaster target list (cleared each focus)
 let   moonData     = [];   // per-moon orbit state
 
-const moonSphereGeo = new THREE.SphereGeometry(1, 32, 24);
+const moonSphereGeo = new THREE.SphereGeometry(1, Q.moonSegs[0], Q.moonSegs[1]);
 const moonRingGeo   = new THREE.RingGeometry(1.55, 1.85, 48);
 const moonHaloGeo   = new THREE.SphereGeometry(1, 20, 14);
 
 function buildMoons(centerNode) {
   clearMoons();
-  const neighbors = getNeighborNames(centerNode).slice(0, 10);
+  const neighbors = getNeighborNames(centerNode).slice(0, Q.maxMoons);
   const count     = neighbors.length;
   if (!count) return;
 
@@ -3317,7 +3357,7 @@ function spawnShootingStar() {
 
 function updateShootingStars() {
   // Randomly spawn
-  if (Math.random() < 0.008 && shootingStars.length < 3) {
+  if (Math.random() < 0.008 && shootingStars.length < Q.shootingMax) {
     spawnShootingStar();
   }
 
@@ -3497,15 +3537,31 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+// ─── DEFERRED TEXTURE GENERATION ────────────────────────────────────────────
+let _texturesQueued = false;
+function deferTextureGeneration() {
+  let i = 0;
+  function next() {
+    if (i >= nodes.length) return;
+    const n = nodes[i++];
+    const tex = makePlanetTexture(n.domain, n.id);
+    n.mesh.material.map = tex;
+    n.mesh.material.needsUpdate = true;
+    setTimeout(next, 0);
+  }
+  setTimeout(next, 0);
+}
+
 let _loadingDismissed = false;
 function animate() {
   requestAnimationFrame(animate);
 
-  // Dismiss loading screen after first render
+  // Dismiss loading screen and start deferred texture generation after first render
   if (!_loadingDismissed) {
     _loadingDismissed = true;
     const ls = document.getElementById('loading-screen');
     if (ls) { ls.classList.add('hidden'); setTimeout(() => ls.remove(), 900); }
+    if (!_texturesQueued) { _texturesQueued = true; deferTextureGeneration(); }
   }
 
   if (window._starTwinkle) window._starTwinkle();
