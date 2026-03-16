@@ -101,6 +101,16 @@
     position:fixed; z-index:120; pointer-events:auto;
   }
   #node-info.visible { opacity:1; }
+  #node-info-drag {
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    padding:8px 0 12px; cursor:grab; user-select:none;
+  }
+  #node-info-drag:active { cursor:grabbing; }
+  #node-info-drag span {
+    display:block; width:28px; height:2px; border-radius:1px;
+    background:rgba(200,180,120,0.25);
+  }
+  #node-info-drag:hover span { background:rgba(200,180,120,0.45); }
   #node-info-img-wrap {
     width:100%; height:110px; overflow:hidden; border-radius:8px;
     margin-bottom:16px; display:none; background:rgba(255,255,255,0.03);
@@ -267,6 +277,7 @@
 <canvas id="title-sprite"></canvas>
 <div id="subtitle">drag · scroll · click to explore</div>
 <div id="node-info">
+  <div id="node-info-drag"><span></span><span></span><span></span></div>
   <div id="node-info-img-wrap"><img id="node-info-img" src="" alt=""></div>
   <div id="node-info-name"></div>
   <div id="node-info-domain"></div>
@@ -3724,6 +3735,45 @@ muteBtn.addEventListener('click', () => {
   muteBtn.textContent = isMuted ? '♩' : '♪';
   muteBtn.style.opacity = isMuted ? '0.35' : '1';
 });
+
+// ─── DRAG INFO PANEL ──────────────────────────────────────────────────────
+{
+  const dragHandle = document.getElementById('node-info-drag');
+  const panel = document.getElementById('node-info');
+  let dragging = false, dragOffX = 0, dragOffY = 0;
+
+  dragHandle.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragging = true;
+    const rect = panel.getBoundingClientRect();
+    dragOffX = e.clientX - rect.left;
+    dragOffY = e.clientY - rect.top;
+    dragHandle.setPointerCapture(e.pointerId);
+  });
+
+  window.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const W = window.innerWidth, H = window.innerHeight;
+    const pw = panel.offsetWidth, ph = panel.offsetHeight;
+    let x = e.clientX - dragOffX;
+    let y = e.clientY - dragOffY;
+    // Clamp to window bounds
+    x = Math.max(0, Math.min(W - pw, x));
+    y = Math.max(0, Math.min(H - ph, y));
+    panel.style.left = x + 'px';
+    panel.style.top = y + 'px';
+    // Update leader line to follow
+    if (focusedNode && leaderLine.style.display !== 'none') {
+      const anchorX = x;
+      const anchorY = y + 30;
+      leaderLine.setAttribute('x2', anchorX);
+      leaderLine.setAttribute('y2', anchorY);
+    }
+  });
+
+  window.addEventListener('pointerup', () => { dragging = false; });
+}
 </script>
 
 <script>
