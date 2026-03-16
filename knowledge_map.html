@@ -324,19 +324,19 @@ const Q = isMobileDevice ? {
   trailMax:       15,
   shootingMax:    1,
 } : {
-  // Desktop — full quality
-  texSize:        512,
-  texOctaves:     6,
-  noiseGrid:      [32, 16],
-  sphereSegs:     [48, 32],
-  atmSegs:        [24, 16],
-  moonSegs:       [24, 16],
-  starCount:      12000,
-  nebulaCount:    14,
-  pulsePool:      32,
-  maxMoons:       10,
-  pixelRatio:     Math.min(window.devicePixelRatio, 3),
-  trailMax:       40,
+  // Desktop — balanced quality
+  texSize:        256,
+  texOctaves:     4,
+  noiseGrid:      [16, 8],
+  sphereSegs:     [24, 16],
+  atmSegs:        [16, 12],
+  moonSegs:       [16, 12],
+  starCount:      8000,
+  nebulaCount:    8,
+  pulsePool:      16,
+  maxMoons:       8,
+  pixelRatio:     Math.min(window.devicePixelRatio, 2),
+  trailMax:       25,
   shootingMax:    3,
 };
 
@@ -1696,22 +1696,7 @@ nodes.forEach(n => {
   n.atm = atm;
   n.atmMat = atmMat;
 
-  // Outer atmosphere haze — skip on mobile
-  if (isMobileDevice) { n.outerAtm = null; } else {
-  const outerAtmMat = new THREE.MeshBasicMaterial({
-    color: domColor,
-    transparent: true,
-    opacity: 0.02,
-    side: THREE.BackSide,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
-  const outerAtm = new THREE.Mesh(atmGeo, outerAtmMat);
-  outerAtm.scale.setScalar(n.size * 2.2 * 1.35);
-  outerAtm.position.set(n.x, n.y, n.z);
-  scene.add(outerAtm);
-  n.outerAtm = outerAtm;
-  }
+  n.outerAtm = null; // removed — saves 200+ draw calls for barely visible 0.02 opacity meshes
 
   // Planetary rings on larger nodes (size >= 18) — skip on mobile
   if (n.size >= 18 && !isMobileDevice) {
@@ -1831,7 +1816,7 @@ function lerpEdge(src, tgt, t) {
 
 function updatePulses() {
   // Randomly spawn new pulses
-  if (Math.random() < 0.012 && activePulses.length < PULSE_POOL) {
+  if (Math.random() < 0.006 && activePulses.length < PULSE_POOL) {
     const candidates = nodes.filter(n => neighborMap.get(n.id).length > 0);
     if (candidates.length) {
       const src  = candidates[Math.floor(Math.random() * candidates.length)];
@@ -3555,17 +3540,19 @@ document.addEventListener('keydown', (e) => {
 let _texturesQueued = false;
 function deferTextureGeneration() {
   let i = 0;
+  const delay = isMobileDevice ? 100 : 30; // ms between each texture
   function next() {
     if (i >= nodes.length) return;
     const n = nodes[i++];
     const tex = makePlanetTexture(n.domain, n.id);
     n.mesh.material.map = tex;
     n.mesh.material.needsUpdate = true;
-    setTimeout(next, 0);
+    setTimeout(next, delay);
   }
-  setTimeout(next, 0);
+  setTimeout(next, delay);
 }
 
+let _animFrame = 0;
 let _loadingDismissed = false;
 function animate() {
   requestAnimationFrame(animate);
@@ -3580,12 +3567,20 @@ function animate() {
 
   if (window._starTwinkle) window._starTwinkle();
   if (window._bhTick) window._bhTick();
-  simTick();
-  tickDim();        // FIX 1: was never called — instant opacity snaps are now lerped
+
+  // Throttle force sim after settling — every 3rd frame saves ~60% CPU
+  if (!settled || _animFrame % 3 === 0) simTick();
+  _animFrame++;
+
+  tickDim();
   updateScene();
-  updatePulses();
+
+  // Throttle expensive visual updates — every 2nd frame
+  if (_animFrame % 2 === 0) {
+    updatePulses();
+    updateShootingStars();
+  }
   updateKnowledgeRipple();
-  updateShootingStars();
   updateExplorationTrail();
 
   // FIX 2: suppress auto-rotation entirely while a node is focused
