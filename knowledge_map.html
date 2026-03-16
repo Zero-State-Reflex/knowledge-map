@@ -1526,6 +1526,72 @@ function makePlanetTexture(domain, nodeId) {
   return tex;
 }
 
+// ─── MOON TEXTURE (smaller, faster variant) ─────────────────────────────────
+function makeMoonTexture(domain, nodeId) {
+  const type = PLANET_TYPES[domain] || 'ocean';
+  const pal  = PLANET_PALETTES[type];
+  const S    = 128; // 256x128 canvas — much cheaper than planet textures
+  const cv   = document.createElement('canvas');
+  cv.width = S * 2; cv.height = S;
+  const ctx  = cv.getContext('2d');
+  const id   = ctx.createImageData(S * 2, S);
+  const data = id.data;
+
+  let seed = 0;
+  for (let i = 0; i < nodeId.length; i++) seed = (seed * 31 + nodeId.charCodeAt(i)) & 0xfffffff;
+  seed += 9999; // offset from planet seed so moons look different
+  const rng  = seededRand(seed);
+  const rng2 = seededRand(seed + 42);
+
+  const n1 = buildNoise(rng,  16, 8);
+  const n2 = buildNoise(rng2, 12, 12);
+
+  const isBanded = ['gas_blue','amber_gas','plasma','violet_cloud','dark_nebula'].includes(type);
+  const numBands = 3 + Math.floor(rng() * 3);
+
+  for (let py = 0; py < S; py++) {
+    for (let px = 0; px < S * 2; px++) {
+      const u = px / (S * 2);
+      const v = py / S;
+
+      let t;
+      if (isBanded) {
+        const warp = fbm(n1, u, v, 3, 2.0, 0.5) * 0.3;
+        t = (Math.sin((v + warp) * Math.PI * numBands) + 1) * 0.5;
+        t += fbm(n2, u * 2, v * 2, 3, 2.0, 0.4) * 0.15;
+        t = Math.max(0, Math.min(1, t));
+      } else {
+        t = fbm(n1, u * 2, v * 2, 4, 2.1, 0.5);
+        t += fbm(n2, u * 3, v * 3, 3, 2.2, 0.45) * 0.2;
+        t = Math.max(0, Math.min(1, t));
+      }
+
+      // Darken moons slightly compared to planets — they're smaller, cooler bodies
+      const ci = t * (pal.length - 1);
+      const ci0 = Math.floor(ci), ci1 = Math.min(ci0 + 1, pal.length - 1);
+      const cf = ci - ci0;
+      const c0 = pal[ci0], c1 = pal[ci1];
+      const r = Math.round((c0[0] + (c1[0]-c0[0]) * cf) * 0.7);
+      const g = Math.round((c0[1] + (c1[1]-c0[1]) * cf) * 0.7);
+      const b = Math.round((c0[2] + (c1[2]-c0[2]) * cf) * 0.7);
+
+      // Limb darkening
+      const lat = (v - 0.5) * Math.PI;
+      const limb = Math.pow(Math.cos(lat), 0.6);
+
+      const i4 = (py * S * 2 + px) * 4;
+      data[i4]   = Math.round(r * limb);
+      data[i4+1] = Math.round(g * limb);
+      data[i4+2] = Math.round(b * limb);
+      data[i4+3] = 255;
+    }
+  }
+  ctx.putImageData(id, 0, 0);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.wrapS = THREE.RepeatWrapping;
+  return tex;
+}
+
 // ─── NODE MESHES ────────────────────────────────────────────────────────────
 const sphereGeo = new THREE.SphereGeometry(1, 48, 32);
 const atmGeo    = new THREE.SphereGeometry(1, 24, 16); // atmosphere shell
@@ -1845,20 +1911,29 @@ function buildMoons(centerNode) {
     const speed    = 0.0004 + (i * 0.000031);
     const hasRing  = Math.random() < 0.35; // ~1 in 3 moons gets a ring
 
-    // ── Core moon sphere ─────────────────────────────────────────────────────
+    // ── Core moon sphere — starts flat color, texture loaded deferred ────────
     const mat = new THREE.MeshPhongMaterial({
       color:    col,
       emissive: col,
-      emissiveIntensity: 0.55,
-      shininess: 60,
+      emissiveIntensity: 0.04,
+      shininess: 30,
+      specular: new THREE.Color(0x111111),
       transparent: true,
       opacity: 0,
     });
     const mesh = new THREE.Mesh(moonSphereGeo, mat);
     mesh.scale.setScalar(mSize);
     mesh.userData.moonNode = n;
+    mesh.userData.rotSpeed = 0.002 + (n.id.charCodeAt(0) % 7) * 0.0005;
     scene.add(mesh);
     moonMeshes.push(mesh);
+
+    // Deferred texture: generate after a stagger delay to spread CPU load
+    setTimeout(() => {
+      const tex = makeMoonTexture(n.domain, n.id);
+      mat.map = tex;
+      mat.needsUpdate = true;
+    }, i * 120 + 300);
 
     // ── Glowing halo shell ───────────────────────────────────────────────────
     const haloMat = new THREE.MeshBasicMaterial({
@@ -1941,7 +2016,7 @@ function updateMoons() {
     const wx = cx + ox, wy = cy + oy, wz = cz + oz;
 
     m.mesh.position.set(wx, wy, wz);
-    m.mesh.rotation.y += 0.008;
+    m.mesh.rotation.y += m.mesh.userData.rotSpeed || 0.008;
     m.halo.position.set(wx, wy, wz);
 
     if (m.ring) {
