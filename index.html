@@ -259,23 +259,24 @@
     display:flex; align-items:center;
   }
   #search-input {
-    width:0; opacity:0; padding:0;
-    background:rgba(4,6,15,0.85); border:1px solid rgba(200,180,120,0.2);
-    border-radius:16px; color:#e8e0d0;
+    width:200px; opacity:1; padding:9px 14px 9px 32px;
+    background:rgba(4,6,15,0.75); border:1px solid rgba(200,180,120,0.18);
+    border-radius:20px; color:#e8e0d0;
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:13px;
     outline:none; backdrop-filter:blur(8px);
-    transition:width 0.3s ease, opacity 0.3s ease, padding 0.3s ease;
+    transition:border-color 0.2s, background 0.2s;
   }
-  #search-input.open {
-    width:220px; opacity:1; padding:8px 14px;
+  #search-input:focus {
+    border-color:rgba(200,180,120,0.4);
+    background:rgba(4,6,15,0.9);
   }
   #search-input::placeholder { color:rgba(200,180,120,0.35); }
   #search-btn {
+    position:absolute; left:10px; top:50%; transform:translateY(-50%);
     background:none; border:none; cursor:pointer;
-    color:rgba(200,180,120,0.5); font-size:18px;
-    padding:6px 8px; transition:color 0.2s;
+    color:rgba(200,180,120,0.4); font-size:14px;
+    padding:0; line-height:1; pointer-events:none;
   }
-  #search-btn:hover { color:rgba(232,216,154,0.9); }
   #search-results {
     position:fixed; top:48px; right:18px; z-index:200;
     background:rgba(4,6,15,0.9); border:1px solid rgba(200,180,120,0.15);
@@ -310,8 +311,8 @@
     #vol-slider { width:50px; }
 
     #search-wrap { top:12px; right:10px; }
-    #search-input.open { width:160px; font-size:12px; }
-    #search-results { right:10px; top:42px; min-width:160px; }
+    #search-input { width:140px; font-size:11px; padding:7px 10px 7px 28px; }
+    #search-results { right:10px; top:42px; min-width:140px; }
 
     #node-info {
       max-width:calc(100vw - 20px); width:calc(100vw - 20px);
@@ -3652,13 +3653,7 @@ const searchBtn = document.getElementById('search-btn');
 const searchResults = document.getElementById('search-results');
 
 searchBtn.addEventListener('click', () => {
-  searchInput.classList.toggle('open');
-  if (searchInput.classList.contains('open')) {
-    searchInput.focus();
-  } else {
-    searchInput.value = '';
-    searchResults.classList.remove('visible');
-  }
+  searchInput.focus();
 });
 
 searchInput.addEventListener('input', () => {
@@ -3692,7 +3687,7 @@ searchInput.addEventListener('input', () => {
       if (node) {
         focusNode(node);
         searchInput.value = '';
-        searchInput.classList.remove('open');
+        searchInput.blur();
         searchResults.classList.remove('visible');
       }
     });
@@ -3702,7 +3697,7 @@ searchInput.addEventListener('input', () => {
 searchInput.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     searchInput.value = '';
-    searchInput.classList.remove('open');
+    searchInput.blur();
     searchResults.classList.remove('visible');
   }
   if (e.key === 'Enter') {
@@ -3722,7 +3717,6 @@ document.addEventListener('click', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === '/' && document.activeElement !== searchInput) {
     e.preventDefault();
-    searchInput.classList.add('open');
     searchInput.focus();
   }
 });
