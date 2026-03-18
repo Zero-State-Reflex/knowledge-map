@@ -3779,8 +3779,19 @@ function animate() {
       }
 
     } else {
-      // Hold — gently track the floating node without jitter (FIX 4)
+      // Hold — gentle camera drift around the focused node
       if (focusedNode) {
+        if (fc._holdStart === undefined) {
+          fc._holdStart = performance.now();
+          fc._holdBasePos = camera.position.clone();
+        }
+        const ht = (performance.now() - fc._holdStart) * 0.001;
+        const driftR = 12; // drift radius
+        const driftX = Math.sin(ht * 0.25) * driftR;
+        const driftY = Math.cos(ht * 0.18) * driftR * 0.6;
+        const driftZ = Math.sin(ht * 0.15 + 1.0) * driftR * 0.4;
+        const targetPos = fc._holdBasePos.clone().add(new THREE.Vector3(driftX, driftY, driftZ));
+        camera.position.lerp(targetPos, 0.02);
         lookTarget.lerp(new THREE.Vector3(focusedNode.x, focusedNode.y, focusedNode.z), 0.03);
         camera.lookAt(lookTarget);
       }
