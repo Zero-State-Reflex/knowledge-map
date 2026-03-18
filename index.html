@@ -244,13 +244,41 @@
       rgba(120,110,80,0.3) var(--pct,60%), rgba(120,110,80,0.3) 100%);
   }
   #vol-slider::-webkit-slider-thumb {
-    -webkit-appearance:none; width:11px; height:11px; border-radius:50%;
-    background:rgba(232,216,154,0.85); cursor:pointer; border:none;
-    box-shadow:0 0 6px rgba(232,216,154,0.4);
+    -webkit-appearance:none; width:16px; height:16px; border-radius:50%;
+    background: radial-gradient(circle at 40% 35%,
+      rgba(255,240,180,0.95) 0%,
+      rgba(200,170,100,0.85) 40%,
+      rgba(140,110,60,0.9) 70%,
+      rgba(80,60,30,0.95) 100%);
+    cursor:pointer; border:none;
+    box-shadow:
+      0 0 6px rgba(232,216,154,0.4),
+      0 0 1px 0 rgba(232,216,154,0.6);
+    position:relative;
+  }
+  /* Ring around the planet thumb — uses box-shadow trick */
+  #vol-slider::-webkit-slider-thumb {
+    box-shadow:
+      0 0 0 2.5px transparent,
+      0 0 0 3px rgba(232,216,154,0.3),
+      0 0 0 5px transparent,
+      0 0 0 5.5px rgba(232,216,154,0.15),
+      0 0 8px rgba(232,216,154,0.3);
   }
   #vol-slider::-moz-range-thumb {
-    width:11px; height:11px; border-radius:50%;
-    background:rgba(232,216,154,0.85); cursor:pointer; border:none;
+    width:16px; height:16px; border-radius:50%;
+    background: radial-gradient(circle at 40% 35%,
+      rgba(255,240,180,0.95) 0%,
+      rgba(200,170,100,0.85) 40%,
+      rgba(140,110,60,0.9) 70%,
+      rgba(80,60,30,0.95) 100%);
+    cursor:pointer; border:none;
+    box-shadow:
+      0 0 0 2.5px transparent,
+      0 0 0 3px rgba(232,216,154,0.3),
+      0 0 0 5px transparent,
+      0 0 0 5.5px rgba(232,216,154,0.15),
+      0 0 8px rgba(232,216,154,0.3);
   }
 
   /* ── Search Bar ── */
