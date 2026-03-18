@@ -294,6 +294,72 @@
   .search-result .sr-domain {
     font-size:10px; color:rgba(200,180,120,0.4); margin-top:2px;
   }
+
+  /* ── Mobile Responsive ── */
+  @media (max-width: 768px) {
+    #title-bar { height:90px; }
+    #title { font-size:22px; top:16px; }
+    #subtitle { font-size:10px; top:52px; letter-spacing:0.06em; }
+
+    #zsr-brand { top:10px; left:10px; gap:6px; }
+    #zsr-logo { width:32px; }
+    #zsr-brand-text { font-size:8px; }
+
+    #audio-controls { top:12px; left:auto; right:52px; }
+    #mute-btn { font-size:18px; }
+    #vol-slider { width:50px; }
+
+    #search-wrap { top:12px; right:10px; }
+    #search-input.open { width:160px; font-size:12px; }
+    #search-results { right:10px; top:42px; min-width:160px; }
+
+    #node-info {
+      max-width:calc(100vw - 20px); width:calc(100vw - 20px);
+      padding:16px 18px 20px;
+      left:10px !important; right:10px;
+      bottom:10px !important; top:auto !important;
+      max-height:55vh; overflow-y:auto;
+    }
+    #node-info-name { font-size:20px; }
+    #node-info-domain { font-size:10px; margin-bottom:12px; }
+    #node-info-desc { font-size:13px; line-height:1.6; margin-bottom:14px; }
+    #node-info-img-wrap { height:80px; }
+    #node-info-img { height:80px; }
+    #node-info-wiki { font-size:10px; }
+    #node-info-related-label { font-size:9px; }
+    .related-chip { font-size:10px; padding:4px 10px; }
+    #factoid-label { font-size:12px; }
+    #factoid-text { font-size:12px; line-height:1.6; }
+
+    #legend {
+      bottom:auto; top:90px; left:10px;
+      padding:10px 12px; border-radius:8px;
+      max-height:40vh; overflow-y:auto;
+    }
+    .legend-item { font-size:11px; gap:6px; }
+    .legend-dot { width:8px; height:8px; }
+
+    #instructions { display:none; }
+    #settling { bottom:40px; right:10px; }
+
+    #hover-label { display:none; }
+
+    .moon-label { font-size:8px !important; }
+
+    #leader-svg { display:none; }
+  }
+
+  @media (max-width: 400px) {
+    #title { font-size:18px; }
+    #subtitle { font-size:9px; }
+    #zsr-brand-text { display:none; }
+    #audio-controls { right:44px; }
+    #vol-slider { display:none; }
+    #node-info { max-height:50vh; }
+    #node-info-name { font-size:18px; }
+    #legend { max-height:35vh; }
+    .legend-item { font-size:10px; }
+  }
 </style>
 </head>
 <body>
@@ -2825,6 +2891,14 @@ function getNeighborNames(n) {
 function positionPanel(screenX, screenY) {
   const panel = nodeInfoEl;
   const W = window.innerWidth, H = window.innerHeight;
+
+  // On mobile, CSS pins the panel to the bottom — skip JS positioning
+  if (W <= 768) {
+    panel.style.left = '';
+    panel.style.top = '';
+    return;
+  }
+
   const pw = 576, ph = panel.offsetHeight || 320;
   const margin = 28;
 
