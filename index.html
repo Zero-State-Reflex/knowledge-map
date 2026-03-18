@@ -148,8 +148,24 @@
     border-top:1px solid rgba(200,180,120,0.12);
   }
   #factoid-label {
-    font-size:10px; letter-spacing:0.08em; text-transform:uppercase;
-    color:rgba(200,180,120,0.4); margin-bottom:10px;
+    font-size:15px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase;
+    color:rgba(232,216,154,0.9); margin-bottom:12px;
+    text-shadow:0 0 8px rgba(232,216,154,0.3);
+    opacity:0; transform:translateY(6px);
+    transition:opacity 0.4s ease, transform 0.4s ease;
+  }
+  #node-info-factoid.visible #factoid-label {
+    opacity:1; transform:translateY(0);
+    animation:factoid-glow 1.5s ease-out;
+  }
+  @keyframes factoid-glow {
+    0%   { color:rgba(232,216,154,0.3); text-shadow:0 0 0 transparent; }
+    15%  { color:rgba(255,240,180,1);   text-shadow:0 0 20px rgba(232,216,154,0.8), 0 0 40px rgba(232,216,154,0.4); }
+    30%  { color:rgba(232,216,154,0.5); text-shadow:0 0 6px rgba(232,216,154,0.2); }
+    45%  { color:rgba(255,240,180,0.95);text-shadow:0 0 16px rgba(232,216,154,0.6), 0 0 30px rgba(232,216,154,0.3); }
+    60%  { color:rgba(232,216,154,0.7); text-shadow:0 0 4px rgba(232,216,154,0.15); }
+    75%  { color:rgba(255,240,180,0.85);text-shadow:0 0 10px rgba(232,216,154,0.35); }
+    100% { color:rgba(232,216,154,0.9); text-shadow:0 0 8px rgba(232,216,154,0.3); }
   }
   #factoid-text {
     font-size:14px; line-height:1.7; color:rgba(215,205,185,0.75);
