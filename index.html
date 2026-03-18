@@ -156,16 +156,14 @@
   }
   #node-info-factoid.visible #factoid-label {
     opacity:1; transform:translateY(0);
-    animation:factoid-glow 1.5s ease-out;
+    animation:factoid-glow 3s ease-in-out infinite;
   }
   @keyframes factoid-glow {
-    0%   { color:rgba(232,216,154,0.3); text-shadow:0 0 0 transparent; }
-    15%  { color:rgba(255,240,180,1);   text-shadow:0 0 20px rgba(232,216,154,0.8), 0 0 40px rgba(232,216,154,0.4); }
-    30%  { color:rgba(232,216,154,0.5); text-shadow:0 0 6px rgba(232,216,154,0.2); }
-    45%  { color:rgba(255,240,180,0.95);text-shadow:0 0 16px rgba(232,216,154,0.6), 0 0 30px rgba(232,216,154,0.3); }
-    60%  { color:rgba(232,216,154,0.7); text-shadow:0 0 4px rgba(232,216,154,0.15); }
-    75%  { color:rgba(255,240,180,0.85);text-shadow:0 0 10px rgba(232,216,154,0.35); }
-    100% { color:rgba(232,216,154,0.9); text-shadow:0 0 8px rgba(232,216,154,0.3); }
+    0%   { color:rgba(232,216,154,0.6); text-shadow:0 0 4px rgba(232,216,154,0.15); }
+    25%  { color:rgba(255,240,180,1);   text-shadow:0 0 18px rgba(232,216,154,0.7), 0 0 36px rgba(232,216,154,0.3); }
+    50%  { color:rgba(232,216,154,0.6); text-shadow:0 0 4px rgba(232,216,154,0.15); }
+    75%  { color:rgba(255,240,180,0.9); text-shadow:0 0 14px rgba(232,216,154,0.5), 0 0 28px rgba(232,216,154,0.2); }
+    100% { color:rgba(232,216,154,0.6); text-shadow:0 0 4px rgba(232,216,154,0.15); }
   }
   #factoid-text {
     font-size:14px; line-height:1.7; color:rgba(215,205,185,0.75);
@@ -3165,13 +3163,17 @@ function focusNode(n) {
   n._floatStart = undefined;
   dimToNeighbors(n);
   buildFocusEdges(n);
-  buildMoons(n);
-  buildShip();
-  startKnowledgeRipple(n);
   addTrailPoint(n);
   playChime(n.domain);
   applyFocusLabel(n);
   startFocusCamAnim(new THREE.Vector3(n.x, n.y, n.z));
+  // Defer heavy mesh creation so camera animation starts without frame spike
+  setTimeout(() => {
+    if (focusedNode !== n) return;
+    buildMoons(n);
+    buildShip();
+    startKnowledgeRipple(n);
+  }, 100);
   setTimeout(() => {
     if (focusedNode === n) {
       const sp = getNodeScreenPos(n);
@@ -3684,14 +3686,21 @@ function animate() {
   if (window._bhTick) window._bhTick();
 
   // Throttle force sim after settling — every 3rd frame saves ~60% CPU
-  if (!settled || _animFrame % 3 === 0) simTick();
   _animFrame++;
+  const isFocusAnimating = !!(focusCamAnim || camAnim);
+
+  // Skip force sim entirely during camera animation — biggest CPU saver
+  if (isFocusAnimating) {
+    // Only update positions, no physics
+  } else if (!settled || _animFrame % 3 === 0) {
+    simTick();
+  }
 
   tickDim();
   updateScene();
 
-  // Throttle expensive visual updates — every 2nd frame
-  if (_animFrame % 2 === 0) {
+  // Throttle expensive visual updates — skip during focus animation
+  if (!isFocusAnimating && _animFrame % 2 === 0) {
     updatePulses();
     updateShootingStars();
   }
