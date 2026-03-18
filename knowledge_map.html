@@ -137,6 +137,29 @@
     pointer-events:auto;
   }
   .related-chip:hover { background:rgba(232,216,154,0.15); color:#e8d89a; }
+  #node-info-factoid {
+    max-height:0; overflow:hidden; opacity:0;
+    transition:max-height 0.5s ease, opacity 0.4s ease, margin 0.4s ease;
+    margin-top:0; border-top:none;
+  }
+  #node-info-factoid.visible {
+    max-height:200px; opacity:1;
+    margin-top:18px; padding-top:16px;
+    border-top:1px solid rgba(200,180,120,0.12);
+  }
+  #factoid-label {
+    font-size:10px; letter-spacing:0.08em; text-transform:uppercase;
+    color:rgba(200,180,120,0.4); margin-bottom:10px;
+  }
+  #factoid-text {
+    font-size:14px; line-height:1.7; color:rgba(215,205,185,0.75);
+  }
+  #factoid-text .cursor {
+    display:inline-block; width:1px; height:1em; vertical-align:text-bottom;
+    background:rgba(232,216,154,0.7); margin-left:2px;
+    animation:blink-cursor 0.6s steps(1) infinite;
+  }
+  @keyframes blink-cursor { 0%,50%{opacity:1} 51%,100%{opacity:0} }
   .moon-label {
     position:fixed; pointer-events:auto; cursor:pointer; z-index:130;
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:10px; letter-spacing:0.03em;
@@ -288,6 +311,10 @@
   <a id="node-info-wiki" href="#" target="_blank" rel="noopener">↗ Wikipedia</a>
   <div id="node-info-related-label">Related Disciplines</div>
   <div id="node-info-related"></div>
+  <div id="node-info-factoid">
+    <div id="factoid-label">Did you know?</div>
+    <div id="factoid-text"></div>
+  </div>
 </div>
 <div id="hover-label"></div>
 <div id="legend"></div>
@@ -2899,6 +2926,74 @@ function makePlaceholderSVG(color, label) {
   return 'data:image/svg+xml;base64,' + btoa(svg);
 }
 
+// ─── FACTOID SYSTEM ──────────────────────────────────────────────────────────
+const factoidCache = new Map();
+let factoidTyper = null; // active typewriter interval
+
+async function fetchFactoid(title) {
+  if (factoidCache.has(title)) return factoidCache.get(title);
+  const cleanTitle = title.replace(/\s*\((?:Med|Interdis\.)\)\s*$/, '').trim();
+  const slug = encodeURIComponent(cleanTitle.replace(/ /g, '_'));
+  try {
+    const r = await fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${slug}&prop=extracts&exintro=1&explaintext=1&format=json&origin=*`);
+    const d = await r.json();
+    const pages = Object.values(d?.query?.pages || {});
+    const extract = pages[0]?.extract || '';
+    // Get the first 2-3 sentences as the factoid
+    const sentences = extract.split(/(?<=[.!?])\s+/).filter(s => s.length > 20);
+    const factoid = sentences.slice(0, 2).join(' ').trim();
+    factoidCache.set(title, factoid);
+    return factoid;
+  } catch(e) { factoidCache.set(title, ''); return ''; }
+}
+
+function typewriterEffect(el, text, speed) {
+  // Clear any existing typer
+  if (factoidTyper) clearInterval(factoidTyper);
+  el.innerHTML = '<span class="cursor"></span>';
+  let i = 0;
+  factoidTyper = setInterval(() => {
+    if (i >= text.length) {
+      clearInterval(factoidTyper);
+      factoidTyper = null;
+      // Remove cursor after a brief pause
+      setTimeout(() => {
+        const cursor = el.querySelector('.cursor');
+        if (cursor) cursor.remove();
+      }, 1500);
+      return;
+    }
+    const cursor = el.querySelector('.cursor');
+    if (cursor) cursor.insertAdjacentText('beforebegin', text[i]);
+    i++;
+  }, speed);
+}
+
+function showFactoid(nodeId) {
+  const panel = document.getElementById('node-info-factoid');
+  const textEl = document.getElementById('factoid-text');
+  // Reset
+  panel.classList.remove('visible');
+  textEl.innerHTML = '';
+  if (factoidTyper) { clearInterval(factoidTyper); factoidTyper = null; }
+
+  fetchFactoid(nodeId).then(text => {
+    if (!text || focusedNode?.id !== nodeId) return;
+    panel.classList.add('visible');
+    // Start typewriter after the slide-down animation
+    setTimeout(() => {
+      if (focusedNode?.id !== nodeId) return;
+      typewriterEffect(textEl, text, 25);
+    }, 400);
+  });
+}
+
+function hideFactoid() {
+  if (factoidTyper) { clearInterval(factoidTyper); factoidTyper = null; }
+  const panel = document.getElementById('node-info-factoid');
+  panel.classList.remove('visible');
+}
+
 function showInfo(n, screenX, screenY) {
   nodeInfoName.textContent = n.id;
   nodeInfoDom.textContent  = n.domain;
@@ -2960,12 +3055,16 @@ function showInfo(n, screenX, screenY) {
 
   // Position after adding content (need next frame for height)
   requestAnimationFrame(() => positionPanel(screenX, screenY));
+
+  // Fetch and show factoid with typewriter
+  showFactoid(n.id);
 }
 
 function hideInfo() {
   nodeInfoEl.classList.remove('visible');
   leaderLine.style.display = 'none';
   leaderDot.style.display  = 'none';
+  hideFactoid();
 }
 
 // Hide leader initially
