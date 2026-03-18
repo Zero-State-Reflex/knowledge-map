@@ -3195,7 +3195,7 @@ canvas.addEventListener('click', e => {
     const shipHits = raycaster.intersectObject(shipMeshForRaycast, true);
     if (shipHits.length > 0) {
       const slug = encodeURIComponent(focusedNode.id.replace(/\s*\((?:Med|Interdis\.)\)\s*$/, '').trim().replace(/ /g, '_'));
-      window.open(`https://en.wikipedia.org/wiki/${slug}#See_also`, '_blank');
+      window.open(`https://en.wikipedia.org/wiki/${slug}`, '_blank');
       return;
     }
   }
