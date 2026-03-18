@@ -232,7 +232,7 @@
   }
   #mute-btn {
     background:none; border:none; cursor:pointer; padding:4px;
-    color:rgba(200,185,140,0.55); font-size:22px; line-height:1;
+    color:rgba(200,185,140,0.7); font-size:33px; line-height:1;
     transition:color 0.2s, transform 0.15s;
   }
   #mute-btn:hover { color:rgba(232,216,154,0.95); transform:scale(1.1); }
@@ -306,7 +306,7 @@
     #zsr-brand-text { font-size:8px; }
 
     #audio-controls { top:12px; left:auto; right:52px; }
-    #mute-btn { font-size:18px; }
+    #mute-btn { font-size:26px; }
     #vol-slider { width:50px; }
 
     #search-wrap { top:12px; right:10px; }
@@ -406,7 +406,7 @@
 </div>
 <div id="search-results"></div>
 <div id="audio-controls">
-  <button id="mute-btn" title="Mute / Unmute">♪</button>
+  <button id="mute-btn" title="Mute / Unmute">🔊</button>
   <input id="vol-slider" type="range" min="0" max="1" step="0.01" value="0.6" title="Volume">
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -3929,7 +3929,7 @@ volSlider.addEventListener('input', () => {
   }
   if (lastVolume > 0 && isMuted) {
     isMuted = false;
-    muteBtn.textContent = '♪';
+    muteBtn.textContent = '🔊';
     muteBtn.style.opacity = '1';
   }
 });
@@ -3939,7 +3939,7 @@ muteBtn.addEventListener('click', () => {
   if (audioCtx?._masterGain) {
     audioCtx._masterGain.gain.setTargetAtTime(isMuted ? 0 : lastVolume, audioCtx.currentTime, 0.08);
   }
-  muteBtn.textContent = isMuted ? '♩' : '♪';
+  muteBtn.textContent = isMuted ? '🔇' : '🔊';
   muteBtn.style.opacity = isMuted ? '0.35' : '1';
 });
 
