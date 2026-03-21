@@ -1785,9 +1785,23 @@ function makeMoonTexture(domain, nodeId) {
   return tex;
 }
 
+// ─── GAUSSIAN GLOW TEXTURE (shared by all halos) ────────────────────────────
+const glowCanvas = document.createElement('canvas');
+glowCanvas.width = glowCanvas.height = 128;
+const glowCtx = glowCanvas.getContext('2d');
+// Gaussian radial gradient: bright center, smooth falloff
+const glowGrad = glowCtx.createRadialGradient(64, 64, 0, 64, 64, 64);
+glowGrad.addColorStop(0,    'rgba(255,255,255,0.5)');
+glowGrad.addColorStop(0.15, 'rgba(255,255,255,0.25)');
+glowGrad.addColorStop(0.35, 'rgba(255,255,255,0.08)');
+glowGrad.addColorStop(0.6,  'rgba(255,255,255,0.02)');
+glowGrad.addColorStop(1,    'rgba(255,255,255,0)');
+glowCtx.fillStyle = glowGrad;
+glowCtx.fillRect(0, 0, 128, 128);
+const glowTexture = new THREE.CanvasTexture(glowCanvas);
+
 // ─── NODE MESHES ────────────────────────────────────────────────────────────
 const sphereGeo = new THREE.SphereGeometry(1, Q.sphereSegs[0], Q.sphereSegs[1]);
-const atmGeo    = new THREE.SphereGeometry(1, Q.atmSegs[0], Q.atmSegs[1]);
 const nodeMeshes = [];
 
 nodes.forEach(n => {
@@ -1814,20 +1828,19 @@ nodes.forEach(n => {
   nodeMeshes.push(mesh);
   n.mesh = mesh;
 
-  // Atmosphere glow shell — thin rim, BackSide so it only shows at edges
-  const atmMat = new THREE.MeshBasicMaterial({
+  // Atmosphere glow — gaussian sprite billboard (cheaper than sphere mesh)
+  const atmMat = new THREE.SpriteMaterial({
+    map: glowTexture,
     color: domColor,
     transparent: true,
-    opacity: 0.06,
-    side: THREE.BackSide,
-    depthWrite: false,
+    opacity: 0.18,
     blending: THREE.AdditiveBlending,
+    depthWrite: false,
   });
-  const atm = new THREE.Mesh(atmGeo, atmMat);
-  atm.scale.setScalar(n.size * 2.2 * 1.12);
+  const atm = new THREE.Sprite(atmMat);
+  const glowScale = n.size * 2.2 * 2.8; // larger than planet for soft halo
+  atm.scale.set(glowScale, glowScale, 1);
   atm.position.set(n.x, n.y, n.z);
-  atm.userData.isAtm = true;
-  atm.userData.node  = n;
   scene.add(atm);
   n.atm = atm;
   n.atmMat = atmMat;
@@ -2066,7 +2079,6 @@ let   moonData     = [];   // per-moon orbit state
 
 const moonSphereGeo = new THREE.SphereGeometry(1, Q.moonSegs[0], Q.moonSegs[1]);
 const moonRingGeo   = new THREE.RingGeometry(1.55, 1.85, 48);
-const moonHaloGeo   = new THREE.SphereGeometry(1, 20, 14);
 
 function buildMoons(centerNode) {
   clearMoons();
@@ -2114,17 +2126,18 @@ function buildMoons(centerNode) {
       mat.needsUpdate = true;
     }, i * 120 + 300);
 
-    // ── Glowing halo shell ───────────────────────────────────────────────────
-    const haloMat = new THREE.MeshBasicMaterial({
+    // ── Gaussian glow sprite ────────────────────────────────────────────────
+    const haloMat = new THREE.SpriteMaterial({
+      map: glowTexture,
       color: col,
       transparent: true,
-      opacity: 0.18,
-      side: THREE.BackSide,
+      opacity: 0.25,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
-    const halo = new THREE.Mesh(moonHaloGeo, haloMat);
-    halo.scale.setScalar(mSize * 2.0);
+    const halo = new THREE.Sprite(haloMat);
+    const moonGlowScale = mSize * 4.0;
+    halo.scale.set(moonGlowScale, moonGlowScale, 1);
     scene.add(halo);
 
     // ── Orbital ring — only on randomly selected moons ───────────────────────
