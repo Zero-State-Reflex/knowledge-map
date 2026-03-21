@@ -2675,7 +2675,8 @@ function updateScene() {
 }
 
 // ─── CAMERA / ORBIT ─────────────────────────────────────────────────────────
-let camTheta = 0.5, camPhi = 1.25, camRadius = 1600;
+const CAM_HOME_RADIUS = 1600;
+let camTheta = 0.5, camPhi = 1.25, camRadius = 5000; // start zoomed out
 const lookTarget = new THREE.Vector3();
 let isDragging = false, prevX = 0, prevY = 0, mouseDownX = 0, mouseDownY = 0;
 let autoRotate = true;
@@ -3889,15 +3890,30 @@ function deferTextureGeneration() {
 
 let _animFrame = 0;
 let _loadingDismissed = false;
+let _introZoom = null; // intro camera animation state
+
 function animate() {
   requestAnimationFrame(animate);
 
-  // Dismiss loading screen and start deferred texture generation after first render
+  // Dismiss loading screen, start textures, and kick off intro zoom
   if (!_loadingDismissed) {
     _loadingDismissed = true;
     const ls = document.getElementById('loading-screen');
     if (ls) { ls.classList.add('hidden'); setTimeout(() => ls.remove(), 900); }
     if (!_texturesQueued) { _texturesQueued = true; deferTextureGeneration(); }
+    // Start intro zoom: swoop from 5000 to 1600 over 120 frames
+    _introZoom = { startRadius: 5000, endRadius: CAM_HOME_RADIUS, t: 0, frames: 120 };
+  }
+
+  // Intro zoom animation
+  if (_introZoom) {
+    _introZoom.t++;
+    const raw = Math.min(_introZoom.t / _introZoom.frames, 1);
+    // Cubic ease-out for dramatic deceleration
+    const ease = 1 - Math.pow(1 - raw, 3);
+    camRadius = _introZoom.startRadius + (_introZoom.endRadius - _introZoom.startRadius) * ease;
+    setCamFromSpherical();
+    if (raw >= 1) _introZoom = null;
   }
 
   if (window._starTwinkle) window._starTwinkle();
