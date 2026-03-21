@@ -1356,10 +1356,10 @@ const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerH
 })();
 
 // ─── BLACK HOLE ───────────────────────────────────────────────────────────────
-(function buildBlackHole() {
-  // Position: off-center in the background star shell
-  const BH_POS = new THREE.Vector3(3200, -800, -5500);
+let blackHoleMesh = null; // exposed for raycasting
+const BH_POS = new THREE.Vector3(3200, -800, -5500);
 
+(function buildBlackHole() {
   // ── Event horizon — pure black sphere, cuts stars behind it ──────────────
   const horizonGeo = new THREE.SphereGeometry(1, 48, 36);
   const horizonMat = new THREE.MeshBasicMaterial({
@@ -1369,7 +1369,9 @@ const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerH
   const horizon = new THREE.Mesh(horizonGeo, horizonMat);
   horizon.scale.setScalar(260);
   horizon.position.copy(BH_POS);
+  horizon.userData.isBlackHole = true;
   scene.add(horizon);
+  blackHoleMesh = horizon;
 
   // ── Photon sphere — faint blue-white ring right at edge ───────────────────
   const photonGeo = new THREE.SphereGeometry(1, 48, 36);
@@ -3408,6 +3410,106 @@ function focusNode(n) {
   }, 700);
 }
 
+// ─── BLACK HOLE INFO CARD ────────────────────────────────────────────────────
+let blackHoleFocused = false;
+
+function showBlackHoleCard() {
+  // Unfocus any current planet
+  if (focusedNode) {
+    delete focusedNode._restX; delete focusedNode._restY; delete focusedNode._restZ;
+    delete focusedNode._floatStart;
+    focusCamAnim = null;
+    clearFocusLabel(); clearFocusEdges(); clearMoons(); clearShip();
+    focusedNode = null;
+    resetDim();
+  }
+  blackHoleFocused = true;
+
+  // Fly camera toward the black hole
+  const dir = camera.position.clone().sub(BH_POS).normalize();
+  const endPos = BH_POS.clone().add(dir.multiplyScalar(1400));
+  animateCamTo(endPos, BH_POS.clone(), 90);
+
+  // Show info card with black hole content
+  nodeInfoName.textContent = 'Black Hole';
+  nodeInfoDom.textContent  = 'Astrophysics';
+  nodeInfoDom.style.color  = '#8faa8b';
+  nodeInfoDesc.textContent = 'A region of spacetime where gravity is so intense that nothing — not even light — can escape once it crosses the event horizon. Predicted by Einstein\'s general relativity and first imaged by the Event Horizon Telescope in 2019.';
+
+  // Image
+  const imgWrap = document.getElementById('node-info-img-wrap');
+  const imgEl   = document.getElementById('node-info-img');
+  imgWrap.classList.remove('visible');
+  imgEl.classList.remove('loaded');
+  imgEl.src = '';
+  // Fetch the M87 black hole image from Wikipedia
+  fetchWikiImage('Black hole').then(url => {
+    if (url && blackHoleFocused) {
+      imgEl.src = url;
+      imgEl.alt = 'Black Hole';
+      imgWrap.classList.add('visible');
+      imgEl.onload = () => imgEl.classList.add('loaded');
+    }
+  });
+
+  // Wikipedia link
+  const wikiLink = document.getElementById('node-info-wiki');
+  wikiLink.href = 'https://en.wikipedia.org/wiki/Black_hole';
+  wikiLink.textContent = '↗ Wikipedia: Black Hole';
+
+  // Related chips
+  const relatedEl = document.getElementById('node-info-related');
+  relatedEl.innerHTML = '';
+  ['Astrophysics','Cosmology','Relativity','Quantum Mechanics','Particle Physics','Gravity'].forEach(name => {
+    const node = nodeMap.get(name);
+    const chip = document.createElement('span');
+    chip.className = 'related-chip';
+    chip.textContent = name;
+    if (node) {
+      chip.style.borderColor = (DOMAINS[node.domain]?.color || '#aaa') + '55';
+      chip.addEventListener('click', ev => { ev.stopPropagation(); hideBlackHoleCard(); focusNode(node); });
+    }
+    relatedEl.appendChild(chip);
+  });
+
+  nodeInfoEl.classList.add('visible');
+  leaderLine.style.display = 'none';
+  leaderDot.style.display = 'none';
+
+  // Position
+  requestAnimationFrame(() => {
+    const sp = toScreen(BH_POS);
+    positionPanel(sp.x, sp.y);
+  });
+
+  // Factoid
+  const factPanel = document.getElementById('node-info-factoid');
+  const factText = document.getElementById('factoid-text');
+  factPanel.classList.remove('visible');
+  factText.innerHTML = '';
+  if (factoidTyper) { clearInterval(factoidTyper); factoidTyper = null; }
+  setTimeout(() => {
+    if (!blackHoleFocused) return;
+    factPanel.classList.add('visible');
+    setTimeout(() => {
+      if (!blackHoleFocused) return;
+      typewriterEffect(factText,
+        'The supermassive black hole at the center of galaxy M87, first photographed in 2019, has a mass of 6.5 billion suns. ' +
+        'Its event horizon is larger than our entire solar system, yet it warps spacetime so severely that light orbits it before falling in forever.',
+        25);
+    }, 400);
+  }, 800);
+
+  // Gallery
+  showGallery('Black hole');
+}
+
+function hideBlackHoleCard() {
+  blackHoleFocused = false;
+  hideInfo();
+  hideGallery();
+}
+
 canvas.addEventListener('click', e => {
   const dx = e.clientX - mouseDownX, dy = e.clientY - mouseDownY;
   if (Math.sqrt(dx*dx + dy*dy) > 6) return;
@@ -3415,6 +3517,15 @@ canvas.addEventListener('click', e => {
   mouse2d.x = (e.clientX / window.innerWidth)  * 2 - 1;
   mouse2d.y = -(e.clientY / window.innerHeight) * 2 + 1;
   raycaster.setFromCamera(mouse2d, camera);
+
+  // Check black hole
+  if (blackHoleMesh) {
+    const bhHits = raycaster.intersectObject(blackHoleMesh);
+    if (bhHits.length > 0) {
+      showBlackHoleCard();
+      return;
+    }
+  }
 
   // Check spaceship first
   if (shipMeshForRaycast && focusedNode) {
@@ -3460,10 +3571,19 @@ canvas.addEventListener('click', e => {
     delete focusedNode._restX; delete focusedNode._restY; delete focusedNode._restZ;
     delete focusedNode._floatStart;
     focusCamAnim = null;
-    clearFocusLabel(); clearFocusEdges(); clearMoons();
+    clearFocusLabel(); clearFocusEdges(); clearMoons(); clearShip();
     focusedNode = null;
     resetDim();
     hideInfo();
+    hideGallery();
+    const endPos = new THREE.Vector3(
+      camRadius * Math.sin(camPhi) * Math.sin(camTheta),
+      camRadius * Math.cos(camPhi),
+      camRadius * Math.sin(camPhi) * Math.cos(camTheta)
+    );
+    animateCamTo(endPos, new THREE.Vector3(0,0,0), 70);
+  } else if (blackHoleFocused) {
+    hideBlackHoleCard();
     const endPos = new THREE.Vector3(
       camRadius * Math.sin(camPhi) * Math.sin(camTheta),
       camRadius * Math.cos(camPhi),
