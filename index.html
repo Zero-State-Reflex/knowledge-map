@@ -3553,7 +3553,7 @@ function startBHParticles() {
 
     lifetimes.push(Math.random()); // stagger starting phase
     colors[i*3] = 1.0; colors[i*3+1] = 0.7; colors[i*3+2] = 0.3; // warm orange
-    sizes[i] = 1.5 + Math.random() * 2.5;
+    sizes[i] = 4 + Math.random() * 4;
   }
 
   const geo = new THREE.BufferGeometry();
@@ -3619,8 +3619,9 @@ function updateBHParticles() {
     col[iy]   = 0.5 + heat * 0.5;
     col[iz]   = 0.2 + heat * 0.8;
 
-    // Size: grows slightly as it heats up
-    sz[i] = 1.5 + heat * 3;
+    // Size: big when far away, shrink as they get pulled in (compressed by gravity)
+    const farness = Math.min(1, dist / 800); // 1 = far, 0 = at center
+    sz[i] = 1.0 + farness * 6;
 
     // Respawn if too close to center (swallowed) or too far away (escaped)
     if (dist < 100 || dist > 1500) {
