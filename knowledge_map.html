@@ -296,6 +296,26 @@
     font-size:10px; color:rgba(200,180,120,0.4); margin-top:2px;
   }
 
+  /* ── Topic Gallery ── */
+  #topic-gallery {
+    position:fixed; z-index:119; pointer-events:none;
+    display:flex; gap:10px;
+    opacity:0; transition:opacity 0.3s ease;
+  }
+  #topic-gallery.visible { opacity:1; }
+  .gallery-img-wrap {
+    width:120px; height:80px; border-radius:8px; overflow:hidden;
+    border:1px solid rgba(200,180,120,0.15);
+    background:rgba(4,6,15,0.8);
+    opacity:0; transform:translateY(10px);
+    transition:opacity 0.5s ease, transform 0.5s ease;
+    pointer-events:auto;
+  }
+  .gallery-img-wrap.visible { opacity:1; transform:translateY(0); }
+  .gallery-img-wrap img {
+    width:100%; height:100%; object-fit:cover; display:block;
+  }
+
   /* ── Mobile Responsive ── */
   @media (max-width: 768px) {
     #title-bar { height:90px; }
@@ -348,6 +368,7 @@
     .moon-label { font-size:8px !important; }
 
     #leader-svg { display:none; }
+    #topic-gallery { display:none; }
   }
 
   @media (max-width: 400px) {
@@ -397,6 +418,7 @@
     <div id="factoid-text"></div>
   </div>
 </div>
+<div id="topic-gallery"></div>
 <div id="hover-label"></div>
 <div id="legend"></div>
 <div id="instructions">drag → spin<br>scroll → zoom<br>hover → attract<br>click → explore</div>
@@ -3083,6 +3105,90 @@ function hideFactoid() {
   panel.classList.remove('visible');
 }
 
+// ─── TOPIC GALLERY — 3 related images below the info card ───────────────────
+const galleryEl = document.getElementById('topic-gallery');
+const galleryImageCache = new Map();
+
+async function fetchGalleryImages(title) {
+  if (galleryImageCache.has(title)) return galleryImageCache.get(title);
+  const cleanTitle = title.replace(/\s*\((?:Med|Interdis\.)\)\s*$/, '').trim();
+  const slug = encodeURIComponent(cleanTitle.replace(/ /g, '_'));
+  const api = 'https://en.wikipedia.org/w/api.php';
+  try {
+    // Get article images
+    const r = await fetch(`${api}?action=query&titles=${slug}&prop=images&imlimit=30&format=json&origin=*`);
+    const d = await r.json();
+    const pages = Object.values(d?.query?.pages || {});
+    const allImgs = (pages[0]?.images || [])
+      .map(im => im.title)
+      .filter(t => /\.(jpg|jpeg|png)$/i.test(t))
+      .filter(t => !/icon|logo|symbol|flag|edit|lock|question|disambig|commons|stub|wiki|portrait|signature/i.test(t));
+
+    if (allImgs.length < 3) { galleryImageCache.set(title, []); return []; }
+
+    // Pick 3 spread across the article (not just first 3)
+    const picks = [];
+    const step = Math.floor(allImgs.length / 4);
+    picks.push(allImgs[Math.min(1, allImgs.length - 1)]);
+    picks.push(allImgs[Math.min(step + 1, allImgs.length - 1)]);
+    picks.push(allImgs[Math.min(step * 2 + 1, allImgs.length - 1)]);
+
+    // Get thumbnail URLs
+    const fileSlugs = picks.map(f => encodeURIComponent(f)).join('|');
+    const r2 = await fetch(`${api}?action=query&titles=${fileSlugs}&prop=imageinfo&iiprop=url&iiurlwidth=250&format=json&origin=*`);
+    const d2 = await r2.json();
+    const thumbs = Object.values(d2?.query?.pages || {})
+      .map(p => p?.imageinfo?.[0]?.thumburl)
+      .filter(Boolean);
+
+    galleryImageCache.set(title, thumbs);
+    return thumbs;
+  } catch(e) { galleryImageCache.set(title, []); return []; }
+}
+
+function showGallery(nodeId) {
+  galleryEl.classList.remove('visible');
+  galleryEl.innerHTML = '';
+
+  fetchGalleryImages(nodeId).then(urls => {
+    if (!urls.length || focusedNode?.id !== nodeId) return;
+
+    urls.forEach((url, i) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'gallery-img-wrap';
+      const img = document.createElement('img');
+      img.src = url;
+      img.alt = nodeId;
+      img.onload = () => {
+        // Staggered fade-in: 0ms, 200ms, 400ms
+        setTimeout(() => wrap.classList.add('visible'), i * 200);
+      };
+      wrap.appendChild(img);
+      galleryEl.appendChild(wrap);
+    });
+
+    // Position below the info card
+    requestAnimationFrame(() => {
+      const panel = nodeInfoEl.getBoundingClientRect();
+      galleryEl.style.left = panel.left + 'px';
+      galleryEl.style.top = (panel.bottom + 10) + 'px';
+      galleryEl.classList.add('visible');
+    });
+  });
+}
+
+function hideGallery() {
+  galleryEl.classList.remove('visible');
+  galleryEl.innerHTML = '';
+}
+
+function repositionGallery() {
+  if (!galleryEl.classList.contains('visible')) return;
+  const panel = nodeInfoEl.getBoundingClientRect();
+  galleryEl.style.left = panel.left + 'px';
+  galleryEl.style.top = (panel.bottom + 10) + 'px';
+}
+
 function showInfo(n, screenX, screenY) {
   nodeInfoName.textContent = n.id;
   nodeInfoDom.textContent  = n.domain;
@@ -3147,6 +3253,8 @@ function showInfo(n, screenX, screenY) {
 
   // Fetch and show factoid with typewriter
   showFactoid(n.id);
+  // Fetch and show 3 gallery images
+  showGallery(n.id);
 }
 
 function hideInfo() {
@@ -3154,6 +3262,7 @@ function hideInfo() {
   leaderLine.style.display = 'none';
   leaderDot.style.display  = 'none';
   hideFactoid();
+  hideGallery();
 }
 
 // Hide leader initially
@@ -3900,6 +4009,7 @@ window.addEventListener('resize', () => {
   if (focusedNode && nodeInfoEl.classList.contains('visible')) {
     const sp = getNodeScreenPos(focusedNode);
     positionPanel(sp.x, sp.y);
+    repositionGallery();
   }
 });
 
@@ -3971,6 +4081,7 @@ muteBtn.addEventListener('click', () => {
       leaderLine.setAttribute('x2', anchorX);
       leaderLine.setAttribute('y2', anchorY);
     }
+    repositionGallery();
   });
 
   window.addEventListener('pointerup', () => { dragging = false; });
