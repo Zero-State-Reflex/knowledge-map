@@ -299,22 +299,28 @@
   /* ── Topic Gallery ── */
   #topic-gallery {
     position:fixed; z-index:119; pointer-events:none;
-    display:flex; gap:10px;
-    opacity:0; transition:opacity 0.3s ease;
+    display:flex; justify-content:center; gap:0;
+    opacity:0; transition:opacity 0.4s ease;
   }
   #topic-gallery.visible { opacity:1; }
   .gallery-img-wrap {
-    width:120px; height:80px; border-radius:8px; overflow:hidden;
-    border:1px solid rgba(200,180,120,0.15);
-    background:rgba(4,6,15,0.8);
-    opacity:0; transform:translateY(10px);
+    flex:1; height:90px; overflow:hidden;
+    border:1px solid rgba(200,180,120,0.12);
+    border-left:none;
+    background:rgba(4,6,15,0.85);
+    opacity:0; transform:translateY(8px);
     transition:opacity 0.5s ease, transform 0.5s ease;
-    pointer-events:auto;
+    pointer-events:auto; position:relative;
   }
+  .gallery-img-wrap:first-child { border-left:1px solid rgba(200,180,120,0.12); border-radius:8px 0 0 8px; }
+  .gallery-img-wrap:last-child { border-radius:0 8px 8px 0; }
   .gallery-img-wrap.visible { opacity:1; transform:translateY(0); }
   .gallery-img-wrap img {
     width:100%; height:100%; object-fit:cover; display:block;
+    filter:saturate(0.7) contrast(1.1);
+    transition:filter 0.3s;
   }
+  .gallery-img-wrap:hover img { filter:saturate(1) contrast(1); }
 
   /* ── Mobile Responsive ── */
   @media (max-width: 768px) {
@@ -3108,47 +3114,65 @@ function hideFactoid() {
 // ─── TOPIC GALLERY — 3 related images below the info card ───────────────────
 const galleryEl = document.getElementById('topic-gallery');
 const galleryImageCache = new Map();
+let _galleryRepoInterval = null;
 
 async function fetchGalleryImages(title) {
   if (galleryImageCache.has(title)) return galleryImageCache.get(title);
   const cleanTitle = title.replace(/\s*\((?:Med|Interdis\.)\)\s*$/, '').trim();
-  const slug = encodeURIComponent(cleanTitle.replace(/ /g, '_'));
-  const api = 'https://en.wikipedia.org/w/api.php';
+  const api = 'https://commons.wikimedia.org/w/api.php';
+
   try {
-    // Get article images
-    const r = await fetch(`${api}?action=query&titles=${slug}&prop=images&imlimit=30&format=json&origin=*`);
+    // Search Wikimedia Commons for the topic — finds historical, CC-licensed imagery
+    const q = encodeURIComponent(cleanTitle);
+    const r = await fetch(`${api}?action=query&generator=search&gsrsearch=${q}&gsrnamespace=6&gsrlimit=20&prop=imageinfo&iiprop=url&iiurlwidth=400&format=json&origin=*`);
     const d = await r.json();
     const pages = Object.values(d?.query?.pages || {});
-    const allImgs = (pages[0]?.images || [])
-      .map(im => im.title)
-      .filter(t => /\.(jpg|jpeg|png)$/i.test(t))
-      .filter(t => !/icon|logo|symbol|flag|edit|lock|question|disambig|commons|stub|wiki|portrait|signature/i.test(t));
 
-    if (allImgs.length < 3) { galleryImageCache.set(title, []); return []; }
+    // Filter for actual images, skip SVGs and tiny files
+    const candidates = pages
+      .filter(p => p?.imageinfo?.[0]?.thumburl)
+      .filter(p => /\.(jpg|jpeg|png)$/i.test(p.title || ''))
+      .map(p => p.imageinfo[0].thumburl);
 
-    // Pick 3 spread across the article (not just first 3)
-    const picks = [];
-    const step = Math.floor(allImgs.length / 4);
-    picks.push(allImgs[Math.min(1, allImgs.length - 1)]);
-    picks.push(allImgs[Math.min(step + 1, allImgs.length - 1)]);
-    picks.push(allImgs[Math.min(step * 2 + 1, allImgs.length - 1)]);
+    if (candidates.length < 3) {
+      // Fallback: try Wikipedia article images
+      const slug = encodeURIComponent(cleanTitle.replace(/ /g, '_'));
+      const wApi = 'https://en.wikipedia.org/w/api.php';
+      const r2 = await fetch(`${wApi}?action=query&titles=${slug}&prop=images&imlimit=20&format=json&origin=*`);
+      const d2 = await r2.json();
+      const wPages = Object.values(d2?.query?.pages || {});
+      const allImgs = (wPages[0]?.images || [])
+        .map(im => im.title)
+        .filter(t => /\.(jpg|jpeg|png)$/i.test(t))
+        .filter(t => !/icon|logo|symbol|flag|edit|lock|question|disambig|commons|stub|wiki/i.test(t));
 
-    // Get thumbnail URLs
-    const fileSlugs = picks.map(f => encodeURIComponent(f)).join('|');
-    const r2 = await fetch(`${api}?action=query&titles=${fileSlugs}&prop=imageinfo&iiprop=url&iiurlwidth=250&format=json&origin=*`);
-    const d2 = await r2.json();
-    const thumbs = Object.values(d2?.query?.pages || {})
-      .map(p => p?.imageinfo?.[0]?.thumburl)
-      .filter(Boolean);
+      if (allImgs.length >= 3) {
+        const step = Math.floor(allImgs.length / 4);
+        const picks = [allImgs[0], allImgs[Math.min(step, allImgs.length-1)], allImgs[Math.min(step*2, allImgs.length-1)]];
+        const fileSlugs = picks.map(f => encodeURIComponent(f)).join('|');
+        const r3 = await fetch(`${wApi}?action=query&titles=${fileSlugs}&prop=imageinfo&iiprop=url&iiurlwidth=400&format=json&origin=*`);
+        const d3 = await r3.json();
+        const fallbackThumbs = Object.values(d3?.query?.pages || {})
+          .map(p => p?.imageinfo?.[0]?.thumburl).filter(Boolean);
+        galleryImageCache.set(title, fallbackThumbs.slice(0,3));
+        return fallbackThumbs.slice(0,3);
+      }
+      galleryImageCache.set(title, []);
+      return [];
+    }
 
-    galleryImageCache.set(title, thumbs);
-    return thumbs;
+    // Pick 3 spread across results for variety
+    const step = Math.max(1, Math.floor(candidates.length / 4));
+    const picks = [candidates[0], candidates[Math.min(step, candidates.length-1)], candidates[Math.min(step*2, candidates.length-1)]];
+    galleryImageCache.set(title, picks);
+    return picks;
   } catch(e) { galleryImageCache.set(title, []); return []; }
 }
 
 function showGallery(nodeId) {
   galleryEl.classList.remove('visible');
   galleryEl.innerHTML = '';
+  if (_galleryRepoInterval) { clearInterval(_galleryRepoInterval); _galleryRepoInterval = null; }
 
   fetchGalleryImages(nodeId).then(urls => {
     if (!urls.length || focusedNode?.id !== nodeId) return;
@@ -3159,34 +3183,32 @@ function showGallery(nodeId) {
       const img = document.createElement('img');
       img.src = url;
       img.alt = nodeId;
-      img.onload = () => {
-        // Staggered fade-in: 0ms, 200ms, 400ms
-        setTimeout(() => wrap.classList.add('visible'), i * 200);
-      };
+      img.onload = () => setTimeout(() => wrap.classList.add('visible'), i * 250);
       wrap.appendChild(img);
       galleryEl.appendChild(wrap);
     });
 
-    // Position below the info card
-    requestAnimationFrame(() => {
-      const panel = nodeInfoEl.getBoundingClientRect();
-      galleryEl.style.left = panel.left + 'px';
-      galleryEl.style.top = (panel.bottom + 10) + 'px';
-      galleryEl.classList.add('visible');
-    });
+    repositionGallery();
+    galleryEl.classList.add('visible');
+
+    // Keep repositioning as factoid expands the card
+    _galleryRepoInterval = setInterval(repositionGallery, 200);
   });
 }
 
 function hideGallery() {
   galleryEl.classList.remove('visible');
   galleryEl.innerHTML = '';
+  if (_galleryRepoInterval) { clearInterval(_galleryRepoInterval); _galleryRepoInterval = null; }
 }
 
 function repositionGallery() {
   if (!galleryEl.classList.contains('visible')) return;
   const panel = nodeInfoEl.getBoundingClientRect();
+  const pw = panel.width;
   galleryEl.style.left = panel.left + 'px';
-  galleryEl.style.top = (panel.bottom + 10) + 'px';
+  galleryEl.style.top = (panel.bottom + 8) + 'px';
+  galleryEl.style.width = pw + 'px';
 }
 
 function showInfo(n, screenX, screenY) {
