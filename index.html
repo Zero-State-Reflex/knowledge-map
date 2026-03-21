@@ -2928,8 +2928,11 @@ function positionPanel(screenX, screenY) {
     return;
   }
 
-  const pw = 576, ph = panel.offsetHeight || 320;
-  const margin = 28;
+  const pw = Math.min(560, W - 40);
+  const ph = panel.offsetHeight || 320;
+  const galleryH = galleryEl.classList.contains('visible') ? (galleryEl.offsetHeight + 8) : 0;
+  const totalH = ph + galleryH; // card + gallery combined height
+  const margin = 20;
 
   // Pin to the corner OPPOSITE the node so it's always out of the way
   const goRight = screenX < W / 2;
@@ -2937,14 +2940,18 @@ function positionPanel(screenX, screenY) {
 
   // Corner anchoring — panel hugs the screen edge, not the node
   const panelX = goRight ? margin : W - pw - margin;
-  const panelY = goDown  ? margin + 60 : H - ph - margin;
+  let panelY = goDown ? margin + 60 : H - totalH - margin;
 
   // Hard clamp — never let any edge escape the viewport
   const clampedX = Math.max(margin, Math.min(W - pw - margin, panelX));
-  const clampedY = Math.max(margin, Math.min(H - ph - margin, panelY));
+  // Ensure card + gallery fit: push up if needed, but never above the top bar
+  const clampedY = Math.max(margin + 50, Math.min(H - totalH - margin, panelY));
 
   panel.style.left = clampedX + 'px';
   panel.style.top  = clampedY + 'px';
+  // Safety: if card alone is taller than viewport, make it scrollable
+  panel.style.maxHeight = (H - clampedY - galleryH - margin - 10) + 'px';
+  panel.style.overflowY = 'auto';
 
   const anchorX = goRight ? clampedX + pw : clampedX;
   const anchorY = Math.max(clampedY + 20, Math.min(clampedY + ph - 20, screenY));
@@ -3083,6 +3090,11 @@ function typewriterEffect(el, text, speed) {
     const cursor = el.querySelector('.cursor');
     if (cursor) cursor.insertAdjacentText('beforebegin', text[i]);
     i++;
+    // Reposition card every 10 chars as text grows
+    if (i % 10 === 0 && focusedNode) {
+      const sp = getNodeScreenPos(focusedNode);
+      positionPanel(sp.x, sp.y);
+    }
   }, speed);
 }
 
@@ -4091,9 +4103,10 @@ muteBtn.addEventListener('click', () => {
     const pw = panel.offsetWidth, ph = panel.offsetHeight;
     let x = e.clientX - dragOffX;
     let y = e.clientY - dragOffY;
-    // Clamp to window bounds
+    // Clamp to window bounds — account for gallery below the card
+    const galH = galleryEl.classList.contains('visible') ? (galleryEl.offsetHeight + 8) : 0;
     x = Math.max(0, Math.min(W - pw, x));
-    y = Math.max(0, Math.min(H - ph, y));
+    y = Math.max(0, Math.min(H - ph - galH, y));
     panel.style.left = x + 'px';
     panel.style.top = y + 'px';
     // Update leader line to follow
