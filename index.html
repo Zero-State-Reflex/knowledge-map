@@ -55,6 +55,21 @@
     font-size:11px; letter-spacing:0.12em; text-transform:uppercase;
     color:rgba(200,180,120,0.45);
   }
+  #welcome-overlay {
+    position:fixed; inset:0; z-index:9999;
+    display:flex; align-items:center; justify-content:center;
+    background:transparent; pointer-events:none;
+    opacity:0; transition:opacity 1.2s ease;
+  }
+  #welcome-overlay.visible { opacity:1; }
+  #welcome-text {
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+    font-size:clamp(22px, 3.5vw, 48px); font-weight:300;
+    letter-spacing:0.08em; text-transform:uppercase;
+    color:rgba(232,216,154,0.9);
+    text-shadow:0 0 30px rgba(232,216,154,0.3), 0 0 60px rgba(232,216,154,0.1);
+    text-align:center; padding:0 20px;
+  }
   #zsr-brand {
     position:fixed; top:16px; left:18px; z-index:101;
     display:flex; align-items:center; gap:10px;
@@ -398,8 +413,9 @@
     <div class="atom-orbit"><div class="atom-electron"></div></div>
     <div class="atom-orbit"><div class="atom-electron"></div></div>
   </div>
-  <div class="loading-label">Loading</div>
+  <div class="loading-label">Initializing</div>
 </div>
+<div id="welcome-overlay"><div id="welcome-text">Welcome to the Map of Human Knowledge</div></div>
 <canvas id="c"></canvas>
 <svg id="leader-svg">
   <line id="leader-line" x1="0" y1="0" x2="0" y2="0"/>
@@ -4124,37 +4140,60 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ─── DEFERRED TEXTURE GENERATION ────────────────────────────────────────────
-let _texturesQueued = false;
-function deferTextureGeneration() {
+// ─── TEXTURE LOADING BEHIND LOADING SCREEN ──────────────────────────────────
+let _allTexturesReady = false;
+let _animFrame = 0;
+let _introZoom = null;
+
+function generateAllTextures(callback) {
   let i = 0;
-  const delay = isMobileDevice ? 100 : 30; // ms between each texture
   function next() {
-    if (i >= nodes.length) return;
+    if (i >= nodes.length) {
+      _allTexturesReady = true;
+      callback();
+      return;
+    }
     const n = nodes[i++];
     const tex = makePlanetTexture(n.domain, n.id);
     n.mesh.material.map = tex;
     n.mesh.material.needsUpdate = true;
-    setTimeout(next, delay);
+    // Update loading label with progress
+    const pct = Math.round((i / nodes.length) * 100);
+    const label = document.querySelector('.loading-label');
+    if (label) label.textContent = `Initializing ${pct}%`;
+    setTimeout(next, 0);
   }
-  setTimeout(next, delay);
+  setTimeout(next, 0);
 }
 
-let _animFrame = 0;
-let _loadingDismissed = false;
-let _introZoom = null; // intro camera animation state
+function onTexturesReady() {
+  const ls = document.getElementById('loading-screen');
+  const welcome = document.getElementById('welcome-overlay');
+
+  // Fade out loading screen
+  if (ls) { ls.classList.add('hidden'); setTimeout(() => ls.remove(), 900); }
+
+  // Show welcome text after loading screen fades
+  setTimeout(() => {
+    if (welcome) welcome.classList.add('visible');
+  }, 600);
+
+  // Fade out welcome text after 3 seconds, then start intro zoom
+  setTimeout(() => {
+    if (welcome) {
+      welcome.classList.remove('visible');
+      setTimeout(() => welcome.remove(), 1300);
+    }
+    // Start intro zoom
+    _introZoom = { startRadius: 5000, endRadius: CAM_HOME_RADIUS, t: 0, frames: 120 };
+  }, 4000);
+}
+
+// Start generating textures immediately (behind loading screen)
+generateAllTextures(onTexturesReady);
 
 function animate() {
   requestAnimationFrame(animate);
-
-  // Dismiss loading screen, start textures, and kick off intro zoom
-  if (!_loadingDismissed) {
-    _loadingDismissed = true;
-    const ls = document.getElementById('loading-screen');
-    if (ls) { ls.classList.add('hidden'); setTimeout(() => ls.remove(), 900); }
-    if (!_texturesQueued) { _texturesQueued = true; deferTextureGeneration(); }
-    // Start intro zoom: swoop from 5000 to 1600 over 120 frames
-    _introZoom = { startRadius: 5000, endRadius: CAM_HOME_RADIUS, t: 0, frames: 120 };
-  }
 
   // Intro zoom animation
   if (_introZoom) {
