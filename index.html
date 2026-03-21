@@ -3424,6 +3424,7 @@ function showBlackHoleCard() {
     resetDim();
   }
   blackHoleFocused = true;
+  startBHParticles();
 
   // Fly camera toward the black hole
   const dir = camera.position.clone().sub(BH_POS).normalize();
@@ -3504,8 +3505,138 @@ function showBlackHoleCard() {
   showGallery('Black hole');
 }
 
+// ─── BLACK HOLE PARTICLE VORTEX ─────────────────────────────────────────────
+const BH_PARTICLE_COUNT = 200;
+let bhParticles = null; // { geo, mat, points, velocities[], lifetimes[] }
+
+function startBHParticles() {
+  stopBHParticles();
+
+  const positions = new Float32Array(BH_PARTICLE_COUNT * 3);
+  const colors = new Float32Array(BH_PARTICLE_COUNT * 3);
+  const sizes = new Float32Array(BH_PARTICLE_COUNT);
+  const velocities = [];
+  const lifetimes = [];
+
+  for (let i = 0; i < BH_PARTICLE_COUNT; i++) {
+    // Spawn in a wide ring around the BH
+    const angle = Math.random() * Math.PI * 2;
+    const r = 400 + Math.random() * 600;
+    const y = (Math.random() - 0.5) * 200;
+    positions[i*3]   = BH_POS.x + Math.cos(angle) * r;
+    positions[i*3+1] = BH_POS.y + y;
+    positions[i*3+2] = BH_POS.z + Math.sin(angle) * r;
+
+    // Orbital velocity — tangent to circle + slight inward pull
+    const speed = 1.5 + Math.random() * 2;
+    velocities.push({
+      vx: -Math.sin(angle) * speed,
+      vy: (Math.random() - 0.5) * 0.3,
+      vz: Math.cos(angle) * speed,
+    });
+
+    lifetimes.push(Math.random()); // stagger starting phase
+    colors[i*3] = 1.0; colors[i*3+1] = 0.7; colors[i*3+2] = 0.3; // warm orange
+    sizes[i] = 1.5 + Math.random() * 2.5;
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+  const mat = new THREE.PointsMaterial({
+    vertexColors: true,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity: 0.8,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    size: 3,
+  });
+
+  const points = new THREE.Points(geo, mat);
+  scene.add(points);
+
+  bhParticles = { geo, mat, points, velocities, lifetimes, positions, colors, sizes };
+}
+
+function updateBHParticles() {
+  if (!bhParticles) return;
+  const p = bhParticles;
+  const pos = p.positions;
+  const col = p.colors;
+  const sz = p.sizes;
+
+  for (let i = 0; i < BH_PARTICLE_COUNT; i++) {
+    const ix = i*3, iy = i*3+1, iz = i*3+2;
+    const v = p.velocities[i];
+
+    // Vector from particle to BH center
+    const dx = BH_POS.x - pos[ix];
+    const dy = BH_POS.y - pos[iy];
+    const dz = BH_POS.z - pos[iz];
+    const dist = Math.sqrt(dx*dx + dy*dy + dz*dz) + 1;
+
+    // Gravitational pull — stronger as particle gets closer (1/r²)
+    const pull = 800 / (dist * dist) * 60;
+    // Also add tangential component for spiral motion
+    const nx = dx/dist, ny = dy/dist, nz = dz/dist;
+    // Tangent (cross with up-ish vector)
+    const tx = -nz, tz = nx; // simplified tangent in xz plane
+    const tangentStrength = 200 / (dist + 50);
+
+    v.vx += nx * pull + tx * tangentStrength * 0.03;
+    v.vy += ny * pull * 0.5;
+    v.vz += nz * pull + tz * tangentStrength * 0.03;
+
+    // Dampen slightly to prevent explosion
+    v.vx *= 0.995; v.vy *= 0.995; v.vz *= 0.995;
+
+    pos[ix] += v.vx;
+    pos[iy] += v.vy;
+    pos[iz] += v.vz;
+
+    // Color: cooler far away (orange), hotter close (white-blue)
+    const heat = Math.min(1, 300 / dist);
+    col[ix]   = 1.0;
+    col[iy]   = 0.5 + heat * 0.5;
+    col[iz]   = 0.2 + heat * 0.8;
+
+    // Size: grows slightly as it heats up
+    sz[i] = 1.5 + heat * 3;
+
+    // Respawn if too close to center (swallowed) or too far away (escaped)
+    if (dist < 100 || dist > 1500) {
+      const angle = Math.random() * Math.PI * 2;
+      const r = 400 + Math.random() * 600;
+      pos[ix]   = BH_POS.x + Math.cos(angle) * r;
+      pos[iy]   = BH_POS.y + (Math.random() - 0.5) * 200;
+      pos[iz]   = BH_POS.z + Math.sin(angle) * r;
+      const spd = 1.5 + Math.random() * 2;
+      v.vx = -Math.sin(angle) * spd;
+      v.vy = (Math.random() - 0.5) * 0.3;
+      v.vz = Math.cos(angle) * spd;
+    }
+  }
+
+  p.geo.attributes.position.needsUpdate = true;
+  p.geo.attributes.color.needsUpdate = true;
+  p.geo.attributes.size.needsUpdate = true;
+}
+
+function stopBHParticles() {
+  if (bhParticles) {
+    scene.remove(bhParticles.points);
+    bhParticles.geo.dispose();
+    bhParticles.mat.dispose();
+    bhParticles = null;
+  }
+}
+
 function hideBlackHoleCard() {
   blackHoleFocused = false;
+  stopBHParticles();
   hideInfo();
   hideGallery();
 }
@@ -4066,6 +4197,7 @@ function animate() {
     updateShootingStars();
   }
   updateKnowledgeRipple();
+  updateBHParticles();
   updateExplorationTrail();
 
   // FIX 2: suppress auto-rotation entirely while a node is focused
