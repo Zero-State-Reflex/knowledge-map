@@ -3595,16 +3595,16 @@ function startBHParticles() {
     positions[i*3+2] = BH_POS.z + Math.sin(angle) * r;
 
     // Orbital velocity — tangent to circle + slight inward pull
-    const speed = 1.5 + Math.random() * 2;
+    const speed = 3 + Math.random() * 3;
     velocities.push({
       vx: -Math.sin(angle) * speed,
-      vy: (Math.random() - 0.5) * 0.3,
+      vy: (Math.random() - 0.5) * 0.2,
       vz: Math.cos(angle) * speed,
     });
 
     lifetimes.push(Math.random()); // stagger starting phase
     colors[i*3] = 1.0; colors[i*3+1] = 0.7; colors[i*3+2] = 0.3; // warm orange
-    sizes[i] = 4 + Math.random() * 4;
+    sizes[i] = 8 + Math.random() * 6;
   }
 
   const geo = new THREE.BufferGeometry();
@@ -3619,7 +3619,7 @@ function startBHParticles() {
     opacity: 0.8,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
-    size: 3,
+    size: 8,
   });
 
   const points = new THREE.Points(geo, mat);
@@ -3645,20 +3645,19 @@ function updateBHParticles() {
     const dz = BH_POS.z - pos[iz];
     const dist = Math.sqrt(dx*dx + dy*dy + dz*dz) + 1;
 
-    // Gravitational pull — stronger as particle gets closer (1/r²)
-    const pull = 800 / (dist * dist) * 60;
-    // Also add tangential component for spiral motion
+    // Gravitational pull — gentle inward so particles spiral slowly
+    const pull = 400 / (dist * dist) * 30;
     const nx = dx/dist, ny = dy/dist, nz = dz/dist;
-    // Tangent (cross with up-ish vector)
-    const tx = -nz, tz = nx; // simplified tangent in xz plane
-    const tangentStrength = 200 / (dist + 50);
+    // Strong tangential force for tight swirling — increases as particles get closer
+    const tx = -nz, tz = nx;
+    const tangentStrength = 600 / (dist + 30);
 
-    v.vx += nx * pull + tx * tangentStrength * 0.03;
-    v.vy += ny * pull * 0.5;
-    v.vz += nz * pull + tz * tangentStrength * 0.03;
+    v.vx += nx * pull + tx * tangentStrength * 0.08;
+    v.vy += ny * pull * 0.3 - v.vy * 0.02; // flatten toward disk plane
+    v.vz += nz * pull + tz * tangentStrength * 0.08;
 
-    // Dampen slightly to prevent explosion
-    v.vx *= 0.995; v.vy *= 0.995; v.vz *= 0.995;
+    // Light damping — lets them build up orbital speed
+    v.vx *= 0.992; v.vy *= 0.992; v.vz *= 0.992;
 
     pos[ix] += v.vx;
     pos[iy] += v.vy;
@@ -3670,9 +3669,9 @@ function updateBHParticles() {
     col[iy]   = 0.5 + heat * 0.5;
     col[iz]   = 0.2 + heat * 0.8;
 
-    // Size: big when far away, shrink as they get pulled in (compressed by gravity)
-    const farness = Math.min(1, dist / 800); // 1 = far, 0 = at center
-    sz[i] = 1.0 + farness * 6;
+    // Size: large when far, compress as they spiral in
+    const farness = Math.min(1, dist / 800);
+    sz[i] = 2.0 + farness * 12;
 
     // Respawn if too close to center (swallowed) or too far away (escaped)
     if (dist < 100 || dist > 1500) {
@@ -3681,7 +3680,7 @@ function updateBHParticles() {
       pos[ix]   = BH_POS.x + Math.cos(angle) * r;
       pos[iy]   = BH_POS.y + (Math.random() - 0.5) * 200;
       pos[iz]   = BH_POS.z + Math.sin(angle) * r;
-      const spd = 1.5 + Math.random() * 2;
+      const spd = 3 + Math.random() * 3;
       v.vx = -Math.sin(angle) * spd;
       v.vy = (Math.random() - 0.5) * 0.3;
       v.vz = Math.cos(angle) * spd;
