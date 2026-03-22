@@ -4438,9 +4438,14 @@ function onTexturesReady() {
   // Fade out loading screen
   if (ls) { ls.classList.add('hidden'); setTimeout(() => ls.remove(), 900); }
 
-  // Show welcome text after loading screen fades
+  // Show welcome text after loading screen fades + emit a pulse wave from center
   setTimeout(() => {
     if (welcome) welcome.classList.add('visible');
+    // Fire a ripple from the most connected node (center of knowledge)
+    const centerNode = nodes.slice().sort((a, b) =>
+      (neighborMap.get(b.id) || []).length - (neighborMap.get(a.id) || []).length
+    )[0];
+    if (centerNode) startKnowledgeRipple(centerNode);
   }, 600);
 
   // Fade out welcome text after 3 seconds, then start intro zoom
