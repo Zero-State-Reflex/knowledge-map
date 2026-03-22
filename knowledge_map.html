@@ -251,6 +251,10 @@
     transition:color 0.2s, transform 0.15s;
   }
   #mute-btn:hover { color:rgba(232,216,154,0.95); transform:scale(1.1); }
+  #mute-btn svg { display:block; }
+  #mute-btn .speaker-wave1, #mute-btn .speaker-wave2 { transition:opacity 0.2s; }
+  #mute-btn.muted { color:rgba(200,185,140,0.3); }
+  #mute-btn.muted .speaker-wave1, #mute-btn.muted .speaker-wave2 { opacity:0; }
   #vol-slider {
     -webkit-appearance:none; appearance:none;
     width:70px; height:2px; border-radius:2px; outline:none; cursor:pointer;
@@ -493,7 +497,7 @@
 </div>
 <div id="search-results"></div>
 <div id="audio-controls">
-  <button id="mute-btn" title="Mute / Unmute">🔊</button>
+  <button id="mute-btn" title="Mute / Unmute"><svg id="speaker-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path class="speaker-wave1" d="M15.5 8.5a5 5 0 0 1 0 7"/><path class="speaker-wave2" d="M19 5a9 9 0 0 1 0 14"/></svg></button>
   <input id="vol-slider" type="range" min="0" max="1" step="0.01" value="0.6" title="Volume">
 </div>
 <button id="journey-btn">✦ Take a Journey</button>
@@ -4652,7 +4656,7 @@ volSlider.addEventListener('input', () => {
   }
   if (lastVolume > 0 && isMuted) {
     isMuted = false;
-    muteBtn.textContent = '🔊';
+    muteBtn.classList.remove('muted');
     muteBtn.style.opacity = '1';
   }
 });
@@ -4662,8 +4666,8 @@ muteBtn.addEventListener('click', () => {
   if (audioCtx?._masterGain) {
     audioCtx._masterGain.gain.setTargetAtTime(isMuted ? 0 : lastVolume, audioCtx.currentTime, 0.08);
   }
-  muteBtn.textContent = isMuted ? '🔇' : '🔊';
-  muteBtn.style.opacity = isMuted ? '0.35' : '1';
+  if (isMuted) muteBtn.classList.add('muted');
+  else muteBtn.classList.remove('muted');
 });
 
 // ─── DRAG INFO PANEL ──────────────────────────────────────────────────────
