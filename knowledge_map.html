@@ -337,6 +337,46 @@
   }
   .gallery-img-wrap:hover img { filter:saturate(1) contrast(1); }
 
+  /* ── Journey Button ── */
+  #journey-btn {
+    position:fixed; bottom:24px; left:50%; transform:translateX(-50%); z-index:200;
+    background:rgba(4,6,15,0.8); border:1px solid rgba(200,180,120,0.25);
+    border-radius:20px; padding:10px 24px; cursor:pointer;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+    font-size:12px; letter-spacing:0.1em; text-transform:uppercase;
+    color:rgba(232,216,154,0.7); backdrop-filter:blur(8px);
+    transition:all 0.3s; pointer-events:auto;
+  }
+  #journey-btn:hover { color:rgba(232,216,154,1); border-color:rgba(200,180,120,0.5); background:rgba(4,6,15,0.95); }
+  #journey-btn.active { border-color:rgba(200,100,100,0.4); color:rgba(200,130,130,0.8); }
+
+  /* ── Path Visualization ── */
+  #path-btn {
+    position:fixed; bottom:24px; right:120px; z-index:200;
+    background:rgba(4,6,15,0.8); border:1px solid rgba(200,180,120,0.2);
+    border-radius:20px; padding:8px 16px; cursor:pointer;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+    font-size:10px; letter-spacing:0.08em; text-transform:uppercase;
+    color:rgba(200,180,120,0.5); backdrop-filter:blur(8px);
+    transition:all 0.3s; pointer-events:auto; display:none;
+  }
+  #path-btn.visible { display:block; }
+  #path-btn:hover { color:rgba(232,216,154,0.9); border-color:rgba(200,180,120,0.4); }
+
+  /* ── Domain Constellation ── */
+  #constellation-toast {
+    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    z-index:9000; pointer-events:none;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+    font-size:clamp(16px, 2.5vw, 36px); font-weight:300;
+    letter-spacing:0.08em; text-transform:uppercase;
+    color:rgba(232,216,154,0.9);
+    text-shadow:0 0 20px rgba(232,216,154,0.4);
+    opacity:0; transition:opacity 0.8s ease;
+    text-align:center;
+  }
+  #constellation-toast.visible { opacity:1; }
+
   /* ── Mobile Responsive ── */
   @media (max-width: 768px) {
     #title-bar { height:90px; }
@@ -382,6 +422,8 @@
     .legend-dot { width:8px; height:8px; }
 
     #instructions { display:none; }
+    #journey-btn { font-size:10px; padding:8px 16px; bottom:12px; }
+    #path-btn { bottom:12px; right:10px; font-size:9px; padding:6px 12px; }
     #settling { bottom:40px; right:10px; }
 
     #hover-label { display:none; }
@@ -454,6 +496,9 @@
   <button id="mute-btn" title="Mute / Unmute">🔊</button>
   <input id="vol-slider" type="range" min="0" max="1" step="0.01" value="0.6" title="Volume">
 </div>
+<button id="journey-btn">✦ Take a Journey</button>
+<button id="path-btn">Show Path</button>
+<div id="constellation-toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 // ─── QUALITY TIER — auto-detect mobile for performance ──────────────────────
@@ -3408,6 +3453,8 @@ function focusNode(n) {
   dimToNeighbors(n);
   buildFocusEdges(n);
   addTrailPoint(n);
+  trackVisit(n);
+  checkDomainConstellation(n);
   playChime(n.domain);
   applyFocusLabel(n);
   startFocusCamAnim(new THREE.Vector3(n.x, n.y, n.z));
@@ -4141,6 +4188,214 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ─── DEFERRED TEXTURE GENERATION ────────────────────────────────────────────
+// ─── 1. GUIDED JOURNEY (AUTO-PILOT) ─────────────────────────────────────────
+let journeyActive = false;
+let journeyTimeout = null;
+const journeyBtn = document.getElementById('journey-btn');
+
+function startJourney() {
+  journeyActive = true;
+  journeyBtn.textContent = '■ Stop Journey';
+  journeyBtn.classList.add('active');
+  journeyStep();
+}
+
+function stopJourney() {
+  journeyActive = false;
+  if (journeyTimeout) { clearTimeout(journeyTimeout); journeyTimeout = null; }
+  journeyBtn.textContent = '✦ Take a Journey';
+  journeyBtn.classList.remove('active');
+}
+
+function journeyStep() {
+  if (!journeyActive) return;
+  // Pick a random node we haven't visited recently
+  const pick = nodes[Math.floor(Math.random() * nodes.length)];
+  focusNode(pick);
+  // Wait for card to show, factoid to type, then move on
+  journeyTimeout = setTimeout(() => {
+    if (!journeyActive) return;
+    journeyStep();
+  }, 9000); // 9 seconds per stop
+}
+
+journeyBtn.addEventListener('click', () => {
+  if (journeyActive) stopJourney();
+  else startJourney();
+});
+
+// ─── 2. CONNECTION PATHS ────────────────────────────────────────────────────
+const visitedNodes = []; // track exploration order
+const pathBtn = document.getElementById('path-btn');
+let pathLines = []; // active path line meshes
+
+// Hook into focusNode to track visits (we'll add the call in showInfo)
+const _origAddTrailPoint = addTrailPoint;
+
+function trackVisit(node) {
+  if (visitedNodes.length === 0 || visitedNodes[visitedNodes.length-1].id !== node.id) {
+    visitedNodes.push(node);
+  }
+  if (visitedNodes.length >= 2) pathBtn.classList.add('visible');
+}
+
+function findShortestPath(startNode, endNode) {
+  // BFS through the graph
+  const queue = [[startNode]];
+  const visited = new Set([startNode.id]);
+  while (queue.length > 0) {
+    const path = queue.shift();
+    const current = path[path.length - 1];
+    if (current.id === endNode.id) return path;
+    const nbrs = neighborMap.get(current.id) || [];
+    for (const nbr of nbrs) {
+      if (!visited.has(nbr.id)) {
+        visited.add(nbr.id);
+        queue.push([...path, nbr]);
+      }
+    }
+  }
+  return null;
+}
+
+function showConnectionPath() {
+  clearConnectionPath();
+  if (visitedNodes.length < 2) return;
+  const startN = visitedNodes[0];
+  const endN = visitedNodes[visitedNodes.length - 1];
+  const path = findShortestPath(startN, endN);
+  if (!path || path.length < 2) return;
+
+  // Draw glowing lines along the path
+  for (let i = 0; i < path.length - 1; i++) {
+    const a = path[i], b = path[i+1];
+    const posArr = new Float32Array([a.x, a.y, a.z, b.x, b.y, b.z]);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    const col = new THREE.Color(DOMAINS[b.domain]?.color || '#c8b89a');
+    const mat = new THREE.LineBasicMaterial({
+      color: col, transparent: true, opacity: 0.7,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    });
+    const line = new THREE.Line(geo, mat);
+    scene.add(line);
+    pathLines.push({ line, mat, geo, birth: performance.now(), delay: i * 150 });
+  }
+
+  // Flash each node along the path
+  path.forEach((n, i) => {
+    setTimeout(() => {
+      if (n.mesh) {
+        n.mesh.material.emissiveIntensity = 0.3;
+        setTimeout(() => { n.mesh.material.emissiveIntensity = 0.06; }, 800);
+      }
+    }, i * 150);
+  });
+
+  // Auto-clear after 8 seconds
+  setTimeout(clearConnectionPath, 8000);
+}
+
+function clearConnectionPath() {
+  pathLines.forEach(p => { scene.remove(p.line); p.mat.dispose(); p.geo.dispose(); });
+  pathLines = [];
+}
+
+pathBtn.addEventListener('click', showConnectionPath);
+
+// ─── 3. PLANET HEARTBEAT ────────────────────────────────────────────────────
+// Each planet subtly pulses its glow sprite based on connection count
+function updateHeartbeats() {
+  const t = performance.now() * 0.001;
+  for (const n of nodes) {
+    if (!n.atm || !n.atmMat) continue;
+    const connections = (neighborMap.get(n.id) || []).length;
+    // More connections = faster pulse, bigger range
+    const rate = 0.8 + connections * 0.15;
+    const amplitude = 0.03 + connections * 0.008;
+    const base = 0.18;
+    n.atmMat.opacity = base + Math.sin(t * rate + n.id.charCodeAt(0)) * amplitude;
+  }
+}
+
+// ─── 4. DOMAIN CONSTELLATION EASTER EGG ─────────────────────────────────────
+const domainVisits = {}; // domain -> Set of visited node IDs
+const constellationTriggered = new Set(); // domains already triggered
+const constellationLines = [];
+const toastEl = document.getElementById('constellation-toast');
+
+function checkDomainConstellation(node) {
+  const domain = node.domain;
+  if (constellationTriggered.has(domain)) return;
+  if (!domainVisits[domain]) domainVisits[domain] = new Set();
+  domainVisits[domain].add(node.id);
+
+  // Count total nodes in this domain
+  const domainTotal = nodes.filter(n => n.domain === domain).length;
+  if (domainVisits[domain].size >= domainTotal) {
+    triggerConstellation(domain);
+  }
+}
+
+function triggerConstellation(domain) {
+  constellationTriggered.add(domain);
+  const domColor = new THREE.Color(DOMAINS[domain]?.color || '#c8b89a');
+  const domNodes = nodes.filter(n => n.domain === domain);
+
+  // Connect all nodes in the domain with bright lines
+  for (let i = 0; i < domNodes.length; i++) {
+    for (let j = i + 1; j < domNodes.length; j++) {
+      const a = domNodes[i], b = domNodes[j];
+      // Only connect nearby pairs to form a constellation shape
+      const dx = a.x-b.x, dy = a.y-b.y, dz = a.z-b.z;
+      const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+      if (dist > 300) continue;
+
+      const posArr = new Float32Array([a.x, a.y, a.z, b.x, b.y, b.z]);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+      const mat = new THREE.LineBasicMaterial({
+        color: domColor, transparent: true, opacity: 0,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      const line = new THREE.Line(geo, mat);
+      scene.add(line);
+      constellationLines.push({ line, mat, geo, birth: performance.now(), domain });
+    }
+  }
+
+  // Flash all domain nodes
+  domNodes.forEach(n => {
+    if (n.mesh) n.mesh.material.emissiveIntensity = 0.4;
+    setTimeout(() => { if (n.mesh) n.mesh.material.emissiveIntensity = 0.06; }, 2000);
+  });
+
+  // Play a special chime
+  playChime(domain);
+  setTimeout(() => playChime(domain), 300);
+
+  // Show toast
+  toastEl.textContent = `✦ ${domain} Complete ✦`;
+  toastEl.classList.add('visible');
+  setTimeout(() => toastEl.classList.remove('visible'), 4000);
+}
+
+function updateConstellations() {
+  const now = performance.now();
+  for (let i = constellationLines.length - 1; i >= 0; i--) {
+    const c = constellationLines[i];
+    const age = (now - c.birth) / 1000;
+    if (age < 1) {
+      c.mat.opacity = age * 0.5; // fade in
+    } else if (age < 10) {
+      c.mat.opacity = 0.5 - (age - 1) * 0.05; // slow fade
+    } else {
+      scene.remove(c.line); c.mat.dispose(); c.geo.dispose();
+      constellationLines.splice(i, 1);
+    }
+  }
+}
+
 // ─── TEXTURE LOADING BEHIND LOADING SCREEN ──────────────────────────────────
 let _allTexturesReady = false;
 let _animFrame = 0;
@@ -4238,6 +4493,8 @@ function animate() {
   }
   updateKnowledgeRipple();
   updateBHParticles();
+  updateHeartbeats();
+  updateConstellations();
   updateExplorationTrail();
 
   // FIX 2: suppress auto-rotation entirely while a node is focused
