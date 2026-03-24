@@ -255,6 +255,26 @@
     opacity:0;
   }
   .moon-label:hover { opacity:1 !important; text-shadow:0 0 20px currentColor; }
+  #voyager-card {
+    position:fixed; z-index:200; pointer-events:auto;
+    background: rgba(8,12,20,0.85); border:1px solid rgba(136,187,238,0.3);
+    border-radius:10px; padding:16px 22px; color:#ccddff;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    opacity:0; transition: opacity 0.5s; pointer-events:none;
+    text-align:center; min-width:180px;
+    box-shadow: 0 0 30px rgba(80,140,220,0.15);
+  }
+  #voyager-card.visible { opacity:1; pointer-events:auto; }
+  #voyager-card h3 { margin:0 0 6px; font-size:16px; letter-spacing:0.05em; color:#ddeeff; }
+  #voyager-card p { margin:0 0 12px; font-size:11px; color:#8899bb; line-height:1.4; }
+  #voyager-card a {
+    display:inline-block; padding:8px 18px; background:rgba(80,140,220,0.2);
+    border:1px solid rgba(136,187,238,0.4); border-radius:6px;
+    color:#aaccff; text-decoration:none; font-size:12px; letter-spacing:0.04em;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  #voyager-card a:hover { background:rgba(80,140,220,0.4); border-color:rgba(136,187,238,0.7); }
   #node-info-wiki {
     display:inline-block; margin-bottom:20px;
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:11px; letter-spacing:0.08em;
@@ -524,6 +544,11 @@
 <div id="welcome-overlay"><div id="welcome-text">Welcome to the Map of Human Knowledge</div></div>
 <canvas id="c"></canvas>
 <div id="lens-flare"></div>
+<div id="voyager-card">
+  <h3>VOYAGER 1</h3>
+  <p>Launched 1977 — the farthest human-made object,<br>now over 15 billion miles from Earth</p>
+  <a href="https://en.wikipedia.org/wiki/Voyager_1" target="_blank">Explore on Wikipedia &rarr;</a>
+</div>
 <svg id="leader-svg">
   <line id="leader-line" x1="0" y1="0" x2="0" y2="0"/>
   <circle id="leader-dot" r="3" cx="0" cy="0"/>
@@ -4155,9 +4180,7 @@ function buildVoyager() {
   label.style.fontStyle = 'italic';
   label.addEventListener('click', (e) => {
     e.stopPropagation();
-    if (voyagerFocused) {
-      window.open('https://en.wikipedia.org/wiki/Voyager_1', '_blank');
-    } else {
+    if (!voyagerFocused) {
       focusVoyager();
     }
   });
@@ -4392,8 +4415,8 @@ function focusVoyager() {
   }
   const vPos = voyagerGroup.position.clone();
   const dir  = camera.position.clone().sub(vPos).normalize();
-  const closePos = vPos.clone().add(dir.clone().multiplyScalar(25));  // very close
-  const holdPos  = vPos.clone().add(dir.clone().multiplyScalar(35));  // slight pull-back
+  const closePos = vPos.clone().add(dir.clone().multiplyScalar(50));  // medium shot
+  const holdPos  = vPos.clone().add(dir.clone().multiplyScalar(65));  // pull back to show full satellite
   voyagerCamAnim = {
     startPos:  camera.position.clone(),
     startLook: lookTarget.clone(),
@@ -4401,11 +4424,11 @@ function focusVoyager() {
     closePos, holdPos,
     phase: 'zoomIn',
     t: 0,
-    zoomFrames: 70,
-    pullFrames: 45,
+    zoomFrames: 80,
+    pullFrames: 50,
   };
-  // Update hover label
-  voyagerData.label.textContent = 'Voyager 1 — click again to view Wikipedia';
+  // Hide the label while zoomed, card will show instead
+  voyagerData.label.style.opacity = '0';
 }
 
 function unfocusVoyager() {
@@ -4413,6 +4436,7 @@ function unfocusVoyager() {
   voyagerFocused = false;
   voyagerCamAnim = null;
   voyagerData.label.textContent = 'Voyager 1';
+  document.getElementById('voyager-card').classList.remove('visible');
 }
 
 function updateVoyagerCam() {
@@ -4423,8 +4447,8 @@ function updateVoyagerCam() {
   if (voyagerGroup) {
     vc.vPos.copy(voyagerGroup.position);
     const dir = vc.startPos.clone().sub(vc.vPos).normalize();
-    vc.closePos.copy(vc.vPos).addScaledVector(dir, 25);
-    vc.holdPos.copy(vc.vPos).addScaledVector(dir, 35);
+    vc.closePos.copy(vc.vPos).addScaledVector(dir, 50);
+    vc.holdPos.copy(vc.vPos).addScaledVector(dir, 65);
   }
   if (vc.phase === 'zoomIn') {
     const raw  = Math.min(vc.t / vc.zoomFrames, 1);
@@ -4455,8 +4479,14 @@ function updateVoyagerCam() {
     lookTarget.lerp(voyagerGroup.position, 0.05);
     camera.lookAt(lookTarget);
     camera.position.lerpVectors(camera.position, voyagerGroup.position.clone().add(
-      camera.position.clone().sub(voyagerGroup.position).normalize().multiplyScalar(35)
+      camera.position.clone().sub(voyagerGroup.position).normalize().multiplyScalar(65)
     ), 0.03);
+    // Show the info card positioned to the right of Voyager
+    const sp = toScreen(voyagerGroup.position);
+    const card = document.getElementById('voyager-card');
+    card.style.left = Math.min(sp.x + 60, window.innerWidth - 240) + 'px';
+    card.style.top = Math.max(20, sp.y - 60) + 'px';
+    if (!card.classList.contains('visible')) card.classList.add('visible');
   }
 }
 
@@ -4928,7 +4958,7 @@ function doHover(e) {
     if (vHits.length > 0) {
       specialHovered = true;
       canvas.style.cursor = 'pointer';
-      hoverLabelEl.textContent = voyagerFocused ? 'Voyager 1 — View on Wikipedia →' : 'Voyager 1 — Click to inspect';
+      hoverLabelEl.textContent = voyagerFocused ? 'Click to exit' : 'Voyager 1 — Click to inspect';
       const sp = toScreen(voyagerGroup.position);
       hoverLabelEl.style.left = sp.x + 'px';
       hoverLabelEl.style.top = (sp.y - 24) + 'px';
@@ -5846,13 +5876,18 @@ canvas.addEventListener('click', e => {
     }
   }
 
-  // Check Voyager 1 probe — click to zoom in, click again to open Wikipedia
+  // Check Voyager 1 probe — click to zoom in, click again to exit
   if (voyagerHitbox) {
     const vHits = raycaster.intersectObject(voyagerHitbox);
     if (vHits.length > 0) {
       if (voyagerFocused) {
-        // Second click while zoomed → open Wikipedia
-        window.open('https://en.wikipedia.org/wiki/Voyager_1', '_blank');
+        unfocusVoyager();
+        const endPos = new THREE.Vector3(
+          camRadius * Math.sin(camPhi) * Math.sin(camTheta),
+          camRadius * Math.cos(camPhi),
+          camRadius * Math.sin(camPhi) * Math.cos(camTheta)
+        );
+        animateCamTo(endPos, new THREE.Vector3(0,0,0), 70);
       } else {
         focusVoyager();
       }
