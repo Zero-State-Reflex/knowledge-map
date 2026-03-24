@@ -3766,7 +3766,11 @@ function buildVoyager() {
   label.style.fontStyle = 'italic';
   label.addEventListener('click', (e) => {
     e.stopPropagation();
-    window.open('https://en.wikipedia.org/wiki/Voyager_1', '_blank');
+    if (voyagerFocused) {
+      window.open('https://en.wikipedia.org/wiki/Voyager_1', '_blank');
+    } else {
+      focusVoyager();
+    }
   });
   document.body.appendChild(label);
 
@@ -3831,8 +3835,99 @@ function buildVoyager() {
   voyagerData.trailCount = vTrailCount;
 }
 
+// ─── VOYAGER ZOOM — click to inspect the probe up close ──────────────────────
+let voyagerFocused = false;
+let voyagerCamAnim = null;
+
+function focusVoyager() {
+  if (voyagerFocused) return;
+  voyagerFocused = true;
+  // Unfocus any planet first
+  if (focusedNode) {
+    exitInspectAndUnfocus();
+  }
+  const vPos = voyagerGroup.position.clone();
+  const dir  = camera.position.clone().sub(vPos).normalize();
+  const closePos = vPos.clone().add(dir.clone().multiplyScalar(25));  // very close
+  const holdPos  = vPos.clone().add(dir.clone().multiplyScalar(35));  // slight pull-back
+  voyagerCamAnim = {
+    startPos:  camera.position.clone(),
+    startLook: lookTarget.clone(),
+    vPos,
+    closePos, holdPos,
+    phase: 'zoomIn',
+    t: 0,
+    zoomFrames: 70,
+    pullFrames: 45,
+  };
+  // Update hover label
+  voyagerData.label.textContent = 'Voyager 1 — click again to view Wikipedia';
+}
+
+function unfocusVoyager() {
+  if (!voyagerFocused) return;
+  voyagerFocused = false;
+  voyagerCamAnim = null;
+  voyagerData.label.textContent = 'Voyager 1';
+}
+
+function updateVoyagerCam() {
+  if (!voyagerCamAnim) return;
+  const vc = voyagerCamAnim;
+  vc.t++;
+  // Track Voyager's live position (it's paused but just in case)
+  if (voyagerGroup) {
+    vc.vPos.copy(voyagerGroup.position);
+    const dir = vc.startPos.clone().sub(vc.vPos).normalize();
+    vc.closePos.copy(vc.vPos).addScaledVector(dir, 25);
+    vc.holdPos.copy(vc.vPos).addScaledVector(dir, 35);
+  }
+  if (vc.phase === 'zoomIn') {
+    const raw  = Math.min(vc.t / vc.zoomFrames, 1);
+    const ease = 1 - Math.pow(1 - raw, 3);
+    camera.position.lerpVectors(vc.startPos, vc.closePos, ease);
+    lookTarget.lerp(vc.vPos, 0.08);
+    camera.lookAt(lookTarget);
+    if (vc.t >= vc.zoomFrames) {
+      vc.phase = 'pullBack';
+      vc.t = 0;
+      vc.pullStart = camera.position.clone();
+    }
+  } else if (vc.phase === 'pullBack') {
+    const raw  = Math.min(vc.t / vc.pullFrames, 1);
+    const ease = 0.5 - 0.5 * Math.cos(raw * Math.PI);
+    camera.position.lerpVectors(vc.pullStart, vc.holdPos, ease);
+    lookTarget.lerp(vc.vPos, 0.06);
+    camera.lookAt(lookTarget);
+    if (vc.t >= vc.pullFrames) {
+      vc.phase = 'hold';
+      const p = camera.position;
+      camRadius = p.length();
+      camPhi = Math.acos(Math.max(-1, Math.min(1, p.y / camRadius)));
+      camTheta = Math.atan2(p.x, p.z);
+    }
+  } else {
+    // Hold — keep looking at Voyager's live position
+    lookTarget.lerp(voyagerGroup.position, 0.05);
+    camera.lookAt(lookTarget);
+    camera.position.lerpVectors(camera.position, voyagerGroup.position.clone().add(
+      camera.position.clone().sub(voyagerGroup.position).normalize().multiplyScalar(35)
+    ), 0.03);
+  }
+}
+
 function updateVoyager() {
   if (!voyagerData || !voyagerGroup) return;
+  // Pause movement when focused so user can inspect
+  if (voyagerFocused && voyagerCamAnim && voyagerCamAnim.phase !== 'zoomIn') {
+    // Still update label and trail but don't advance position
+    const sp = toScreen(voyagerGroup.position);
+    const vis = sp.x > 0 && sp.x < window.innerWidth && sp.y > 0 && sp.y < window.innerHeight;
+    voyagerData.label.style.left = sp.x + 'px';
+    voyagerData.label.style.top = (sp.y + 18) + 'px';
+    voyagerData.label.style.opacity = vis ? '0.85' : '0';
+    return;
+  }
 
   const wp = voyagerData.waypoints;
   if (wp.length < 2) return;
@@ -4062,6 +4157,7 @@ function updateScene() {
   updateMoons();
   updateShip();
   updateVoyager();
+  updateVoyagerCam();
   let idx = 0;
   for (const l of links) {
     edgePosArr[idx++] = l.source.x; edgePosArr[idx++] = l.source.y; edgePosArr[idx++] = l.source.z;
@@ -4235,7 +4331,7 @@ function doHover(e) {
     if (vHits.length > 0) {
       specialHovered = true;
       canvas.style.cursor = 'pointer';
-      hoverLabelEl.textContent = 'Voyager 1 — View on Wikipedia →';
+      hoverLabelEl.textContent = voyagerFocused ? 'Voyager 1 — View on Wikipedia →' : 'Voyager 1 — Click to inspect';
       const sp = toScreen(voyagerGroup.position);
       hoverLabelEl.style.left = sp.x + 'px';
       hoverLabelEl.style.top = (sp.y - 24) + 'px';
@@ -5141,11 +5237,16 @@ canvas.addEventListener('click', e => {
     }
   }
 
-  // Check Voyager 1 probe
+  // Check Voyager 1 probe — click to zoom in, click again to open Wikipedia
   if (voyagerHitbox) {
     const vHits = raycaster.intersectObject(voyagerHitbox);
     if (vHits.length > 0) {
-      window.open('https://en.wikipedia.org/wiki/Voyager_1', '_blank');
+      if (voyagerFocused) {
+        // Second click while zoomed → open Wikipedia
+        window.open('https://en.wikipedia.org/wiki/Voyager_1', '_blank');
+      } else {
+        focusVoyager();
+      }
       return;
     }
   }
@@ -5173,6 +5274,7 @@ canvas.addEventListener('click', e => {
 
   if (hits.length > 0) {
     const n = hits[0].object.userData.node;
+    if (voyagerFocused) unfocusVoyager();
     if (focusedNode === n) {
       // Second click on same planet → unfocus
       exitInspectAndUnfocus();
@@ -5181,6 +5283,15 @@ canvas.addEventListener('click', e => {
     }
   } else if (focusedNode) {
     exitInspectAndUnfocus();
+  } else if (voyagerFocused) {
+    unfocusVoyager();
+    // Animate camera back to overview
+    const endPos = new THREE.Vector3(
+      camRadius * Math.sin(camPhi) * Math.sin(camTheta),
+      camRadius * Math.cos(camPhi),
+      camRadius * Math.sin(camPhi) * Math.cos(camTheta)
+    );
+    animateCamTo(endPos, new THREE.Vector3(0,0,0), 70);
   } else if (blackHoleFocused) {
     hideBlackHoleCard();
     const endPos = new THREE.Vector3(
