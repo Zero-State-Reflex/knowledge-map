@@ -53,6 +53,43 @@
   @keyframes atom-spin-2 { from { transform:rotate(60deg); } to { transform:rotate(420deg); } }
   @keyframes atom-spin-3 { from { transform:rotate(-30deg); } to { transform:rotate(330deg); } }
 
+  /* Galileo floating above the atom */
+  .galileo-wrap {
+    display:flex; flex-direction:column; align-items:center;
+    animation: galileo-float 3.5s ease-in-out infinite;
+  }
+  .galileo-img {
+    width:140px; height:auto;
+    border-radius:12px;
+    opacity:0.9;
+    filter: drop-shadow(0 0 20px rgba(232,216,154,0.15));
+    margin-bottom:18px;
+  }
+  .galileo-fact {
+    max-width:340px;
+    text-align:center;
+    font-size:13px;
+    line-height:1.6;
+    letter-spacing:0.03em;
+    color:rgba(232,216,154,0.8);
+    font-style:italic;
+    min-height:3.2em;
+    margin-bottom:22px;
+  }
+  .galileo-fact .galileo-attr {
+    display:block;
+    margin-top:6px;
+    font-size:10px;
+    letter-spacing:0.1em;
+    text-transform:uppercase;
+    font-style:normal;
+    color:rgba(200,180,120,0.4);
+  }
+  @keyframes galileo-float {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-10px); }
+  }
+
   .loading-label {
     margin-top:28px;
     font-size:11px; letter-spacing:0.12em; text-transform:uppercase;
@@ -456,6 +493,10 @@
 </head>
 <body>
 <div id="loading-screen">
+  <div class="galileo-wrap">
+    <img class="galileo-img" src="Assests/Galileo.jpg" alt="Galileo Galilei">
+    <div class="galileo-fact" id="galileo-fact"></div>
+  </div>
   <div class="atom">
     <div class="atom-nucleus"></div>
     <div class="atom-orbit"><div class="atom-electron"></div></div>
@@ -508,6 +549,40 @@
 <div id="constellation-toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
+// ─── GALILEO SPACE FACTS — typed out during loading ─────────────────────────
+(function() {
+  const facts = [
+    "There are more stars in the observable universe than grains of sand on every beach on Earth — roughly 200 sextillion.",
+    "A day on Venus is longer than its year. It takes 243 Earth days to rotate once, but only 225 days to orbit the Sun.",
+    "Neutron stars are so dense that a teaspoon of their material would weigh about 6 billion tons.",
+    "The observable universe is 93 billion light-years across, yet it is still expanding — and accelerating.",
+    "Saturn's density is so low it would float in water, if you could find a bathtub large enough.",
+    "There is a cloud of alcohol in Sagittarius B2, near the center of our galaxy, spanning 288 billion miles.",
+    "The largest known structure in the universe, the Hercules–Corona Borealis Great Wall, is 10 billion light-years across.",
+    "Olympus Mons on Mars is nearly three times the height of Mount Everest — the tallest volcano in the solar system.",
+    "If two pieces of the same metal touch in the vacuum of space, they permanently bond together through cold welding.",
+    "The Voyager 1 spacecraft, launched in 1977, is now over 15 billion miles from Earth — the farthest human-made object.",
+    "Jupiter's Great Red Spot is a storm larger than Earth that has been raging for at least 350 years.",
+    "Light from the Sun takes about 8 minutes and 20 seconds to reach Earth — you always see the Sun as it was in the past.",
+    "There may be more Earth-like planets in our galaxy than there are people on Earth.",
+    "Space is completely silent. With no atmosphere, sound has no medium through which to travel.",
+    "Galileo's telescope, built in 1609, had less magnifying power than most modern binoculars — yet it changed everything.",
+  ];
+  const pick = facts[Math.floor(Math.random() * facts.length)];
+  const el = document.getElementById('galileo-fact');
+  if (!el) return;
+  let i = 0;
+  function typeNext() {
+    if (i <= pick.length) {
+      el.innerHTML = '"' + pick.slice(0, i) + '<span style="opacity:0.4">|</span>"'
+        + '<span class="galileo-attr">— Galileo Galilei</span>';
+      i++;
+      setTimeout(typeNext, 28 + Math.random() * 18);
+    }
+  }
+  typeNext();
+})();
+
 // ─── QUALITY TIER — auto-detect mobile for performance ──────────────────────
 const isMobileDevice = /Android|iPhone|iPad|iPod|webOS|BlackBerry|Opera Mini|IEMobile/i.test(navigator.userAgent)
   || (navigator.maxTouchPoints > 1 && window.innerWidth < 1024);
