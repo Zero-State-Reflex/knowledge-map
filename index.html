@@ -572,6 +572,7 @@
 <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
 <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
 <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
 // ─── GALILEO SPACE FACTS — typed out during loading ─────────────────────────
 (function() {
@@ -4082,127 +4083,38 @@ let voyagerHitbox = null;
 function buildVoyager() {
   voyagerGroup = new THREE.Group();
 
-  // ── Materials ──
-  const busMat = new THREE.MeshPhongMaterial({
-    color: 0x888890, emissive: new THREE.Color(0x151518),
-    emissiveIntensity: 0.08, shininess: 60, specular: new THREE.Color(0x666666),
+  // ── Load NASA's official Voyager GLB model ──
+  const loader = new THREE.GLTFLoader();
+  loader.load('Assests/voyager.glb', (gltf) => {
+    const model = gltf.scene;
+    // Auto-scale: measure bounding box, normalize to ~10 units wide
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const targetSize = 10;
+    model.scale.setScalar(targetSize / maxDim);
+    // Center the model
+    const center = box.getCenter(new THREE.Vector3());
+    model.position.sub(center.multiplyScalar(targetSize / maxDim));
+    // Boost materials for visibility in dark space
+    model.traverse(child => {
+      if (child.isMesh && child.material) {
+        const mat = child.material;
+        if (mat.emissive) {
+          mat.emissiveIntensity = Math.max(mat.emissiveIntensity || 0, 0.08);
+        }
+      }
+    });
+    voyagerGroup.add(model);
+  }, undefined, (err) => {
+    console.warn('Failed to load Voyager GLB, falling back to placeholder', err);
+    // Minimal fallback — simple shape so it's not invisible
+    const fb = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.8, 1.8, 1.0, 10),
+      new THREE.MeshPhongMaterial({ color: 0xc9a84c })
+    );
+    voyagerGroup.add(fb);
   });
-  const foilMat = new THREE.MeshPhongMaterial({
-    color: 0xc9a84c, emissive: new THREE.Color(0x3a2a08),
-    emissiveIntensity: 0.12, shininess: 100, specular: new THREE.Color(0xffe0a0),
-  });
-  const dishMat = new THREE.MeshPhongMaterial({
-    color: 0xd8d4cc, emissive: new THREE.Color(0x141310),
-    emissiveIntensity: 0.04, shininess: 30, specular: new THREE.Color(0x555555),
-    side: THREE.DoubleSide,
-  });
-  const darkMat = new THREE.MeshPhongMaterial({
-    color: 0x2a2a30, shininess: 20, specular: new THREE.Color(0x333333),
-  });
-
-  // ── 10-sided bus body (decagonal prism like real Voyager) ──
-  const busGeo = new THREE.CylinderGeometry(1.8, 1.8, 1.0, 10);
-  const bus = new THREE.Mesh(busGeo, foilMat);
-  voyagerGroup.add(bus);
-
-  // Top deck
-  const deckGeo = new THREE.CylinderGeometry(1.9, 1.9, 0.1, 10);
-  const deck = new THREE.Mesh(deckGeo, busMat);
-  deck.position.y = 0.55;
-  voyagerGroup.add(deck);
-
-  // ── High-gain antenna dish (3.7m on real Voyager — the big dish) ──
-  const hgaGeo = new THREE.SphereGeometry(3.5, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.35);
-  const hga = new THREE.Mesh(hgaGeo, dishMat);
-  hga.position.y = -0.8;
-  hga.rotation.x = Math.PI; // concave side up
-  voyagerGroup.add(hga);
-
-  // Dish feed support struts (3 legs)
-  for (let k = 0; k < 3; k++) {
-    const ang = (k / 3) * Math.PI * 2;
-    const sGeo = new THREE.CylinderGeometry(0.03, 0.03, 2.5, 3);
-    const s = new THREE.Mesh(sGeo, busMat);
-    s.position.set(Math.cos(ang) * 1.2, 0.7, Math.sin(ang) * 1.2);
-    s.rotation.x = Math.cos(ang) * 0.35;
-    s.rotation.z = -Math.sin(ang) * 0.35;
-    voyagerGroup.add(s);
-  }
-  // Feed horn
-  const feedGeo = new THREE.CylinderGeometry(0.1, 0.2, 0.5, 6);
-  const feedHorn = new THREE.Mesh(feedGeo, busMat);
-  feedHorn.position.y = 2.0;
-  voyagerGroup.add(feedHorn);
-
-  // ── Science boom — long boom with instruments (like real Voyager's scan platform) ──
-  const boomGeo = new THREE.CylinderGeometry(0.04, 0.04, 7.0, 4);
-  const boom = new THREE.Mesh(boomGeo, busMat);
-  boom.rotation.z = Math.PI / 2;
-  boom.position.set(5.0, 0, 0);
-  voyagerGroup.add(boom);
-
-  // Scan platform at boom tip (cameras, spectrometers)
-  const scanGeo = new THREE.BoxGeometry(0.6, 0.5, 0.4);
-  const scan = new THREE.Mesh(scanGeo, darkMat);
-  scan.position.set(8.6, 0, 0);
-  voyagerGroup.add(scan);
-  // Camera lens
-  const lensGeo = new THREE.CylinderGeometry(0.12, 0.15, 0.25, 6);
-  const lens = new THREE.Mesh(lensGeo, new THREE.MeshBasicMaterial({ color: 0x0a0a18 }));
-  lens.rotation.z = Math.PI / 2;
-  lens.position.set(9.0, 0.1, 0);
-  voyagerGroup.add(lens);
-
-  // ── Magnetometer boom — opposite side ──
-  const magGeo = new THREE.CylinderGeometry(0.03, 0.03, 10.0, 4);
-  const mag = new THREE.Mesh(magGeo, busMat);
-  mag.rotation.z = Math.PI / 2;
-  mag.position.set(-6.5, 0.3, 0);
-  voyagerGroup.add(mag);
-  const magTip = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), busMat);
-  magTip.position.set(-11.6, 0.3, 0);
-  voyagerGroup.add(magTip);
-
-  // ── RTG booms (Radioisotope Thermoelectric Generators) — the 3 dark cylinders on a V-boom ──
-  for (let r = 0; r < 3; r++) {
-    const ang = -Math.PI / 2 + (r - 1) * 0.3;
-    const bLen = 5 + r * 0.8;
-    // Boom strut
-    const rtgBoomGeo = new THREE.CylinderGeometry(0.04, 0.04, bLen, 4);
-    const rtgBoom = new THREE.Mesh(rtgBoomGeo, busMat);
-    rtgBoom.rotation.z = ang;
-    rtgBoom.position.set(Math.cos(ang) * bLen * 0.5, Math.sin(ang) * bLen * 0.5, 0);
-    voyagerGroup.add(rtgBoom);
-    // RTG cylinder at tip
-    const rtgGeo = new THREE.CylinderGeometry(0.3, 0.3, 1.5, 8);
-    const rtg = new THREE.Mesh(rtgGeo, darkMat);
-    rtg.rotation.z = ang;
-    rtg.position.set(Math.cos(ang) * bLen, Math.sin(ang) * bLen, 0);
-    voyagerGroup.add(rtg);
-    // RTG fins (cooling)
-    for (let f = 0; f < 4; f++) {
-      const finGeo = new THREE.BoxGeometry(0.02, 0.5, 0.6);
-      const fin = new THREE.Mesh(finGeo, busMat);
-      const fAng = (f / 4) * Math.PI * 2;
-      fin.position.set(
-        Math.cos(ang) * bLen + Math.cos(fAng) * 0.35 * Math.sin(ang),
-        Math.sin(ang) * bLen + Math.cos(fAng) * 0.35 * -Math.cos(ang),
-        Math.sin(fAng) * 0.35
-      );
-      fin.rotation.z = ang;
-      voyagerGroup.add(fin);
-    }
-  }
-
-  // ── Golden Record (iconic gold disc on the side) ──
-  const recordGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.04, 16);
-  const recordMat = new THREE.MeshPhongMaterial({
-    color: 0xdaa520, shininess: 140, specular: new THREE.Color(0xffee88),
-  });
-  const record = new THREE.Mesh(recordGeo, recordMat);
-  record.rotation.x = Math.PI / 2;
-  record.position.set(0, 0, 1.85);
-  voyagerGroup.add(record);
 
   // ── Faint glow around Voyager — so it's visible from far away ──
   const glowMat = new THREE.SpriteMaterial({
