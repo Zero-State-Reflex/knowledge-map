@@ -4070,6 +4070,161 @@ function buildVoyager() {
   voyagerData.trailCount = vTrailCount;
 }
 
+// ─── COMET — glowing ice body with dust and ion tails ────────────────────────
+let cometGroup = null;
+let cometData  = null;
+
+function buildComet() {
+  cometGroup = new THREE.Group();
+
+  // Nucleus — small bright ice body
+  const nucleusGeo = new THREE.SphereGeometry(1, 12, 10);
+  const nucleusMat = new THREE.MeshBasicMaterial({
+    color: 0xddeeff,
+  });
+  const nucleus = new THREE.Mesh(nucleusGeo, nucleusMat);
+  nucleus.scale.setScalar(3);
+  cometGroup.add(nucleus);
+
+  // Coma — fuzzy glow around nucleus
+  const comaMat = new THREE.SpriteMaterial({
+    map: glowTexture,
+    color: 0xaaddff,
+    transparent: true,
+    opacity: 0.5,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const coma = new THREE.Sprite(comaMat);
+  coma.scale.set(25, 25, 1);
+  cometGroup.add(coma);
+
+  scene.add(cometGroup);
+
+  // Dust tail — yellowish curved particle trail
+  const DUST_COUNT = 300;
+  const dustPositions = new Float32Array(DUST_COUNT * 3);
+  const dustAlphas    = new Float32Array(DUST_COUNT);
+  const dustSizes     = new Float32Array(DUST_COUNT);
+  const dustGeo = new THREE.BufferGeometry();
+  dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
+  dustGeo.setAttribute('alpha',    new THREE.BufferAttribute(dustAlphas, 1));
+  dustGeo.setAttribute('size',     new THREE.BufferAttribute(dustSizes, 1));
+
+  const dustMat = new THREE.PointsMaterial({
+    color: 0xffddaa,
+    transparent: true,
+    opacity: 0.6,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    size: 3,
+    sizeAttenuation: true,
+  });
+  const dustPoints = new THREE.Points(dustGeo, dustMat);
+  scene.add(dustPoints);
+
+  // Ion tail — blue straight trail
+  const ION_COUNT = 200;
+  const ionPositions = new Float32Array(ION_COUNT * 3);
+  const ionGeo = new THREE.BufferGeometry();
+  ionGeo.setAttribute('position', new THREE.BufferAttribute(ionPositions, 3));
+
+  const ionMat = new THREE.PointsMaterial({
+    color: 0x4488ff,
+    transparent: true,
+    opacity: 0.4,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    size: 2,
+    sizeAttenuation: true,
+  });
+  const ionPoints = new THREE.Points(ionGeo, ionMat);
+  scene.add(ionPoints);
+
+  // Elliptical orbit waypoints — long sweeping path
+  const waypoints = [];
+  const wpCount = 200;
+  const a = 4000, b = 2500, cY = 300; // semi-major, semi-minor, y-offset
+  for (let i = 0; i < wpCount; i++) {
+    const angle = (i / wpCount) * Math.PI * 2;
+    waypoints.push(new THREE.Vector3(
+      Math.cos(angle) * a,
+      Math.sin(angle * 2.3) * cY,
+      Math.sin(angle) * b
+    ));
+  }
+
+  cometData = {
+    waypoints,
+    wpIdx: 0,
+    progress: 0,
+    speed: 1.8,
+    dustGeo, dustPositions, dustAlphas, dustSizes, dustPoints,
+    ionGeo, ionPositions, ionPoints,
+    DUST_COUNT, ION_COUNT,
+    history: [],     // position history for tail
+    historyMax: 120,
+  };
+}
+
+function updateComet() {
+  if (!cometData || !cometGroup) return;
+  const d = cometData;
+  const wp = d.waypoints;
+
+  // Advance along ellipse
+  const fromIdx = d.wpIdx % wp.length;
+  const toIdx   = (d.wpIdx + 1) % wp.length;
+  const from = wp[fromIdx], to = wp[toIdx];
+  const segLen = from.distanceTo(to);
+  d.progress += d.speed / Math.max(segLen, 1);
+  if (d.progress >= 1) { d.progress = 0; d.wpIdx = toIdx; }
+
+  const t = d.progress;
+  const px = from.x + (to.x - from.x) * t;
+  const py = from.y + (to.y - from.y) * t;
+  const pz = from.z + (to.z - from.z) * t;
+  cometGroup.position.set(px, py, pz);
+
+  // Record history
+  d.history.push(px, py, pz);
+  if (d.history.length > d.historyMax * 3) d.history.splice(0, 3);
+  const hPts = d.history.length / 3;
+
+  // "Sun" direction — tails always point away from origin
+  const sunDir = new THREE.Vector3(px, py, pz).normalize();
+
+  // Dust tail — curved, uses history + sun direction
+  for (let i = 0; i < d.DUST_COUNT; i++) {
+    const frac = i / d.DUST_COUNT;
+    const hIdx = Math.max(0, Math.floor((hPts - 1) * (1 - frac))) * 3;
+    if (hIdx + 2 < d.history.length) {
+      // Base position from history
+      const bx = d.history[hIdx], by = d.history[hIdx+1], bz = d.history[hIdx+2];
+      // Push away from sun + spread
+      const spread = frac * 80;
+      const sunPush = frac * frac * 200;
+      d.dustPositions[i*3]     = bx + sunDir.x * sunPush + (Math.sin(i*1.7) * spread);
+      d.dustPositions[i*3 + 1] = by + sunDir.y * sunPush + (Math.cos(i*2.3) * spread * 0.5);
+      d.dustPositions[i*3 + 2] = bz + sunDir.z * sunPush + (Math.sin(i*3.1) * spread);
+    }
+  }
+  d.dustGeo.attributes.position.needsUpdate = true;
+
+  // Ion tail — straight, points directly away from sun
+  for (let i = 0; i < d.ION_COUNT; i++) {
+    const frac = i / d.ION_COUNT;
+    const dist = frac * 350;
+    const jitter = Math.sin(i * 7.7 + performance.now() * 0.002) * 3;
+    d.ionPositions[i*3]     = px + sunDir.x * dist + jitter;
+    d.ionPositions[i*3 + 1] = py + sunDir.y * dist;
+    d.ionPositions[i*3 + 2] = pz + sunDir.z * dist + jitter;
+  }
+  d.ionGeo.attributes.position.needsUpdate = true;
+}
+
+buildComet();
+
 // ─── VOYAGER ZOOM — click to inspect the probe up close ──────────────────────
 let voyagerFocused = false;
 let voyagerCamAnim = null;
@@ -4401,6 +4556,7 @@ function updateScene() {
   updateShip();
   updateVoyager();
   updateVoyagerCam();
+  updateComet();
   let idx = 0;
   for (const l of links) {
     edgePosArr[idx++] = l.source.x; edgePosArr[idx++] = l.source.y; edgePosArr[idx++] = l.source.z;
