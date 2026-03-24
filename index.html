@@ -124,6 +124,22 @@
     color:rgba(200,180,120,0.6); white-space:nowrap;
   }
   #c { display:block; width:100%; height:100%; cursor:grab; }
+  #lens-flare {
+    position: fixed; pointer-events: none; z-index: 5;
+    width: 100vw; height: 6px; top: 50%; left: 0;
+    transform: translateY(-50%);
+    background: linear-gradient(90deg,
+      transparent 0%,
+      rgba(255,240,220,0.0) 20%,
+      rgba(255,240,220,0.12) 40%,
+      rgba(255,255,255,0.18) 50%,
+      rgba(255,240,220,0.12) 60%,
+      rgba(255,240,220,0.0) 80%,
+      transparent 100%
+    );
+    opacity: 0; transition: opacity 0.3s;
+    mix-blend-mode: screen;
+  }
   #c:active { cursor:grabbing; }
   #title-bar {
     position:fixed; top:0; left:0; width:100%;
@@ -507,6 +523,7 @@
 </div>
 <div id="welcome-overlay"><div id="welcome-text">Welcome to the Map of Human Knowledge</div></div>
 <canvas id="c"></canvas>
+<div id="lens-flare"></div>
 <svg id="leader-svg">
   <line id="leader-line" x1="0" y1="0" x2="0" y2="0"/>
   <circle id="leader-dot" r="3" cx="0" cy="0"/>
@@ -4582,6 +4599,48 @@ function simTick() {
   }
 }
 
+// ─── LENS FLARE — anamorphic streak when bright planet near screen center ────
+const lensFlareEl = document.getElementById('lens-flare');
+function updateLensFlare() {
+  if (isMobileDevice) return;
+  let bestBright = 0;
+  let bestY = 0.5;
+  let bestColor = '#ffeedd';
+  const cx = window.innerWidth * 0.5, cy = window.innerHeight * 0.5;
+  // Check all visible planets for proximity to screen center
+  for (const n of nodes) {
+    if (n._targetOpacity !== undefined && n._targetOpacity < 0.3) continue;
+    const sp = toScreen(new THREE.Vector3(n.x, n.y, n.z));
+    const dx = (sp.x - cx) / window.innerWidth;
+    const dy = (sp.y - cy) / window.innerHeight;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    // Brightness based on proximity to center and planet size
+    const bright = Math.max(0, 1 - dist * 4) * (n.size / 22);
+    if (bright > bestBright) {
+      bestBright = bright;
+      bestY = sp.y;
+      bestColor = DOMAINS[n.domain]?.color || '#ffeedd';
+    }
+  }
+  // Show flare if bright enough
+  if (bestBright > 0.1) {
+    lensFlareEl.style.top = bestY + 'px';
+    lensFlareEl.style.opacity = Math.min(1, bestBright * 0.7);
+    lensFlareEl.style.background = `linear-gradient(90deg,
+      transparent 0%,
+      ${bestColor}00 20%,
+      ${bestColor}30 40%,
+      ${bestColor}45 50%,
+      ${bestColor}30 60%,
+      ${bestColor}00 80%,
+      transparent 100%
+    )`;
+    lensFlareEl.style.height = (4 + bestBright * 6) + 'px';
+  } else {
+    lensFlareEl.style.opacity = '0';
+  }
+}
+
 function updateScene() {
   for (const n of nodes) {
     n.mesh.position.set(n.x, n.y, n.z);
@@ -4617,6 +4676,7 @@ function updateScene() {
   updateVoyager();
   updateVoyagerCam();
   updateComet();
+  updateLensFlare();
   let idx = 0;
   for (const l of links) {
     edgePosArr[idx++] = l.source.x; edgePosArr[idx++] = l.source.y; edgePosArr[idx++] = l.source.z;
