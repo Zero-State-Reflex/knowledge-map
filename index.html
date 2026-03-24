@@ -3686,22 +3686,72 @@ let shipGroup = null;
 let shipData = null;
 let shipMeshForRaycast = null; // the hitbox mesh for raycasting
 
+// ─── NASA SATELLITE CATALOG — real GLB models with info links ────────────────
+const SATELLITE_CATALOG = [
+  { file: 'Assests/hubble.glb',   name: 'Hubble Space Telescope',        url: 'https://en.wikipedia.org/wiki/Hubble_Space_Telescope' },
+  { file: 'Assests/cassini.glb',  name: 'Cassini-Huygens',               url: 'https://en.wikipedia.org/wiki/Cassini%E2%80%93Huygens' },
+  { file: 'Assests/parker.glb',   name: 'Parker Solar Probe',            url: 'https://en.wikipedia.org/wiki/Parker_Solar_Probe' },
+  { file: 'Assests/chandra.glb',  name: 'Chandra X-ray Observatory',     url: 'https://en.wikipedia.org/wiki/Chandra_X-ray_Observatory' },
+  { file: 'Assests/lro.glb',      name: 'Lunar Reconnaissance Orbiter',  url: 'https://en.wikipedia.org/wiki/Lunar_Reconnaissance_Orbiter' },
+  { file: 'Assests/fermi.glb',    name: 'Fermi Gamma-ray Telescope',     url: 'https://en.wikipedia.org/wiki/Fermi_Gamma-ray_Space_Telescope' },
+  { file: 'Assests/spitzer.glb',  name: 'Spitzer Space Telescope',       url: 'https://en.wikipedia.org/wiki/Spitzer_Space_Telescope' },
+  { file: 'Assests/kepler.glb',   name: 'Kepler Space Telescope',        url: 'https://en.wikipedia.org/wiki/Kepler_space_telescope' },
+  { file: 'Assests/dawn.glb',     name: 'Dawn Spacecraft',               url: 'https://en.wikipedia.org/wiki/Dawn_(spacecraft)' },
+  { file: 'Assests/pioneer.glb',  name: 'Pioneer 10',                    url: 'https://en.wikipedia.org/wiki/Pioneer_10' },
+  { file: 'Assests/mro.glb',      name: 'Mars Reconnaissance Orbiter',   url: 'https://en.wikipedia.org/wiki/Mars_Reconnaissance_Orbiter' },
+  { file: 'Assests/iss.glb',      name: 'International Space Station',   url: 'https://en.wikipedia.org/wiki/International_Space_Station' },
+];
+let _lastSatIdx = -1; // avoid repeating same satellite consecutively
+
 function buildShip() {
   clearShip();
   if (!focusedNode) return;
 
   const n = focusedNode;
-  const domColor = new THREE.Color(DOMAINS[n.domain]?.color || '#c8b89a');
+
+  // Pick a random satellite from the catalog (avoid repeating)
+  let satIdx = Math.floor(Math.random() * SATELLITE_CATALOG.length);
+  if (satIdx === _lastSatIdx) satIdx = (satIdx + 1) % SATELLITE_CATALOG.length;
+  _lastSatIdx = satIdx;
+  const sat = SATELLITE_CATALOG[satIdx];
 
   shipGroup = new THREE.Group();
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // MATERIALS — realistic satellite surface finishes
-  // ═══════════════════════════════════════════════════════════════════════════
+  // Load NASA GLB model
+  const dracoLoader = new THREE.DRACOLoader();
+  dracoLoader.setDecoderPath('https://unpkg.com/three@0.128.0/examples/js/libs/draco/gltf/');
+  const loader = new THREE.GLTFLoader();
+  loader.setDRACOLoader(dracoLoader);
+  loader.load(sat.file, (gltf) => {
+    const model = gltf.scene;
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const targetSize = 8;
+    model.scale.setScalar(targetSize / maxDim);
+    const center = box.getCenter(new THREE.Vector3());
+    model.position.sub(center.multiplyScalar(targetSize / maxDim));
+    model.traverse(child => {
+      if (child.isMesh && child.material) {
+        if (child.material.emissive) {
+          child.material.emissive.setHex(0x333333);
+          child.material.emissiveIntensity = 0.3;
+        }
+        child.material.side = THREE.DoubleSide;
+        child.material.needsUpdate = true;
+      }
+    });
+    shipGroup.add(model);
+  }, undefined, (err) => {
+    console.warn('Failed to load satellite GLB:', sat.file, err);
+    const fb = new THREE.Mesh(
+      new THREE.BoxGeometry(2, 2, 2),
+      new THREE.MeshPhongMaterial({ color: 0xc9a84c })
+    );
+    shipGroup.add(fb);
+  });
 
-  // Gold multi-layer insulation (MLI) thermal blanket
-  const goldFoilMat = new THREE.MeshPhongMaterial({
-    color: 0xc9a84c,
+  /* ── OLD PROCEDURAL MODEL REMOVED ──
     emissive: new THREE.Color(0x3a2a08),
     emissiveIntensity: 0.15,
     shininess: 120,
@@ -4019,7 +4069,7 @@ function buildShip() {
   shipGroup.add(navRed);
   const navGreen = new THREE.Mesh(navGeo, navGreenMat);
   navGreen.position.set(13.8, 0, 0);
-  shipGroup.add(navGreen);
+  ── END OLD PROCEDURAL MODEL */
 
   // ── Invisible hitbox for raycasting (larger than visual) ──
   const hitGeo = new THREE.SphereGeometry(10, 8, 6);
@@ -4038,11 +4088,9 @@ function buildShip() {
     speed: 0.004,
     incl: 0.7 + Math.random() * 0.5,
     alpha: 0,
-    engineMat,
-    haloMat,
-    navRedMat,
-    navGreenMat,
     spawnTime: performance.now(),
+    satName: sat.name,
+    satUrl: sat.url,
   };
 
 }
@@ -4090,15 +4138,12 @@ function updateShip() {
   // Scale and opacity — 1.5x to make detail visible in orbit
   shipGroup.scale.setScalar(shipData.alpha * 1.5);
 
-  // Signal light — slow blink pattern (like real telemetry downlink)
-  const blink = Math.sin(now * 0.004);
-  shipData.engineMat.opacity = shipData.alpha * (0.2 + Math.max(0, blink) * 0.8);
-  shipData.haloMat.opacity = shipData.alpha * (0.06 + Math.max(0, blink) * 0.12);
-
-  // Nav lights — alternating blink like aircraft (red port, green starboard)
-  const navPhase = (now * 0.003) % (Math.PI * 2);
-  shipData.navRedMat.opacity = shipData.alpha * (0.15 + Math.max(0, Math.sin(navPhase)) * 0.85);
-  shipData.navGreenMat.opacity = shipData.alpha * (0.15 + Math.max(0, Math.sin(navPhase + Math.PI)) * 0.85);
+  // Fade model materials opacity
+  shipGroup.traverse(child => {
+    if (child.isMesh && child.material && child.material.transparent !== undefined) {
+      child.material.opacity = shipData.alpha;
+    }
+  });
 }
 
 // ─── VOYAGER 1 — free-flying probe traversing the entire system ──────────────
@@ -4999,7 +5044,7 @@ function doHover(e) {
     if (shipHits.length > 0) {
       specialHovered = true;
       canvas.style.cursor = 'pointer';
-      hoverLabelEl.textContent = 'Explore on Wikipedia →';
+      hoverLabelEl.textContent = (shipData?.satName || 'Satellite') + ' — View on Wikipedia →';
       const sp = toScreen(shipGroup.position);
       hoverLabelEl.style.left = sp.x + 'px';
       hoverLabelEl.style.top = (sp.y - 24) + 'px';
@@ -5922,12 +5967,11 @@ canvas.addEventListener('click', e => {
     }
   }
 
-  // Check spaceship first
-  if (shipMeshForRaycast && focusedNode) {
+  // Check spaceship (NASA satellite) first
+  if (shipMeshForRaycast && focusedNode && shipData) {
     const shipHits = raycaster.intersectObject(shipMeshForRaycast, true);
     if (shipHits.length > 0) {
-      const slug = encodeURIComponent(focusedNode.id.replace(/\s*\((?:Med|Interdis\.)\)\s*$/, '').trim().replace(/ /g, '_'));
-      window.open(`https://en.wikipedia.org/wiki/${slug}`, '_blank');
+      window.open(shipData.satUrl, '_blank');
       return;
     }
   }
