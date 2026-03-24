@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Map of Human Knowledge — 3D</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
@@ -1685,6 +1688,22 @@ const PLANET_PALETTES = {
   plasma:        [[120,10,55],[160,30,80],[140,20,65],[100,5,42],[180,55,110],[80,4,35]],
 };
 
+// ─── MOON PALETTES — distinct from planet palettes: rocky, dusty, icy, ashen ─
+const MOON_PALETTES = [
+  [[160,155,145],[130,125,115],[100,95,88],[180,175,168],[75,72,66],[145,140,130]],   // lunar grey
+  [[140,120,90],[115,95,70],[90,72,50],[165,145,110],[70,55,38],[125,105,78]],        // dusty tan
+  [[105,115,130],[82,92,108],[60,70,88],[128,138,155],[48,55,70],[95,105,120]],       // slate blue
+  [[130,95,80],[108,75,62],[85,58,45],[155,118,100],[65,42,30],[120,88,72]],          // rusty iron
+  [[145,148,155],[118,122,130],[90,95,105],[168,172,180],[72,76,85],[135,138,148]],   // silver frost
+  [[100,110,85],[78,88,65],[58,68,48],[122,132,105],[42,52,35],[92,102,78]],          // mossy rock
+  [[135,105,120],[112,82,98],[88,62,78],[158,128,142],[68,48,60],[125,95,110]],       // mauve dust
+  [[120,130,140],[95,105,118],[72,82,96],[145,155,165],[55,64,78],[110,120,132]],     // ice blue
+  [[150,130,100],[125,108,80],[100,85,60],[172,155,125],[78,65,45],[140,120,92]],     // sandstone
+  [[110,100,115],[88,78,95],[65,58,75],[132,122,138],[50,42,58],[102,92,108]],        // twilight grey
+  [[140,110,70],[118,90,52],[95,70,35],[162,132,90],[75,55,28],[130,100,62]],         // amber rock
+  [[125,135,125],[100,112,100],[78,90,78],[148,158,148],[60,70,60],[115,125,115]],    // pale jade
+];
+
 function makePlanetTexture(domain, nodeId) {
   const type  = PLANET_TYPES[domain] || 'ocean';
   const pal   = PLANET_PALETTES[type];
@@ -1788,8 +1807,6 @@ function makePlanetTexture(domain, nodeId) {
 
 // ─── MOON TEXTURE (smaller, faster variant) ─────────────────────────────────
 function makeMoonTexture(domain, nodeId) {
-  const type = PLANET_TYPES[domain] || 'ocean';
-  const pal  = PLANET_PALETTES[type];
   const S    = 128; // 256x128 canvas — much cheaper than planet textures
   const cv   = document.createElement('canvas');
   cv.width = S * 2; cv.height = S;
@@ -1803,37 +1820,74 @@ function makeMoonTexture(domain, nodeId) {
   const rng  = seededRand(seed);
   const rng2 = seededRand(seed + 42);
 
+  // Pick a moon palette based on nodeId hash — each moon gets its own look
+  const palIdx = ((seed >>> 4) ^ (seed >>> 12)) % MOON_PALETTES.length;
+  const pal = MOON_PALETTES[palIdx];
+
+  // Optionally tint toward domain color for subtle thematic link
+  const domType = PLANET_TYPES[domain] || 'ocean';
+  const domPal  = PLANET_PALETTES[domType];
+  const tintColor = domPal[0]; // grab one domain color for a subtle tint
+  const tintStrength = 0.15;   // keep it subtle
+
   const n1 = buildNoise(rng,  16, 8);
   const n2 = buildNoise(rng2, 12, 12);
+  const n3 = buildNoise(seededRand(seed + 137), 8, 6); // extra noise for craters
 
-  const isBanded = ['gas_blue','amber_gas','plasma','violet_cloud','dark_nebula'].includes(type);
-  const numBands = 3 + Math.floor(rng() * 3);
+  // Moons are always rocky/cratered — never banded like gas giants
+  const hasCraters = rng() < 0.7;
+  const numCraters = hasCraters ? (5 + Math.floor(rng() * 12)) : 0;
+  const craters = [];
+  for (let c = 0; c < numCraters; c++) {
+    craters.push({
+      cu: rng(), cv: rng(),
+      cr: 0.02 + rng() * 0.06,
+      depth: 0.3 + rng() * 0.5
+    });
+  }
 
   for (let py = 0; py < S; py++) {
     for (let px = 0; px < S * 2; px++) {
       const u = px / (S * 2);
       const v = py / S;
 
-      let t;
-      if (isBanded) {
-        const warp = fbm(n1, u, v, 3, 2.0, 0.5) * 0.3;
-        t = (Math.sin((v + warp) * Math.PI * numBands) + 1) * 0.5;
-        t += fbm(n2, u * 2, v * 2, 3, 2.0, 0.4) * 0.15;
-        t = Math.max(0, Math.min(1, t));
-      } else {
-        t = fbm(n1, u * 2, v * 2, 4, 2.1, 0.5);
-        t += fbm(n2, u * 3, v * 3, 3, 2.2, 0.45) * 0.2;
-        t = Math.max(0, Math.min(1, t));
+      // Base rocky texture with layered noise
+      let t = fbm(n1, u * 2, v * 2, 4, 2.1, 0.5);
+      t += fbm(n2, u * 3, v * 3, 3, 2.2, 0.45) * 0.25;
+      t += fbm(n3, u * 5, v * 5, 2, 2.0, 0.4) * 0.1; // fine grain
+
+      // Crater darkening
+      for (let c = 0; c < numCraters; c++) {
+        const cr = craters[c];
+        let du = Math.abs(u - cr.cu); if (du > 0.5) du = 1 - du; // wrap horizontally
+        const dv = v - cr.cv;
+        const dist = Math.sqrt(du * du + dv * dv);
+        if (dist < cr.cr) {
+          const edge = dist / cr.cr;
+          // Dark interior with bright rim
+          if (edge > 0.75) {
+            t += (1 - edge) * 0.8; // bright rim
+          } else {
+            t -= cr.depth * (1 - edge * 1.3); // dark interior
+          }
+        }
       }
 
-      // Darken moons slightly compared to planets — they're smaller, cooler bodies
+      t = Math.max(0, Math.min(1, t));
+
+      // Map to moon palette
       const ci = t * (pal.length - 1);
       const ci0 = Math.floor(ci), ci1 = Math.min(ci0 + 1, pal.length - 1);
       const cf = ci - ci0;
       const c0 = pal[ci0], c1 = pal[ci1];
-      const r = Math.round((c0[0] + (c1[0]-c0[0]) * cf) * 0.7);
-      const g = Math.round((c0[1] + (c1[1]-c0[1]) * cf) * 0.7);
-      const b = Math.round((c0[2] + (c1[2]-c0[2]) * cf) * 0.7);
+      let r = c0[0] + (c1[0]-c0[0]) * cf;
+      let g = c0[1] + (c1[1]-c0[1]) * cf;
+      let b = c0[2] + (c1[2]-c0[2]) * cf;
+
+      // Subtle domain tint so moons still relate to their planet's theme
+      r = r * (1 - tintStrength) + tintColor[0] * tintStrength;
+      g = g * (1 - tintStrength) + tintColor[1] * tintStrength;
+      b = b * (1 - tintStrength) + tintColor[2] * tintStrength;
 
       // Limb darkening
       const lat = (v - 0.5) * Math.PI;
@@ -1914,27 +1968,37 @@ nodes.forEach(n => {
 
   n.outerAtm = null; // removed — saves 200+ draw calls for barely visible 0.02 opacity meshes
 
-  // Planetary rings on larger nodes (size >= 18) — skip on mobile
+  // Planetary particle rings on larger nodes (size >= 18) — skip on mobile
   if (n.size >= 18 && !isMobileDevice) {
-    const ringInner = n.size * 2.2 * 1.35;
-    const ringOuter = n.size * 2.2 * 2.0;
-    const ringGeo = new THREE.RingGeometry(ringInner, ringOuter, 64, 1);
-    const ringMat = new THREE.MeshBasicMaterial({
-      color: domColor,
-      transparent: true,
-      opacity: 0.06,
-      side: THREE.DoubleSide,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    const ring = new THREE.Mesh(ringGeo, ringMat);
-    ring.position.set(n.x, n.y, n.z);
-    // Tilt rings uniquely per node
     const tiltSeed = n.id.charCodeAt(0) * 0.1;
-    ring.rotation.x = Math.PI * 0.5 + Math.sin(tiltSeed) * 0.4;
-    ring.rotation.y = Math.cos(tiltSeed * 1.3) * 0.3;
-    scene.add(ring);
-    n.ring = ring;
+    const tiltA = Math.PI * 0.5 + Math.sin(tiltSeed) * 0.4;
+    const tiltB = Math.cos(tiltSeed * 1.3) * 0.3;
+    // Tilt vectors for the ring plane
+    const cosA = Math.cos(tiltA), sinA = Math.sin(tiltA);
+    const cosB = Math.cos(tiltB), sinB = Math.sin(tiltB);
+    const tiltX = new THREE.Vector3(cosB, 0, -sinB);
+    const tiltY = new THREE.Vector3(sinB * sinA, cosA, cosB * sinA);
+
+    // Number of particles scales with planet size
+    const ringCount = Math.min(400, Math.round(120 + n.size * 8));
+    const pRing = buildParticleRing({
+      count: ringCount,
+      innerR: 1.35,
+      outerR: 2.1,
+      color: domColor,
+      gaps: [
+        { center: 0.38, width: 0.06 },  // Cassini-like division
+        { center: 0.72, width: 0.03 },   // thin outer gap
+      ],
+      sizeRange: [2, 8],
+      alphaRange: [0.15, 0.7],
+    });
+    pRing.mat.uniforms.uScale.value = n.size * 2.2;
+    pRing.mat.uniforms.uCenter.value.set(n.x, n.y, n.z);
+    pRing.mat.uniforms.uTiltX.value.copy(tiltX);
+    pRing.mat.uniforms.uTiltY.value.copy(tiltY);
+    scene.add(pRing.points);
+    n.ring = pRing; // store {points, geo, mat}
   }
 });
 
@@ -2145,7 +2209,162 @@ const moonMeshes   = [];   // raycaster target list (cleared each focus)
 let   moonData     = [];   // per-moon orbit state
 
 const moonSphereGeo = new THREE.SphereGeometry(1, Q.moonSegs[0], Q.moonSegs[1]);
-const moonRingGeo   = new THREE.RingGeometry(1.55, 1.85, 48);
+// moonRingGeo removed — moons now use particle rings
+
+// ─── PARTICLE RING SYSTEM — replaces flat RingGeometry for planets & moons ───
+const ringParticleVert = `
+  attribute float aSize;
+  attribute float aAlpha;
+  attribute float aAngle;
+  attribute float aSpeed;
+  attribute float aRadius;
+  uniform float uTime;
+  uniform float uScale;
+  uniform vec3  uCenter;
+  uniform vec3  uTiltX;
+  uniform vec3  uTiltY;
+  varying float vAlpha;
+  void main() {
+    float angle = aAngle + uTime * aSpeed;
+    vec3 pos = uCenter
+             + uTiltX * cos(angle) * aRadius * uScale
+             + uTiltY * sin(angle) * aRadius * uScale;
+    vAlpha = aAlpha;
+    vec4 mvPos = modelViewMatrix * vec4(pos, 1.0);
+    gl_PointSize = aSize * uScale * (180.0 / -mvPos.z);
+    gl_Position = projectionMatrix * mvPos;
+  }
+`;
+const ringParticleFrag = `
+  uniform vec3  uColor;
+  uniform float uOpacity;
+  varying float vAlpha;
+  void main() {
+    float d = length(gl_PointCoord - vec2(0.5));
+    if (d > 0.5) discard;
+    float glow = smoothstep(0.5, 0.05, d);
+    float brightness = glow * vAlpha;
+    gl_FragColor = vec4(uColor * (1.0 + brightness * 0.5), brightness * uOpacity);
+  }
+`;
+
+function buildParticleRing(opts) {
+  // opts: { count, innerR, outerR, color, gaps, sizeRange, alphaRange }
+  const count = opts.count || 200;
+  const innerR = opts.innerR || 1.4;
+  const outerR = opts.outerR || 2.2;
+  const gaps = opts.gaps || []; // [{center, width}] in normalized 0-1 radius space
+  const sizeMin = (opts.sizeRange || [1.5, 5])[0];
+  const sizeMax = (opts.sizeRange || [1.5, 5])[1];
+  const alphaMin = (opts.alphaRange || [0.2, 0.9])[0];
+  const alphaMax = (opts.alphaRange || [0.2, 0.9])[1];
+
+  const angles  = new Float32Array(count);
+  const radii   = new Float32Array(count);
+  const speeds  = new Float32Array(count);
+  const sizes   = new Float32Array(count);
+  const alphas  = new Float32Array(count);
+  // Dummy positions — computed in vertex shader
+  const positions = new Float32Array(count * 3);
+
+  for (let i = 0; i < count; i++) {
+    angles[i] = Math.random() * Math.PI * 2;
+    // Distribute radius with density falloff toward outer edge
+    let r;
+    let attempts = 0;
+    do {
+      r = innerR + Math.random() * (outerR - innerR);
+      const norm = (r - innerR) / (outerR - innerR);
+      // Check gaps
+      let inGap = false;
+      for (const g of gaps) {
+        if (Math.abs(norm - g.center) < g.width * 0.5) { inGap = true; break; }
+      }
+      if (!inGap) break;
+      attempts++;
+    } while (attempts < 20);
+    radii[i] = r;
+    // Kepler-ish: inner particles orbit faster
+    const rNorm = (r - innerR) / (outerR - innerR);
+    speeds[i] = (0.3 + (1 - rNorm) * 0.7) * (0.8 + Math.random() * 0.4);
+    sizes[i]  = sizeMin + Math.random() * (sizeMax - sizeMin);
+    // Particles near gaps are dimmer, inner ring brighter
+    const gapDim = gaps.reduce((dim, g) => {
+      const dist = Math.abs(rNorm - g.center);
+      return dim * smoothClamp(dist, g.width * 0.3, g.width * 0.8);
+    }, 1.0);
+    alphas[i] = (alphaMin + Math.random() * (alphaMax - alphaMin)) * gapDim;
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('aAngle',   new THREE.BufferAttribute(angles, 1));
+  geo.setAttribute('aRadius',  new THREE.BufferAttribute(radii, 1));
+  geo.setAttribute('aSpeed',   new THREE.BufferAttribute(speeds, 1));
+  geo.setAttribute('aSize',    new THREE.BufferAttribute(sizes, 1));
+  geo.setAttribute('aAlpha',   new THREE.BufferAttribute(alphas, 1));
+  // Bounding sphere hint so Three.js doesn't cull it
+  geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), outerR * 200);
+
+  const mat = new THREE.ShaderMaterial({
+    vertexShader:   ringParticleVert,
+    fragmentShader: ringParticleFrag,
+    uniforms: {
+      uTime:    { value: 0 },
+      uScale:   { value: 1 },
+      uCenter:  { value: new THREE.Vector3() },
+      uTiltX:   { value: new THREE.Vector3(1, 0, 0) },
+      uTiltY:   { value: new THREE.Vector3(0, 1, 0) },
+      uColor:   { value: new THREE.Color(opts.color || 0xffffff) },
+      uOpacity: { value: 1.0 },
+    },
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+
+  const points = new THREE.Points(geo, mat);
+  return { points, geo, mat };
+}
+
+function smoothClamp(x, lo, hi) {
+  if (x <= lo) return 0;
+  if (x >= hi) return 1;
+  const t = (x - lo) / (hi - lo);
+  return t * t * (3 - 2 * t);
+}
+
+// ─── MOON TRAIL GEOMETRY — fading arc behind each moon ───────────────────────
+const TRAIL_SEGS = 48;  // number of segments in the trail curve
+function makeTrailGeometry() {
+  const geo = new THREE.BufferGeometry();
+  // positions: TRAIL_SEGS+1 vertices
+  const positions = new Float32Array((TRAIL_SEGS + 1) * 3);
+  const alphas    = new Float32Array(TRAIL_SEGS + 1);
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('alpha',    new THREE.BufferAttribute(alphas, 1));
+  return geo;
+}
+
+// Custom shader material for fading trail
+const trailVertShader = `
+  attribute float alpha;
+  varying float vAlpha;
+  void main() {
+    vAlpha = alpha;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+const trailFragShader = `
+  uniform vec3  uColor;
+  uniform float uOpacity;
+  varying float vAlpha;
+  void main() {
+    float a = vAlpha * uOpacity;
+    // Soft glow: brighten near head
+    gl_FragColor = vec4(uColor * (1.0 + vAlpha * 0.4), a);
+  }
+`;
 
 function buildMoons(centerNode) {
   clearMoons();
@@ -2207,21 +2426,39 @@ function buildMoons(centerNode) {
     halo.scale.set(moonGlowScale, moonGlowScale, 1);
     scene.add(halo);
 
-    // ── Orbital ring — only on randomly selected moons ───────────────────────
+    // ── Particle ring — only on randomly selected moons ─────────────────────
     let ring = null, ringMat = null;
     if (hasRing) {
-      ringMat = new THREE.MeshBasicMaterial({
-        color: col,
-        transparent: true,
-        opacity: 0.55,
-        side: THREE.DoubleSide,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
+      const mRing = buildParticleRing({
+        count: 60 + Math.floor(Math.random() * 40),
+        innerR: 1.5,
+        outerR: 2.0,
+        color: col.getHex(),
+        gaps: Math.random() < 0.5 ? [{ center: 0.5, width: 0.08 }] : [],
+        sizeRange: [1.2, 3.5],
+        alphaRange: [0.25, 0.85],
       });
-      ring = new THREE.Mesh(moonRingGeo, ringMat);
-      ring.scale.setScalar(mSize);
-      scene.add(ring);
+      mRing.mat.uniforms.uScale.value = mSize;
+      scene.add(mRing.points);
+      ring = mRing;     // store the particle ring object
+      ringMat = mRing.mat;
     }
+
+    // ── Orbital trail — fading arc behind the moon ──────────────────────────
+    const trailGeo = makeTrailGeometry();
+    const trailMat = new THREE.ShaderMaterial({
+      vertexShader:   trailVertShader,
+      fragmentShader: trailFragShader,
+      uniforms: {
+        uColor:   { value: new THREE.Color(col).multiplyScalar(1.3) },
+        uOpacity: { value: 0.0 },
+      },
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const trail = new THREE.Line(trailGeo, trailMat);
+    scene.add(trail);
 
     // ── HTML label ───────────────────────────────────────────────────────────
     const label = document.createElement('div');
@@ -2236,6 +2473,7 @@ function buildMoons(centerNode) {
     document.body.appendChild(label);
 
     moonData.push({ n, mesh, halo, ring, mat, haloMat, ringMat, label,
+                    trail, trailGeo, trailMat,
                     orbitR, incl, phase, speed, mSize, angle: phase, hasRing,
                     moonAlpha: 0, fadeDelay: i * 80 + 600 }); // staggered fade-in
   });
@@ -2245,7 +2483,8 @@ function clearMoons() {
   moonData.forEach(m => {
     scene.remove(m.mesh);  m.mat.dispose();
     scene.remove(m.halo);  m.haloMat.dispose();
-    if (m.ring) { scene.remove(m.ring); m.ringMat.dispose(); }
+    if (m.ring) { scene.remove(m.ring.points); m.ring.geo.dispose(); m.ring.mat.dispose(); }
+    scene.remove(m.trail); m.trailGeo.dispose(); m.trailMat.dispose();
     m.label.remove();
   });
   moonData = [];
@@ -2279,14 +2518,42 @@ function updateMoons() {
     m.halo.position.set(wx, wy, wz);
 
     if (m.ring) {
-      m.ring.position.set(wx, wy, wz);
-      m.ring.rotation.x = Math.PI / 2 + m.incl * 0.6;
-      m.ring.rotation.z = m.angle * 0.3;
-      m.ringMat.opacity = m.moonAlpha * 0.55;
+      // Particle ring — update center position and tilt vectors
+      const tiltA = Math.PI / 2 + m.incl * 0.6;
+      const tiltB = m.angle * 0.3;
+      const cA = Math.cos(tiltA), sA = Math.sin(tiltA);
+      const cB = Math.cos(tiltB), sB = Math.sin(tiltB);
+      m.ring.mat.uniforms.uCenter.value.set(wx, wy, wz);
+      m.ring.mat.uniforms.uTiltX.value.set(cB, 0, -sB);
+      m.ring.mat.uniforms.uTiltY.value.set(sB * sA, cA, cB * sA);
+      m.ring.mat.uniforms.uTime.value += 0.008;
+      m.ring.mat.uniforms.uOpacity.value = m.moonAlpha * 0.7;
     }
 
     const t = now * 0.001;
     m.haloMat.opacity = m.moonAlpha * (0.12 + Math.sin(t * 1.1 + m.phase) * 0.07);
+
+    // ── Update orbital trail — arc behind moon along orbit path ──────────
+    const trailSpan = 0.55 + m.speed * 300; // angular sweep of trail (radians)
+    const posArr = m.trailGeo.attributes.position.array;
+    const alpArr = m.trailGeo.attributes.alpha.array;
+    for (let s = 0; s <= TRAIL_SEGS; s++) {
+      const frac = s / TRAIL_SEGS;  // 0 = moon head, 1 = tail
+      const a = m.angle - frac * trailSpan;
+      const tx = cx + Math.cos(a) * m.orbitR;
+      const ty = cy + Math.sin(a) * m.orbitR * sinI;
+      const tz = cz + Math.sin(a) * m.orbitR * cosI;
+      const idx3 = s * 3;
+      posArr[idx3]     = tx;
+      posArr[idx3 + 1] = ty;
+      posArr[idx3 + 2] = tz;
+      // Fade: bright at moon (frac=0), transparent at tail (frac=1)
+      // Cubic falloff for a nice glow-to-nothing feel
+      alpArr[s] = Math.pow(1 - frac, 2.5) * 0.6;
+    }
+    m.trailGeo.attributes.position.needsUpdate = true;
+    m.trailGeo.attributes.alpha.needsUpdate = true;
+    m.trailMat.uniforms.uOpacity.value = m.moonAlpha;
 
     const sp = toScreen(new THREE.Vector3(wx, wy, wz));
     const vis = sp.x > 0 && sp.x < window.innerWidth && sp.y > 0 && sp.y < window.innerHeight;
@@ -2429,65 +2696,293 @@ function buildShip() {
 
   shipGroup = new THREE.Group();
 
-  const metalMat = new THREE.MeshPhongMaterial({
-    color: 0x99999f,
-    emissive: new THREE.Color(0x222228),
-    emissiveIntensity: 0.1,
-    shininess: 80,
-    specular: new THREE.Color(0x666666),
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MATERIALS — realistic satellite surface finishes
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Gold multi-layer insulation (MLI) thermal blanket
+  const goldFoilMat = new THREE.MeshPhongMaterial({
+    color: 0xc9a84c,
+    emissive: new THREE.Color(0x3a2a08),
+    emissiveIntensity: 0.15,
+    shininess: 120,
+    specular: new THREE.Color(0xffe0a0),
   });
 
-  // ── Central bus — small box body ──
-  const busGeo = new THREE.BoxGeometry(2.2, 2.2, 3);
-  const bus = new THREE.Mesh(busGeo, metalMat);
+  // White radiator panel — thermal control surface
+  const radiatorMat = new THREE.MeshPhongMaterial({
+    color: 0xe8e4dd,
+    emissive: new THREE.Color(0x1a1916),
+    emissiveIntensity: 0.05,
+    shininess: 20,
+    specular: new THREE.Color(0x444444),
+  });
+
+  // Dark structural metal — bus frame and struts
+  const structMat = new THREE.MeshPhongMaterial({
+    color: 0x5a5a62,
+    emissive: new THREE.Color(0x0e0e12),
+    emissiveIntensity: 0.08,
+    shininess: 70,
+    specular: new THREE.Color(0x888888),
+  });
+
+  // Solar cell — deep blue with specular sheen
+  const solarCellMat = new THREE.MeshPhongMaterial({
+    color: 0x0c1a3a,
+    emissive: domColor.clone().multiplyScalar(0.06),
+    emissiveIntensity: 0.15,
+    shininess: 50,
+    specular: new THREE.Color(0x2244aa),
+    side: THREE.DoubleSide,
+  });
+
+  // Solar panel substrate/frame — dark graphite
+  const panelFrameMat = new THREE.MeshPhongMaterial({
+    color: 0x2a2a30,
+    emissive: new THREE.Color(0x050508),
+    emissiveIntensity: 0.05,
+    shininess: 30,
+    specular: new THREE.Color(0x333333),
+    side: THREE.DoubleSide,
+  });
+
+  // Dish — white/light grey composite
+  const dishMat = new THREE.MeshPhongMaterial({
+    color: 0xd0ccc4,
+    emissive: new THREE.Color(0x141310),
+    emissiveIntensity: 0.04,
+    shininess: 35,
+    specular: new THREE.Color(0x666666),
+    side: THREE.DoubleSide,
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SPACECRAFT BUS — main body with layered detail
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Core bus body — gold foil wrapped
+  const busGeo = new THREE.BoxGeometry(2.4, 2.0, 3.0);
+  const bus = new THREE.Mesh(busGeo, goldFoilMat);
   shipGroup.add(bus);
 
-  // ── Solar panels — two large flat rectangles on each side ──
-  const panelMat = new THREE.MeshPhongMaterial({
-    color: 0x1a2244,
-    emissive: domColor,
-    emissiveIntensity: 0.12,
-    shininess: 40,
-    specular: new THREE.Color(0x334466),
-    side: THREE.DoubleSide,
+  // Radiator panels on ±Z faces of bus
+  const radGeo = new THREE.BoxGeometry(2.5, 1.6, 0.05);
+  const radFront = new THREE.Mesh(radGeo, radiatorMat);
+  radFront.position.z = 1.53;
+  shipGroup.add(radFront);
+  const radBack = new THREE.Mesh(radGeo, radiatorMat);
+  radBack.position.z = -1.53;
+  shipGroup.add(radBack);
+
+  // Structural edge rails along the bus
+  const railGeo = new THREE.BoxGeometry(0.08, 0.08, 3.1);
+  const railPositions = [[-1.2, 1.0], [1.2, 1.0], [-1.2, -1.0], [1.2, -1.0]];
+  railPositions.forEach(([rx, ry]) => {
+    const rail = new THREE.Mesh(railGeo, structMat);
+    rail.position.set(rx, ry, 0);
+    shipGroup.add(rail);
   });
-  const panelGeo = new THREE.BoxGeometry(8, 0.15, 3.5);
-  const panelL = new THREE.Mesh(panelGeo, panelMat);
-  panelL.position.x = -5.5;
-  shipGroup.add(panelL);
-  const panelR = new THREE.Mesh(panelGeo, panelMat);
-  panelR.position.x = 5.5;
-  shipGroup.add(panelR);
 
-  // ── Panel struts — thin cylinders connecting bus to panels ──
-  const strutGeo = new THREE.CylinderGeometry(0.12, 0.12, 3.0, 4);
-  const strutL = new THREE.Mesh(strutGeo, metalMat);
-  strutL.rotation.z = Math.PI / 2;
-  strutL.position.x = -2.5;
-  shipGroup.add(strutL);
-  const strutR = new THREE.Mesh(strutGeo, metalMat);
-  strutR.rotation.z = Math.PI / 2;
-  strutR.position.x = 2.5;
-  shipGroup.add(strutR);
+  // ── Earth/nadir sensor — small cylinder on bottom ──
+  const sensorGeo = new THREE.CylinderGeometry(0.25, 0.3, 0.4, 8);
+  const sensor = new THREE.Mesh(sensorGeo, structMat);
+  sensor.position.y = -1.2;
+  shipGroup.add(sensor);
+  const sensorLens = new THREE.Mesh(
+    new THREE.CircleGeometry(0.22, 8),
+    new THREE.MeshBasicMaterial({ color: 0x111122 })
+  );
+  sensorLens.position.y = -1.41;
+  sensorLens.rotation.x = Math.PI / 2;
+  shipGroup.add(sensorLens);
 
-  // ── Antenna dish — small cone on top ──
-  const dishGeo = new THREE.ConeGeometry(0.8, 1.5, 8, 1, true);
-  const dishMat = new THREE.MeshPhongMaterial({
-    color: 0xaaaaaa,
-    side: THREE.DoubleSide,
-    shininess: 60,
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SOLAR ARRAYS — multi-segment with visible cell grid pattern
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function buildSolarWing(side) {
+    const wing = new THREE.Group();
+    const dir = side === 'left' ? -1 : 1;
+
+    // Deployment boom — segmented yoke
+    const yokeGeo = new THREE.CylinderGeometry(0.06, 0.06, 2.0, 4);
+    const yoke = new THREE.Mesh(yokeGeo, structMat);
+    yoke.rotation.z = Math.PI / 2;
+    yoke.position.x = dir * 2.2;
+    wing.add(yoke);
+
+    // Three panel segments per wing
+    for (let seg = 0; seg < 3; seg++) {
+      const panelGroup = new THREE.Group();
+      const px = dir * (3.6 + seg * 3.4);
+
+      // Panel substrate
+      const substrate = new THREE.Mesh(
+        new THREE.BoxGeometry(3.0, 0.06, 3.6),
+        panelFrameMat
+      );
+      panelGroup.add(substrate);
+
+      // Solar cells — grid of smaller rectangles on top & bottom
+      const cellW = 0.65, cellH = 0.78, cellGap = 0.08;
+      const cellGeo = new THREE.PlaneGeometry(cellW, cellH);
+      const cols = 4, rows = 4;
+      const startX = -(cols - 1) * (cellW + cellGap) / 2;
+      const startZ = -(rows - 1) * (cellH + cellGap) / 2;
+      for (let c = 0; c < cols; c++) {
+        for (let r = 0; r < rows; r++) {
+          const cell = new THREE.Mesh(cellGeo, solarCellMat);
+          cell.position.set(startX + c * (cellW + cellGap), 0.04, startZ + r * (cellH + cellGap));
+          cell.rotation.x = -Math.PI / 2;
+          panelGroup.add(cell);
+        }
+      }
+
+      // Thin grid wires between cells (bus bars)
+      const wireGeo = new THREE.BoxGeometry(2.95, 0.02, 0.02);
+      for (let r = 0; r <= rows; r++) {
+        const wire = new THREE.Mesh(wireGeo, new THREE.MeshBasicMaterial({ color: 0x888899 }));
+        wire.position.set(0, 0.05, startZ - cellH / 2 + r * (cellH + cellGap));
+        panelGroup.add(wire);
+      }
+      const vWireGeo = new THREE.BoxGeometry(0.02, 0.02, 3.55);
+      for (let c = 0; c <= cols; c++) {
+        const wire = new THREE.Mesh(vWireGeo, new THREE.MeshBasicMaterial({ color: 0x888899 }));
+        wire.position.set(startX - cellW / 2 + c * (cellW + cellGap), 0.05, 0);
+        panelGroup.add(wire);
+      }
+
+      // Inter-panel hinge
+      if (seg < 2) {
+        const hingeGeo = new THREE.CylinderGeometry(0.05, 0.05, 3.6, 4);
+        const hinge = new THREE.Mesh(hingeGeo, structMat);
+        hinge.position.x = dir * 1.6;
+        panelGroup.add(hinge);
+      }
+
+      panelGroup.position.x = px;
+      wing.add(panelGroup);
+    }
+    return wing;
+  }
+
+  const wingL = buildSolarWing('left');
+  shipGroup.add(wingL);
+  const wingR = buildSolarWing('right');
+  shipGroup.add(wingR);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HIGH-GAIN ANTENNA — parabolic dish with tripod feed support
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const dishGroup = new THREE.Group();
+  dishGroup.position.y = 1.6;
+
+  // Dish boom — extends from bus
+  const dishBoomGeo = new THREE.CylinderGeometry(0.08, 0.08, 1.2, 6);
+  const dishBoom = new THREE.Mesh(dishBoomGeo, structMat);
+  dishBoom.position.y = 0.3;
+  dishGroup.add(dishBoom);
+
+  // Parabolic reflector — hemisphere open side up
+  const reflectorGeo = new THREE.SphereGeometry(1.4, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.45);
+  const reflector = new THREE.Mesh(reflectorGeo, dishMat);
+  reflector.position.y = 1.0;
+  reflector.rotation.x = Math.PI;
+  dishGroup.add(reflector);
+
+  // Feed horn at focal point — tripod supported
+  const feedGeo = new THREE.CylinderGeometry(0.08, 0.15, 0.4, 6);
+  const feed = new THREE.Mesh(feedGeo, structMat);
+  feed.position.y = 2.2;
+  dishGroup.add(feed);
+
+  // Tripod struts to feed horn
+  for (let k = 0; k < 3; k++) {
+    const ang = (k / 3) * Math.PI * 2;
+    const strutGeo = new THREE.CylinderGeometry(0.025, 0.025, 1.7, 3);
+    const strut = new THREE.Mesh(strutGeo, structMat);
+    strut.position.set(Math.cos(ang) * 0.55, 1.65, Math.sin(ang) * 0.55);
+    strut.lookAt(new THREE.Vector3(0, 2.2, 0).add(dishGroup.position).sub(strut.position).normalize());
+    // Point toward feed horn
+    const dx = -Math.cos(ang) * 0.55, dz = -Math.sin(ang) * 0.55, dy = 0.55;
+    const len = Math.sqrt(dx*dx + dy*dy + dz*dz);
+    strut.rotation.set(0, 0, 0);
+    strut.lookAt(new THREE.Vector3(strut.position.x + dx/len, strut.position.y + dy/len, strut.position.z + dz/len));
+    strut.rotateX(Math.PI / 2);
+    dishGroup.add(strut);
+  }
+
+  // Sub-reflector (small disc at feed point)
+  const subReflGeo = new THREE.CircleGeometry(0.12, 8);
+  const subRefl = new THREE.Mesh(subReflGeo, radiatorMat);
+  subRefl.position.y = 2.0;
+  subRefl.rotation.x = Math.PI / 2;
+  dishGroup.add(subRefl);
+
+  shipGroup.add(dishGroup);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // MAGNETOMETER BOOM — long thin boom extending from bus rear
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const magBoomGeo = new THREE.CylinderGeometry(0.03, 0.03, 5.0, 4);
+  const magBoom = new THREE.Mesh(magBoomGeo, structMat);
+  magBoom.rotation.x = Math.PI / 2;
+  magBoom.position.z = -4.0;
+  shipGroup.add(magBoom);
+
+  // Mag sensor head
+  const magHeadGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
+  const magHead = new THREE.Mesh(magHeadGeo, radiatorMat);
+  magHead.position.z = -6.6;
+  shipGroup.add(magHead);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // THRUSTER BELLS — reaction control system nozzles
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const thrusterGeo = new THREE.CylinderGeometry(0.06, 0.18, 0.35, 6);
+  const thrusterMat = new THREE.MeshPhongMaterial({
+    color: 0x777780,
+    shininess: 90,
+    specular: new THREE.Color(0xaaaaaa),
   });
-  const dish = new THREE.Mesh(dishGeo, dishMat);
-  dish.position.y = 2;
-  dish.rotation.x = Math.PI;
-  shipGroup.add(dish);
-  const antennaGeo = new THREE.CylinderGeometry(0.06, 0.06, 1.8, 4);
-  const antenna = new THREE.Mesh(antennaGeo, metalMat);
-  antenna.position.y = 2.8;
-  shipGroup.add(antenna);
+  const thrusterPositions = [
+    { p: [1.0, -1.0, 1.3], r: [0.3, 0, 0] },
+    { p: [-1.0, -1.0, 1.3], r: [0.3, 0, 0] },
+    { p: [1.0, -1.0, -1.3], r: [-0.3, 0, 0] },
+    { p: [-1.0, -1.0, -1.3], r: [-0.3, 0, 0] },
+  ];
+  thrusterPositions.forEach(tp => {
+    const t = new THREE.Mesh(thrusterGeo, thrusterMat);
+    t.position.set(...tp.p);
+    t.rotation.set(...tp.r);
+    shipGroup.add(t);
+  });
 
-  // ── Signal glow — faint pulsing light at antenna tip ──
-  const engineGeo = new THREE.SphereGeometry(0.5, 8, 6);
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STAR TRACKER — small baffled cylinder on bus side
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  const trackerGeo = new THREE.CylinderGeometry(0.15, 0.2, 0.5, 8);
+  const tracker = new THREE.Mesh(trackerGeo, structMat);
+  tracker.position.set(1.3, 0.3, 0.8);
+  tracker.rotation.z = -Math.PI / 4;
+  shipGroup.add(tracker);
+  const trackerBaffle = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22, 0.22, 0.08, 8, 1, true),
+    new THREE.MeshPhongMaterial({ color: 0x222228, side: THREE.DoubleSide })
+  );
+  trackerBaffle.position.set(1.48, 0.48, 0.8);
+  trackerBaffle.rotation.z = -Math.PI / 4;
+  shipGroup.add(trackerBaffle);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // SIGNAL LIGHT & HALO — domain-colored status glow at antenna tip
+  // ═══════════════════════════════════════════════════════════════════════════
+
   const engineMat = new THREE.MeshBasicMaterial({
     color: domColor,
     transparent: true,
@@ -2495,25 +2990,40 @@ function buildShip() {
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
-  const signalLight = new THREE.Mesh(engineGeo, engineMat);
-  signalLight.position.y = 3.8;
+  const signalLight = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), engineMat);
+  signalLight.position.y = 3.9;
   shipGroup.add(signalLight);
 
-  // ── Signal halo ──
-  const haloGeo = new THREE.SphereGeometry(1.5, 8, 6);
   const haloMat = new THREE.MeshBasicMaterial({
     color: domColor,
     transparent: true,
-    opacity: 0.15,
+    opacity: 0.12,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
-  const signalHalo = new THREE.Mesh(haloGeo, haloMat);
-  signalHalo.position.y = 3.8;
+  const signalHalo = new THREE.Mesh(new THREE.SphereGeometry(1.2, 8, 6), haloMat);
+  signalHalo.position.y = 3.9;
   shipGroup.add(signalHalo);
 
+  // ── Small red/green nav lights on solar panel tips ──
+  const navGeo = new THREE.SphereGeometry(0.1, 6, 4);
+  const navRedMat = new THREE.MeshBasicMaterial({
+    color: 0xff2222, transparent: true, opacity: 0.8,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const navGreenMat = new THREE.MeshBasicMaterial({
+    color: 0x22ff44, transparent: true, opacity: 0.8,
+    blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const navRed = new THREE.Mesh(navGeo, navRedMat);
+  navRed.position.set(-13.8, 0, 0);
+  shipGroup.add(navRed);
+  const navGreen = new THREE.Mesh(navGeo, navGreenMat);
+  navGreen.position.set(13.8, 0, 0);
+  shipGroup.add(navGreen);
+
   // ── Invisible hitbox for raycasting (larger than visual) ──
-  const hitGeo = new THREE.SphereGeometry(8, 8, 6);
+  const hitGeo = new THREE.SphereGeometry(10, 8, 6);
   const hitMat = new THREE.MeshBasicMaterial({ visible: false });
   shipMeshForRaycast = new THREE.Mesh(hitGeo, hitMat);
   shipMeshForRaycast.userData.isShip = true;
@@ -2531,6 +3041,8 @@ function buildShip() {
     alpha: 0,
     engineMat,
     haloMat,
+    navRedMat,
+    navGreenMat,
     spawnTime: performance.now(),
   };
 
@@ -2570,16 +3082,24 @@ function updateShip() {
 
   shipGroup.position.set(wx, wy, wz);
 
-  // Satellite slowly rotates — solar panels catch light from different angles
-  shipGroup.rotation.y += 0.003;
-  shipGroup.rotation.x = Math.sin(now * 0.0005) * 0.15;
+  // Satellite attitude — gentle oscillation with slow yaw drift
+  // Solar arrays roughly face the "sun" (positive Y direction as convention)
+  shipGroup.rotation.y += 0.0015;
+  shipGroup.rotation.x = Math.sin(now * 0.0003) * 0.08;
+  shipGroup.rotation.z = Math.cos(now * 0.00025) * 0.05;
 
-  // Scale and opacity
-  shipGroup.scale.setScalar(shipData.alpha * 1.0);
+  // Scale and opacity — 1.5x to make detail visible in orbit
+  shipGroup.scale.setScalar(shipData.alpha * 1.5);
 
-  // Signal light blinks
-  shipData.engineMat.opacity = shipData.alpha * (0.3 + Math.max(0, Math.sin(now * 0.005)) * 0.7);
-  shipData.haloMat.opacity = shipData.alpha * (0.08 + Math.max(0, Math.sin(now * 0.005)) * 0.15);
+  // Signal light — slow blink pattern (like real telemetry downlink)
+  const blink = Math.sin(now * 0.004);
+  shipData.engineMat.opacity = shipData.alpha * (0.2 + Math.max(0, blink) * 0.8);
+  shipData.haloMat.opacity = shipData.alpha * (0.06 + Math.max(0, blink) * 0.12);
+
+  // Nav lights — alternating blink like aircraft (red port, green starboard)
+  const navPhase = (now * 0.003) % (Math.PI * 2);
+  shipData.navRedMat.opacity = shipData.alpha * (0.15 + Math.max(0, Math.sin(navPhase)) * 0.85);
+  shipData.navGreenMat.opacity = shipData.alpha * (0.15 + Math.max(0, Math.sin(navPhase + Math.PI)) * 0.85);
 }
 
 // ─── LEGEND ─────────────────────────────────────────────────────────────────
@@ -2715,8 +3235,8 @@ function updateScene() {
     if (n.atm) n.atm.position.set(n.x, n.y, n.z);
     if (n.outerAtm) n.outerAtm.position.set(n.x, n.y, n.z);
     if (n.ring) {
-      n.ring.position.set(n.x, n.y, n.z);
-      n.ring.rotation.z += 0.0003; // slow ring rotation
+      n.ring.mat.uniforms.uCenter.value.set(n.x, n.y, n.z);
+      n.ring.mat.uniforms.uTime.value += 0.003;
     }
   }
   updateMoons();
