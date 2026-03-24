@@ -1973,32 +1973,36 @@ nodes.forEach(n => {
     const tiltSeed = n.id.charCodeAt(0) * 0.1;
     const tiltA = Math.PI * 0.5 + Math.sin(tiltSeed) * 0.4;
     const tiltB = Math.cos(tiltSeed * 1.3) * 0.3;
-    // Tilt vectors for the ring plane
     const cosA = Math.cos(tiltA), sinA = Math.sin(tiltA);
     const cosB = Math.cos(tiltB), sinB = Math.sin(tiltB);
     const tiltX = new THREE.Vector3(cosB, 0, -sinB);
     const tiltY = new THREE.Vector3(sinB * sinA, cosA, cosB * sinA);
 
-    // Number of particles scales with planet size
     const ringCount = Math.min(400, Math.round(120 + n.size * 8));
-    const pRing = buildParticleRing({
-      count: ringCount,
-      innerR: 1.35,
-      outerR: 2.1,
-      color: domColor,
-      gaps: [
-        { center: 0.38, width: 0.06 },  // Cassini-like division
-        { center: 0.72, width: 0.03 },   // thin outer gap
-      ],
-      sizeRange: [2, 8],
-      alphaRange: [0.15, 0.7],
-    });
-    pRing.mat.uniforms.uScale.value = n.size * 2.2;
-    pRing.mat.uniforms.uCenter.value.set(n.x, n.y, n.z);
-    pRing.mat.uniforms.uTiltX.value.copy(tiltX);
-    pRing.mat.uniforms.uTiltY.value.copy(tiltY);
-    scene.add(pRing.points);
-    n.ring = pRing; // store {points, geo, mat}
+    let pRing;
+    try {
+      pRing = buildParticleRing({
+        count: ringCount,
+        innerR: 1.35,
+        outerR: 2.1,
+        color: domColor,
+        gaps: [
+          { center: 0.38, width: 0.06 },
+          { center: 0.72, width: 0.03 },
+        ],
+        sizeRange: [2, 8],
+        alphaRange: [0.15, 0.7],
+      });
+      pRing.mat.uniforms.uScale.value = n.size * 2.2;
+      pRing.mat.uniforms.uCenter.value.set(n.x, n.y, n.z);
+      pRing.mat.uniforms.uTiltX.value.copy(tiltX);
+      pRing.mat.uniforms.uTiltY.value.copy(tiltY);
+      scene.add(pRing.points);
+      n.ring = pRing;
+    } catch(e) {
+      console.warn('Particle ring failed for', n.id, e);
+      n.ring = null;
+    }
   }
 });
 
@@ -2429,19 +2433,23 @@ function buildMoons(centerNode) {
     // ── Particle ring — only on randomly selected moons ─────────────────────
     let ring = null, ringMat = null;
     if (hasRing) {
-      const mRing = buildParticleRing({
-        count: 60 + Math.floor(Math.random() * 40),
-        innerR: 1.5,
-        outerR: 2.0,
-        color: col.getHex(),
-        gaps: Math.random() < 0.5 ? [{ center: 0.5, width: 0.08 }] : [],
-        sizeRange: [1.2, 3.5],
-        alphaRange: [0.25, 0.85],
-      });
-      mRing.mat.uniforms.uScale.value = mSize;
-      scene.add(mRing.points);
-      ring = mRing;     // store the particle ring object
-      ringMat = mRing.mat;
+      try {
+        const mRing = buildParticleRing({
+          count: 60 + Math.floor(Math.random() * 40),
+          innerR: 1.5,
+          outerR: 2.0,
+          color: col.getHex(),
+          gaps: Math.random() < 0.5 ? [{ center: 0.5, width: 0.08 }] : [],
+          sizeRange: [1.2, 3.5],
+          alphaRange: [0.25, 0.85],
+        });
+        mRing.mat.uniforms.uScale.value = mSize;
+        scene.add(mRing.points);
+        ring = mRing;
+        ringMat = mRing.mat;
+      } catch(e) {
+        console.warn('Moon particle ring failed', e);
+      }
     }
 
     // ── Orbital trail — fading arc behind the moon ──────────────────────────
@@ -3234,7 +3242,7 @@ function updateScene() {
     n.mesh.rotation.y += n.mesh.userData.rotSpeed;
     if (n.atm) n.atm.position.set(n.x, n.y, n.z);
     if (n.outerAtm) n.outerAtm.position.set(n.x, n.y, n.z);
-    if (n.ring) {
+    if (n.ring && n.ring.mat) {
       n.ring.mat.uniforms.uCenter.value.set(n.x, n.y, n.z);
       n.ring.mat.uniforms.uTime.value += 0.003;
     }
