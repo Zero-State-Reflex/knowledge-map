@@ -2365,10 +2365,11 @@ const trailFragShader = `
   varying float vAlpha;
   void main() {
     float a = vAlpha * uOpacity;
-    // Soft glow: brighten near head
     gl_FragColor = vec4(uColor * (1.0 + vAlpha * 0.4), a);
   }
 `;
+// Number of parallel trail lines for thickness (center + offsets)
+const TRAIL_LINES = 3;
 
 function buildMoons(centerNode) {
   clearMoons();
@@ -2452,21 +2453,25 @@ function buildMoons(centerNode) {
       }
     }
 
-    // ── Orbital trail — fading arc behind the moon ──────────────────────────
-    const trailGeo = makeTrailGeometry();
-    const trailMat = new THREE.ShaderMaterial({
-      vertexShader:   trailVertShader,
-      fragmentShader: trailFragShader,
-      uniforms: {
-        uColor:   { value: new THREE.Color(col).multiplyScalar(1.3) },
-        uOpacity: { value: 0.0 },
-      },
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    });
-    const trail = new THREE.Line(trailGeo, trailMat);
-    scene.add(trail);
+    // ── Orbital trail — multiple parallel lines for visible thickness ────────
+    const trails = [];
+    for (let tl = 0; tl < TRAIL_LINES; tl++) {
+      const tGeo = makeTrailGeometry();
+      const tMat = new THREE.ShaderMaterial({
+        vertexShader:   trailVertShader,
+        fragmentShader: trailFragShader,
+        uniforms: {
+          uColor:   { value: new THREE.Color(col).multiplyScalar(1.3) },
+          uOpacity: { value: 0.0 },
+        },
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const tLine = new THREE.Line(tGeo, tMat);
+      scene.add(tLine);
+      trails.push({ geo: tGeo, mat: tMat, line: tLine });
+    }
 
     // ── HTML label ───────────────────────────────────────────────────────────
     const label = document.createElement('div');
@@ -2481,7 +2486,7 @@ function buildMoons(centerNode) {
     document.body.appendChild(label);
 
     moonData.push({ n, mesh, halo, ring, mat, haloMat, ringMat, label,
-                    trail, trailGeo, trailMat,
+                    trails,
                     orbitR, incl, phase, speed, mSize, angle: phase, hasRing,
                     moonAlpha: 0, fadeDelay: i * 80 + 600 }); // staggered fade-in
   });
@@ -2492,7 +2497,7 @@ function clearMoons() {
     scene.remove(m.mesh);  m.mat.dispose();
     scene.remove(m.halo);  m.haloMat.dispose();
     if (m.ring) { scene.remove(m.ring.points); m.ring.geo.dispose(); m.ring.mat.dispose(); }
-    scene.remove(m.trail); m.trailGeo.dispose(); m.trailMat.dispose();
+    m.trails.forEach(t => { scene.remove(t.line); t.geo.dispose(); t.mat.dispose(); });
     m.label.remove();
   });
   moonData = [];
@@ -2541,27 +2546,34 @@ function updateMoons() {
     const t = now * 0.001;
     m.haloMat.opacity = m.moonAlpha * (0.12 + Math.sin(t * 1.1 + m.phase) * 0.07);
 
-    // ── Update orbital trail — arc behind moon along orbit path ──────────
-    const trailSpan = 0.55 + m.speed * 300; // angular sweep of trail (radians)
-    const posArr = m.trailGeo.attributes.position.array;
-    const alpArr = m.trailGeo.attributes.alpha.array;
-    for (let s = 0; s <= TRAIL_SEGS; s++) {
-      const frac = s / TRAIL_SEGS;  // 0 = moon head, 1 = tail
-      const a = m.angle - frac * trailSpan;
-      const tx = cx + Math.cos(a) * m.orbitR;
-      const ty = cy + Math.sin(a) * m.orbitR * sinI;
-      const tz = cz + Math.sin(a) * m.orbitR * cosI;
-      const idx3 = s * 3;
-      posArr[idx3]     = tx;
-      posArr[idx3 + 1] = ty;
-      posArr[idx3 + 2] = tz;
-      // Fade: bright at moon (frac=0), transparent at tail (frac=1)
-      // Cubic falloff for a nice glow-to-nothing feel
-      alpArr[s] = Math.pow(1 - frac, 2.5) * 0.6;
-    }
-    m.trailGeo.attributes.position.needsUpdate = true;
-    m.trailGeo.attributes.alpha.needsUpdate = true;
-    m.trailMat.uniforms.uOpacity.value = m.moonAlpha;
+    // ── Update orbital trails — multiple parallel lines for thickness ────
+    const trailSpan = 0.55 + m.speed * 300;
+    // Offset directions perpendicular to orbit plane
+    const offX = sinI * 0.6, offY = cosI * 0.6;
+    const offsets = [
+      [0, 0, 0],           // center line
+      [offX, offY, 0.6],   // upper offset
+      [-offX, -offY, -0.6] // lower offset
+    ];
+    m.trails.forEach((tr, ti) => {
+      const posArr = tr.geo.attributes.position.array;
+      const alpArr = tr.geo.attributes.alpha.array;
+      const off = offsets[ti] || [0,0,0];
+      for (let s = 0; s <= TRAIL_SEGS; s++) {
+        const frac = s / TRAIL_SEGS;
+        const a = m.angle - frac * trailSpan;
+        const idx3 = s * 3;
+        posArr[idx3]     = cx + Math.cos(a) * m.orbitR + off[0];
+        posArr[idx3 + 1] = cy + Math.sin(a) * m.orbitR * sinI + off[1];
+        posArr[idx3 + 2] = cz + Math.sin(a) * m.orbitR * cosI + off[2];
+        alpArr[s] = Math.pow(1 - frac, 2.2) * 0.7;
+      }
+      tr.geo.attributes.position.needsUpdate = true;
+      tr.geo.attributes.alpha.needsUpdate = true;
+      // Center line full brightness, offset lines dimmer for glow effect
+      const dim = ti === 0 ? 1.0 : 0.5;
+      tr.mat.uniforms.uOpacity.value = m.moonAlpha * dim;
+    });
 
     const sp = toScreen(new THREE.Vector3(wx, wy, wz));
     const vis = sp.x > 0 && sp.x < window.innerWidth && sp.y > 0 && sp.y < window.innerHeight;
@@ -3110,6 +3122,311 @@ function updateShip() {
   shipData.navGreenMat.opacity = shipData.alpha * (0.15 + Math.max(0, Math.sin(navPhase + Math.PI)) * 0.85);
 }
 
+// ─── VOYAGER 1 — free-flying probe traversing the entire system ──────────────
+let voyagerGroup = null;
+let voyagerData  = null;
+let voyagerHitbox = null;
+
+function buildVoyager() {
+  voyagerGroup = new THREE.Group();
+
+  // ── Materials ──
+  const busMat = new THREE.MeshPhongMaterial({
+    color: 0x888890, emissive: new THREE.Color(0x151518),
+    emissiveIntensity: 0.08, shininess: 60, specular: new THREE.Color(0x666666),
+  });
+  const foilMat = new THREE.MeshPhongMaterial({
+    color: 0xc9a84c, emissive: new THREE.Color(0x3a2a08),
+    emissiveIntensity: 0.12, shininess: 100, specular: new THREE.Color(0xffe0a0),
+  });
+  const dishMat = new THREE.MeshPhongMaterial({
+    color: 0xd8d4cc, emissive: new THREE.Color(0x141310),
+    emissiveIntensity: 0.04, shininess: 30, specular: new THREE.Color(0x555555),
+    side: THREE.DoubleSide,
+  });
+  const darkMat = new THREE.MeshPhongMaterial({
+    color: 0x2a2a30, shininess: 20, specular: new THREE.Color(0x333333),
+  });
+
+  // ── 10-sided bus body (decagonal prism like real Voyager) ──
+  const busGeo = new THREE.CylinderGeometry(1.8, 1.8, 1.0, 10);
+  const bus = new THREE.Mesh(busGeo, foilMat);
+  voyagerGroup.add(bus);
+
+  // Top deck
+  const deckGeo = new THREE.CylinderGeometry(1.9, 1.9, 0.1, 10);
+  const deck = new THREE.Mesh(deckGeo, busMat);
+  deck.position.y = 0.55;
+  voyagerGroup.add(deck);
+
+  // ── High-gain antenna dish (3.7m on real Voyager — the big dish) ──
+  const hgaGeo = new THREE.SphereGeometry(3.5, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.35);
+  const hga = new THREE.Mesh(hgaGeo, dishMat);
+  hga.position.y = -0.8;
+  hga.rotation.x = Math.PI; // concave side up
+  voyagerGroup.add(hga);
+
+  // Dish feed support struts (3 legs)
+  for (let k = 0; k < 3; k++) {
+    const ang = (k / 3) * Math.PI * 2;
+    const sGeo = new THREE.CylinderGeometry(0.03, 0.03, 2.5, 3);
+    const s = new THREE.Mesh(sGeo, busMat);
+    s.position.set(Math.cos(ang) * 1.2, 0.7, Math.sin(ang) * 1.2);
+    s.rotation.x = Math.cos(ang) * 0.35;
+    s.rotation.z = -Math.sin(ang) * 0.35;
+    voyagerGroup.add(s);
+  }
+  // Feed horn
+  const feedGeo = new THREE.CylinderGeometry(0.1, 0.2, 0.5, 6);
+  const feedHorn = new THREE.Mesh(feedGeo, busMat);
+  feedHorn.position.y = 2.0;
+  voyagerGroup.add(feedHorn);
+
+  // ── Science boom — long boom with instruments (like real Voyager's scan platform) ──
+  const boomGeo = new THREE.CylinderGeometry(0.04, 0.04, 7.0, 4);
+  const boom = new THREE.Mesh(boomGeo, busMat);
+  boom.rotation.z = Math.PI / 2;
+  boom.position.set(5.0, 0, 0);
+  voyagerGroup.add(boom);
+
+  // Scan platform at boom tip (cameras, spectrometers)
+  const scanGeo = new THREE.BoxGeometry(0.6, 0.5, 0.4);
+  const scan = new THREE.Mesh(scanGeo, darkMat);
+  scan.position.set(8.6, 0, 0);
+  voyagerGroup.add(scan);
+  // Camera lens
+  const lensGeo = new THREE.CylinderGeometry(0.12, 0.15, 0.25, 6);
+  const lens = new THREE.Mesh(lensGeo, new THREE.MeshBasicMaterial({ color: 0x0a0a18 }));
+  lens.rotation.z = Math.PI / 2;
+  lens.position.set(9.0, 0.1, 0);
+  voyagerGroup.add(lens);
+
+  // ── Magnetometer boom — opposite side ──
+  const magGeo = new THREE.CylinderGeometry(0.03, 0.03, 10.0, 4);
+  const mag = new THREE.Mesh(magGeo, busMat);
+  mag.rotation.z = Math.PI / 2;
+  mag.position.set(-6.5, 0.3, 0);
+  voyagerGroup.add(mag);
+  const magTip = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), busMat);
+  magTip.position.set(-11.6, 0.3, 0);
+  voyagerGroup.add(magTip);
+
+  // ── RTG booms (Radioisotope Thermoelectric Generators) — the 3 dark cylinders on a V-boom ──
+  for (let r = 0; r < 3; r++) {
+    const ang = -Math.PI / 2 + (r - 1) * 0.3;
+    const bLen = 5 + r * 0.8;
+    // Boom strut
+    const rtgBoomGeo = new THREE.CylinderGeometry(0.04, 0.04, bLen, 4);
+    const rtgBoom = new THREE.Mesh(rtgBoomGeo, busMat);
+    rtgBoom.rotation.z = ang;
+    rtgBoom.position.set(Math.cos(ang) * bLen * 0.5, Math.sin(ang) * bLen * 0.5, 0);
+    voyagerGroup.add(rtgBoom);
+    // RTG cylinder at tip
+    const rtgGeo = new THREE.CylinderGeometry(0.3, 0.3, 1.5, 8);
+    const rtg = new THREE.Mesh(rtgGeo, darkMat);
+    rtg.rotation.z = ang;
+    rtg.position.set(Math.cos(ang) * bLen, Math.sin(ang) * bLen, 0);
+    voyagerGroup.add(rtg);
+    // RTG fins (cooling)
+    for (let f = 0; f < 4; f++) {
+      const finGeo = new THREE.BoxGeometry(0.02, 0.5, 0.6);
+      const fin = new THREE.Mesh(finGeo, busMat);
+      const fAng = (f / 4) * Math.PI * 2;
+      fin.position.set(
+        Math.cos(ang) * bLen + Math.cos(fAng) * 0.35 * Math.sin(ang),
+        Math.sin(ang) * bLen + Math.cos(fAng) * 0.35 * -Math.cos(ang),
+        Math.sin(fAng) * 0.35
+      );
+      fin.rotation.z = ang;
+      voyagerGroup.add(fin);
+    }
+  }
+
+  // ── Golden Record (iconic gold disc on the side) ──
+  const recordGeo = new THREE.CylinderGeometry(0.5, 0.5, 0.04, 16);
+  const recordMat = new THREE.MeshPhongMaterial({
+    color: 0xdaa520, shininess: 140, specular: new THREE.Color(0xffee88),
+  });
+  const record = new THREE.Mesh(recordGeo, recordMat);
+  record.rotation.x = Math.PI / 2;
+  record.position.set(0, 0, 1.85);
+  voyagerGroup.add(record);
+
+  // ── Faint glow around Voyager — so it's visible from far away ──
+  const glowMat = new THREE.SpriteMaterial({
+    map: glowTexture,
+    color: 0xaaccff,
+    transparent: true,
+    opacity: 0.3,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const glow = new THREE.Sprite(glowMat);
+  glow.scale.set(30, 30, 1);
+  voyagerGroup.add(glow);
+
+  // ── Hitbox for raycasting ──
+  const hitGeo = new THREE.SphereGeometry(15, 6, 4);
+  const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+  voyagerHitbox = new THREE.Mesh(hitGeo, hitMat);
+  voyagerHitbox.userData.isVoyager = true;
+  voyagerGroup.add(voyagerHitbox);
+
+  // ── HTML label ──
+  const label = document.createElement('div');
+  label.className = 'moon-label';
+  label.textContent = 'Voyager 1';
+  label.style.color = '#aaccff';
+  label.style.cursor = 'pointer';
+  label.style.fontStyle = 'italic';
+  label.addEventListener('click', (e) => {
+    e.stopPropagation();
+    window.open('https://en.wikipedia.org/wiki/Voyager_1', '_blank');
+  });
+  document.body.appendChild(label);
+
+  scene.add(voyagerGroup);
+
+  // ── Flight path: pick random waypoints among node positions for a long looping trajectory ──
+  const waypoints = [];
+  const shuffled = nodes.slice().sort(() => Math.random() - 0.5);
+  const wpCount = Math.min(12, shuffled.length);
+  for (let w = 0; w < wpCount; w++) {
+    const wn = shuffled[w];
+    // Offset from node so it flies past, not through
+    waypoints.push(new THREE.Vector3(
+      wn.x + (Math.random() - 0.5) * 200,
+      wn.y + (Math.random() - 0.5) * 200,
+      wn.z + (Math.random() - 0.5) * 200
+    ));
+  }
+
+  voyagerData = {
+    waypoints,
+    wpIdx: 0,
+    progress: 0,
+    speed: 0.4,        // units per frame
+    label,
+    glowMat,
+    // Trail history
+    history: [],
+    historyMax: 250,
+  };
+
+  // Trail line for Voyager
+  const vTrailCount = TRAIL_SEGS * 3;  // longer trail
+  const vTrailGeo = new THREE.BufferGeometry();
+  const vTrailPos = new Float32Array((vTrailCount + 1) * 3);
+  const vTrailAlp = new Float32Array(vTrailCount + 1);
+  vTrailGeo.setAttribute('position', new THREE.BufferAttribute(vTrailPos, 3));
+  vTrailGeo.setAttribute('alpha',    new THREE.BufferAttribute(vTrailAlp, 1));
+  const vTrailMats = [];
+  const vTrailLines = [];
+  for (let tl = 0; tl < TRAIL_LINES; tl++) {
+    const vtMat = new THREE.ShaderMaterial({
+      vertexShader: trailVertShader,
+      fragmentShader: trailFragShader,
+      uniforms: {
+        uColor:   { value: new THREE.Color(0x6699cc) },
+        uOpacity: { value: tl === 0 ? 0.9 : 0.4 },
+      },
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const vtGeo = new THREE.BufferGeometry();
+    vtGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array((vTrailCount+1)*3), 3));
+    vtGeo.setAttribute('alpha',    new THREE.BufferAttribute(new Float32Array(vTrailCount+1), 1));
+    const vtLine = new THREE.Line(vtGeo, vtMat);
+    scene.add(vtLine);
+    vTrailMats.push(vtMat);
+    vTrailLines.push({ geo: vtGeo, mat: vtMat, line: vtLine });
+  }
+  voyagerData.trailLines = vTrailLines;
+  voyagerData.trailCount = vTrailCount;
+}
+
+function updateVoyager() {
+  if (!voyagerData || !voyagerGroup) return;
+
+  const wp = voyagerData.waypoints;
+  if (wp.length < 2) return;
+
+  // Current segment
+  const fromIdx = voyagerData.wpIdx % wp.length;
+  const toIdx   = (voyagerData.wpIdx + 1) % wp.length;
+  const from = wp[fromIdx];
+  const to   = wp[toIdx];
+
+  // Advance along segment
+  const segLen = from.distanceTo(to);
+  voyagerData.progress += voyagerData.speed / Math.max(segLen, 1);
+
+  if (voyagerData.progress >= 1) {
+    voyagerData.progress = 0;
+    voyagerData.wpIdx = toIdx;
+  }
+
+  // Smooth interpolation (ease in-out)
+  const t = voyagerData.progress;
+  const ease = t * t * (3 - 2 * t);
+  const px = from.x + (to.x - from.x) * ease;
+  const py = from.y + (to.y - from.y) * ease;
+  const pz = from.z + (to.z - from.z) * ease;
+
+  voyagerGroup.position.set(px, py, pz);
+
+  // Orient Voyager along travel direction (dish faces backward)
+  const dir = new THREE.Vector3(to.x - from.x, to.y - from.y, to.z - from.z).normalize();
+  const lookTarget = new THREE.Vector3(px + dir.x, py + dir.y, pz + dir.z);
+  voyagerGroup.lookAt(lookTarget);
+  voyagerGroup.rotation.x += Math.PI / 2; // align dish
+
+  // Gentle roll
+  const now = performance.now();
+  voyagerGroup.rotation.z += Math.sin(now * 0.0002) * 0.001;
+
+  voyagerGroup.scale.setScalar(2.0);
+
+  // Update label
+  const sp = toScreen(new THREE.Vector3(px, py, pz));
+  const vis = sp.x > 0 && sp.x < window.innerWidth && sp.y > 0 && sp.y < window.innerHeight;
+  voyagerData.label.style.left    = sp.x + 'px';
+  voyagerData.label.style.top     = (sp.y + 18) + 'px';
+  voyagerData.label.style.opacity = vis ? '0.85' : '0';
+
+  // Record position history for trail
+  voyagerData.history.push(px, py, pz);
+  if (voyagerData.history.length > voyagerData.historyMax * 3) {
+    voyagerData.history.splice(0, 3);
+  }
+
+  // Update trail lines from history
+  const hist = voyagerData.history;
+  const hPts = hist.length / 3;
+  const offsets = [[0,0,0],[0.5,0.5,0],[-0.5,-0.5,0]];
+
+  voyagerData.trailLines.forEach((tr, ti) => {
+    const posArr = tr.geo.attributes.position.array;
+    const alpArr = tr.geo.attributes.alpha.array;
+    const off = offsets[ti] || [0,0,0];
+    const total = voyagerData.trailCount + 1;
+    for (let s = 0; s < total; s++) {
+      const hIdx = hPts - 1 - Math.floor(s * hPts / total);
+      const hi3 = Math.max(0, hIdx) * 3;
+      posArr[s * 3]     = (hist[hi3]     || px) + off[0];
+      posArr[s * 3 + 1] = (hist[hi3 + 1] || py) + off[1];
+      posArr[s * 3 + 2] = (hist[hi3 + 2] || pz) + off[2];
+      alpArr[s] = Math.pow(1 - s / total, 2.0) * 0.8;
+    }
+    tr.geo.attributes.position.needsUpdate = true;
+    tr.geo.attributes.alpha.needsUpdate = true;
+  });
+}
+
+// Build Voyager once on load (after nodes are positioned)
+setTimeout(buildVoyager, 2000);
+
 // ─── LEGEND ─────────────────────────────────────────────────────────────────
 const legendEl = document.getElementById('legend');
 Object.entries(DOMAINS).forEach(([name, d]) => {
@@ -3249,6 +3566,7 @@ function updateScene() {
   }
   updateMoons();
   updateShip();
+  updateVoyager();
   let idx = 0;
   for (const l of links) {
     edgePosArr[idx++] = l.source.x; edgePosArr[idx++] = l.source.y; edgePosArr[idx++] = l.source.z;
@@ -3376,12 +3694,26 @@ function doHover(e) {
   raycaster.setFromCamera(mouse2d, camera);
   const ray = raycaster.ray;
 
+  // Check Voyager hover
+  let specialHovered = false;
+  if (voyagerHitbox) {
+    const vHits = raycaster.intersectObject(voyagerHitbox);
+    if (vHits.length > 0) {
+      specialHovered = true;
+      canvas.style.cursor = 'pointer';
+      hoverLabelEl.textContent = 'Voyager 1 — View on Wikipedia →';
+      const sp = toScreen(voyagerGroup.position);
+      hoverLabelEl.style.left = sp.x + 'px';
+      hoverLabelEl.style.top = (sp.y - 24) + 'px';
+      hoverLabelEl.style.opacity = '1';
+    }
+  }
+
   // Check spaceship hover for pointer cursor
-  let shipHovered = false;
-  if (shipMeshForRaycast && focusedNode) {
+  if (!specialHovered && shipMeshForRaycast && focusedNode) {
     const shipHits = raycaster.intersectObject(shipMeshForRaycast, true);
     if (shipHits.length > 0) {
-      shipHovered = true;
+      specialHovered = true;
       canvas.style.cursor = 'pointer';
       hoverLabelEl.textContent = 'Explore on Wikipedia →';
       const sp = toScreen(shipGroup.position);
@@ -3390,7 +3722,7 @@ function doHover(e) {
       hoverLabelEl.style.opacity = '1';
     }
   }
-  if (!shipHovered && canvas.style.cursor === 'pointer') {
+  if (!specialHovered && canvas.style.cursor === 'pointer') {
     canvas.style.cursor = 'grab';
   }
 
@@ -4249,6 +4581,15 @@ canvas.addEventListener('click', e => {
     const bhHits = raycaster.intersectObject(blackHoleMesh);
     if (bhHits.length > 0) {
       showBlackHoleCard();
+      return;
+    }
+  }
+
+  // Check Voyager 1 probe
+  if (voyagerHitbox) {
+    const vHits = raycaster.intersectObject(voyagerHitbox);
+    if (vHits.length > 0) {
+      window.open('https://en.wikipedia.org/wiki/Voyager_1', '_blank');
       return;
     }
   }
