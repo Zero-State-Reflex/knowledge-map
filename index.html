@@ -4415,8 +4415,8 @@ function focusVoyager() {
   }
   const vPos = voyagerGroup.position.clone();
   const dir  = camera.position.clone().sub(vPos).normalize();
-  const closePos = vPos.clone().add(dir.clone().multiplyScalar(50));  // medium shot
-  const holdPos  = vPos.clone().add(dir.clone().multiplyScalar(65));  // pull back to show full satellite
+  const closePos = vPos.clone().add(dir.clone().multiplyScalar(80));  // medium shot
+  const holdPos  = vPos.clone().add(dir.clone().multiplyScalar(100)); // pull back to show full satellite
   voyagerCamAnim = {
     startPos:  camera.position.clone(),
     startLook: lookTarget.clone(),
@@ -4447,8 +4447,8 @@ function updateVoyagerCam() {
   if (voyagerGroup) {
     vc.vPos.copy(voyagerGroup.position);
     const dir = vc.startPos.clone().sub(vc.vPos).normalize();
-    vc.closePos.copy(vc.vPos).addScaledVector(dir, 50);
-    vc.holdPos.copy(vc.vPos).addScaledVector(dir, 65);
+    vc.closePos.copy(vc.vPos).addScaledVector(dir, 80);
+    vc.holdPos.copy(vc.vPos).addScaledVector(dir, 100);
   }
   if (vc.phase === 'zoomIn') {
     const raw  = Math.min(vc.t / vc.zoomFrames, 1);
@@ -4479,13 +4479,13 @@ function updateVoyagerCam() {
     lookTarget.lerp(voyagerGroup.position, 0.05);
     camera.lookAt(lookTarget);
     camera.position.lerpVectors(camera.position, voyagerGroup.position.clone().add(
-      camera.position.clone().sub(voyagerGroup.position).normalize().multiplyScalar(65)
+      camera.position.clone().sub(voyagerGroup.position).normalize().multiplyScalar(100)
     ), 0.03);
-    // Show the info card positioned to the right of Voyager
+    // Show the info card positioned below Voyager with space
     const sp = toScreen(voyagerGroup.position);
     const card = document.getElementById('voyager-card');
-    card.style.left = Math.min(sp.x + 60, window.innerWidth - 240) + 'px';
-    card.style.top = Math.max(20, sp.y - 60) + 'px';
+    card.style.left = (sp.x - 100) + 'px';
+    card.style.top = Math.min(sp.y + 120, window.innerHeight - 140) + 'px';
     if (!card.classList.contains('visible')) card.classList.add('visible');
   }
 }
