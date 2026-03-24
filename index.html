@@ -3619,16 +3619,16 @@ function buildVoyager() {
     waypoints,
     wpIdx: 0,
     progress: 0,
-    speed: 0.4,        // units per frame
+    speed: 3.5,        // units per frame — cruising fast
     label,
     glowMat,
     // Trail history
     history: [],
-    historyMax: 250,
+    historyMax: 800,
   };
 
-  // Trail line for Voyager
-  const vTrailCount = TRAIL_SEGS * 3;  // longer trail
+  // Trail line for Voyager — long streaking trail
+  const vTrailCount = TRAIL_SEGS * 8;  // very long trail
   const vTrailGeo = new THREE.BufferGeometry();
   const vTrailPos = new Float32Array((vTrailCount + 1) * 3);
   const vTrailAlp = new Float32Array(vTrailCount + 1);
@@ -3641,8 +3641,8 @@ function buildVoyager() {
       vertexShader: trailVertShader,
       fragmentShader: trailFragShader,
       uniforms: {
-        uColor:   { value: new THREE.Color(0x6699cc) },
-        uOpacity: { value: tl === 0 ? 0.9 : 0.4 },
+        uColor:   { value: new THREE.Color(0x88bbee) },
+        uOpacity: { value: tl === 0 ? 1.0 : 0.5 },
       },
       transparent: true,
       blending: THREE.AdditiveBlending,
@@ -3681,12 +3681,11 @@ function updateVoyager() {
     voyagerData.wpIdx = toIdx;
   }
 
-  // Smooth interpolation (ease in-out)
+  // Linear interpolation — constant cruise speed
   const t = voyagerData.progress;
-  const ease = t * t * (3 - 2 * t);
-  const px = from.x + (to.x - from.x) * ease;
-  const py = from.y + (to.y - from.y) * ease;
-  const pz = from.z + (to.z - from.z) * ease;
+  const px = from.x + (to.x - from.x) * t;
+  const py = from.y + (to.y - from.y) * t;
+  const pz = from.z + (to.z - from.z) * t;
 
   voyagerGroup.position.set(px, py, pz);
 
