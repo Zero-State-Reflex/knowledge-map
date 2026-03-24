@@ -3334,6 +3334,119 @@ function clearMoons() {
   moonMeshes.length = 0;
 }
 
+// ─── AURORA BOREALIS — animated light ribbons at focused planet poles ─────────
+let auroraMeshes = [];
+let auroraData   = null;
+
+function buildAurora(centerNode) {
+  clearAurora();
+  if (isMobileDevice) return;
+
+  const col = new THREE.Color(DOMAINS[centerNode.domain]?.color || '#44cc88');
+  const planetR = centerNode.size * 2.2;
+  const RIBBON_COUNT = 5;
+  const SEGS = 48;
+
+  const ribbons = [];
+  for (let r = 0; r < RIBBON_COUNT; r++) {
+    const positions = new Float32Array((SEGS + 1) * 3);
+    const alphas    = new Float32Array(SEGS + 1);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('alpha',    new THREE.BufferAttribute(alphas, 1));
+
+    // Alternate green/blue/purple tints
+    const tints = [0x44ff88, 0x44ddff, 0x8844ff, 0x44ffaa, 0xff44aa];
+    const ribbonCol = new THREE.Color(tints[r % tints.length]).lerp(col, 0.3);
+
+    const mat = new THREE.ShaderMaterial({
+      vertexShader: `
+        attribute float alpha;
+        varying float vAlpha;
+        void main() {
+          vAlpha = alpha;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        uniform float uOpacity;
+        varying float vAlpha;
+        void main() {
+          gl_FragColor = vec4(uColor, vAlpha * uOpacity);
+        }
+      `,
+      uniforms: {
+        uColor:   { value: new THREE.Vector3(ribbonCol.r, ribbonCol.g, ribbonCol.b) },
+        uOpacity: { value: 0.0 },
+      },
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const line = new THREE.Line(geo, mat);
+    scene.add(line);
+    auroraMeshes.push(line);
+
+    ribbons.push({
+      geo, mat, positions, alphas,
+      // Each ribbon has unique orbit params
+      poleSign: r < 3 ? 1 : -1,  // north or south pole
+      baseAngle: (r / RIBBON_COUNT) * Math.PI * 2,
+      height: 0.85 + Math.random() * 0.15,  // how high above equator
+      spread: 0.1 + Math.random() * 0.15,
+      speed: 0.3 + Math.random() * 0.4,
+      waveFreq: 2 + Math.random() * 3,
+      waveAmp: 0.03 + Math.random() * 0.04,
+      fadeIn: 0,
+    });
+  }
+
+  auroraData = { ribbons, planetR, SEGS };
+}
+
+function clearAurora() {
+  auroraMeshes.forEach(m => { scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
+  auroraMeshes = [];
+  auroraData = null;
+}
+
+function updateAurora() {
+  if (!auroraData || !focusedNode) return;
+  const cx = focusedNode.x, cy = focusedNode.y, cz = focusedNode.z;
+  const R = auroraData.planetR;
+  const t = performance.now() * 0.001;
+
+  auroraData.ribbons.forEach(rb => {
+    // Fade in
+    rb.fadeIn = Math.min(1, rb.fadeIn + 0.015);
+    rb.mat.uniforms.uOpacity.value = rb.fadeIn * 0.6;
+
+    for (let s = 0; s <= auroraData.SEGS; s++) {
+      const frac = s / auroraData.SEGS;
+      const angle = rb.baseAngle + frac * Math.PI * 0.8 + t * rb.speed;
+
+      // Position on a ring near the pole
+      const poleLat = rb.height + Math.sin(t * rb.waveFreq + frac * 6) * rb.waveAmp;
+      const latAngle = Math.acos(poleLat * rb.poleSign);
+      const r = R * Math.sin(latAngle) * (1.04 + Math.sin(t * 1.5 + frac * 4) * 0.02);
+      const h = R * Math.cos(latAngle);
+
+      const idx = s * 3;
+      rb.positions[idx]     = cx + Math.cos(angle) * r;
+      rb.positions[idx + 1] = cy + h;
+      rb.positions[idx + 2] = cz + Math.sin(angle) * r;
+
+      // Alpha: bright in center, fade at edges + wave modulation
+      const edgeFade = Math.sin(frac * Math.PI);
+      const wave = 0.5 + 0.5 * Math.sin(t * 3 + frac * 8 + rb.baseAngle);
+      rb.alphas[s] = edgeFade * wave * 0.8;
+    }
+    rb.geo.attributes.position.needsUpdate = true;
+    rb.geo.attributes.alpha.needsUpdate = true;
+  });
+}
+
 function updateMoons() {
   if (!moonData.length) return;
   const cx = focusedNode.x, cy = focusedNode.y, cz = focusedNode.z;
@@ -4718,6 +4831,7 @@ function updateScene() {
   updateVoyager();
   updateVoyagerCam();
   updateComet();
+  updateAurora();
   updateLensFlare();
   let idx = 0;
   for (const l of links) {
@@ -5530,6 +5644,7 @@ function focusNode(n) {
   setTimeout(() => {
     if (focusedNode !== n) return;
     buildMoons(n);
+    buildAurora(n);
     buildShip();
     startKnowledgeRipple(n);
   }, 100);
@@ -5548,7 +5663,7 @@ function exitInspectAndUnfocus() {
     delete focusedNode._floatStart;
   }
   focusCamAnim = null;
-  clearFocusLabel(); clearFocusEdges(); clearMoons(); clearShip();
+  clearFocusLabel(); clearFocusEdges(); clearMoons(); clearAurora(); clearShip();
   focusedNode = null;
   resetDim();
   hideInfo();
@@ -5570,7 +5685,7 @@ function showBlackHoleCard() {
     delete focusedNode._restX; delete focusedNode._restY; delete focusedNode._restZ;
     delete focusedNode._floatStart;
     focusCamAnim = null;
-    clearFocusLabel(); clearFocusEdges(); clearMoons(); clearShip();
+    clearFocusLabel(); clearFocusEdges(); clearMoons(); clearAurora(); clearShip();
     focusedNode = null;
     resetDim();
   }
