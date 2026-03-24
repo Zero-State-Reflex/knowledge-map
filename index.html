@@ -1671,21 +1671,22 @@ const PLANET_TYPES = {
 };
 
 const PLANET_PALETTES = {
-  ice:           [[85,100,115],[65,85,105],[48,68,95],[95,108,120],[72,90,108],[38,55,80]],
-  gas_blue:      [[12,22,48],[18,35,68],[32,55,85],[48,72,100],[22,32,58],[10,25,55]],
-  rocky_orange:  [[55,30,14],[78,42,18],[95,55,25],[68,35,14],[42,22,8],[85,48,20]],
-  jungle:        [[14,35,16],[22,50,25],[35,65,32],[18,42,20],[40,58,30],[10,28,14]],
-  acid:          [[22,48,14],[35,68,20],[52,85,28],[28,58,18],[42,72,22],[60,95,35]],
-  terracotta:    [[72,32,22],[95,45,30],[82,38,25],[58,25,16],[108,55,38],[45,20,12]],
-  desert:        [[95,72,35],[115,90,48],[80,60,28],[68,50,22],[105,82,45],[55,40,18]],
-  ancient:       [[62,48,32],[85,65,45],[72,55,38],[48,35,22],[95,75,55],[38,28,18]],
-  violet_cloud:  [[32,12,42],[48,22,62],[62,30,78],[38,14,50],[72,38,90],[22,8,32]],
-  metallic:      [[35,42,52],[55,62,72],[72,80,90],[28,34,45],[85,92,102],[22,26,35]],
-  ocean:         [[8,18,42],[12,32,62],[22,48,78],[8,24,52],[32,58,88],[8,14,35]],
-  dark_nebula:   [[25,8,32],[40,12,48],[55,18,62],[32,8,38],[68,28,78],[18,5,24]],
-  amber_gas:     [[82,45,10],[105,62,20],[90,52,14],[68,38,8],[115,75,30],[55,30,6]],
-  verdant:       [[16,42,22],[25,60,32],[38,75,42],[20,50,26],[45,82,48],[12,35,18]],
-  plasma:        [[78,14,38],[100,25,52],[88,18,45],[65,10,32],[110,38,65],[52,8,28]],
+  // 10-color palettes for richer gradients
+  ice:           [[68,82,98],[52,70,90],[40,58,82],[78,90,105],[88,100,115],[35,50,72],[60,78,95],[95,108,118],[45,62,85],[82,95,108]],
+  gas_blue:      [[10,18,40],[16,30,58],[28,48,72],[42,62,88],[18,28,50],[8,22,48],[35,55,80],[52,72,95],[14,24,44],[22,38,62]],
+  rocky_orange:  [[50,28,12],[68,38,16],[82,48,22],[45,25,10],[58,32,14],[92,55,28],[38,20,8],[75,42,18],[62,34,15],[85,50,24]],
+  jungle:        [[12,32,14],[20,48,22],[32,62,30],[8,24,10],[25,55,24],[42,72,38],[15,38,16],[35,58,32],[10,28,12],[28,50,26]],
+  acid:          [[20,42,12],[32,58,18],[45,72,25],[25,50,15],[38,62,20],[55,82,32],[18,38,10],[48,68,22],[28,48,14],[52,75,28]],
+  terracotta:    [[62,28,18],[82,40,25],[95,48,30],[52,22,14],[72,35,22],[105,55,35],[45,18,10],[88,42,28],[58,25,16],[78,38,24]],
+  desert:        [[85,65,32],[100,78,42],[72,55,25],[60,45,20],[92,72,38],[110,88,48],[52,40,18],[78,60,30],[95,75,40],[68,52,24]],
+  ancient:       [[55,42,28],[72,56,38],[85,65,45],[45,34,22],[62,48,32],[95,72,52],[38,28,18],[78,60,42],[52,40,26],[68,52,36]],
+  violet_cloud:  [[28,10,38],[42,18,52],[55,25,65],[22,8,30],[35,14,45],[65,32,78],[18,6,25],[48,20,58],[32,12,42],[58,28,70]],
+  metallic:      [[32,38,48],[48,55,65],[62,70,80],[25,30,40],[55,62,72],[75,82,92],[20,24,34],[42,48,58],[52,58,68],[68,75,85]],
+  ocean:         [[6,16,38],[10,28,55],[20,42,68],[6,22,45],[15,35,58],[28,52,78],[5,12,32],[12,32,50],[22,45,70],[8,20,42]],
+  dark_nebula:   [[22,6,28],[35,10,42],[48,16,55],[18,5,22],[28,8,35],[58,22,68],[15,4,20],[42,12,50],[32,10,38],[52,18,62]],
+  amber_gas:     [[72,40,8],[92,55,16],[80,48,12],[60,34,6],[100,62,22],[110,72,28],[52,28,5],[85,50,14],[68,38,8],[95,58,18]],
+  verdant:       [[14,38,18],[22,52,28],[34,68,38],[10,30,14],[28,58,30],[42,78,45],[8,25,12],[18,45,22],[32,62,35],[38,72,42]],
+  plasma:        [[68,12,32],[88,22,45],[78,16,38],[55,8,28],[98,28,52],[108,35,60],[48,6,24],[82,18,40],[72,14,34],[95,25,48]],
 };
 
 // ─── MOON PALETTES — distinct from planet palettes: rocky, dusty, icy, ashen ─
@@ -1720,82 +1721,395 @@ function makePlanetTexture(domain, nodeId) {
   const rng  = seededRand(seed + 1);
   const rng2 = seededRand(seed + 99);
   const rng3 = seededRand(seed + 777);
+  const rng4 = seededRand(seed + 2345);
+  const rng5 = seededRand(seed + 5555);
 
   const gw = Q.noiseGrid[0], gh = Q.noiseGrid[1];
   const n1 = buildNoise(rng,  gw, gh);
   const n2 = buildNoise(rng2, gh, gw);
   const n3 = buildNoise(rng3, gw * 2, gh * 2);
-  const rng4 = seededRand(seed + 2345);
   const n4 = buildNoise(rng4, Math.round(gw * 1.5), Math.round(gh * 1.5));
+  const n5 = buildNoise(rng5, gw * 3, gh * 3);
 
-  // Type-specific rendering
-  const isBanded = ['gas_blue','amber_gas','plasma','violet_cloud','dark_nebula'].includes(type);
-  const isIcy    = type === 'ice';
-  const isRocky  = ['rocky_orange','terracotta','ancient','desert','verdant'].includes(type);
+  const oct  = Q.texOctaves;
+  const oct2 = Math.max(2, oct - 1);
+
+  // Pre-roll rngs for features
   const numBands = 4 + Math.floor(rng() * 5);
-  const stormU   = rng(); const stormV = 0.3 + rng() * 0.4;
-  const stormR   = 0.04 + rng() * 0.06;
+  const stormU = rng(), stormV = 0.3 + rng() * 0.4;
+  const stormR = 0.04 + rng() * 0.06;
   const hasStorm = rng() > 0.35;
+  const numCraters = 3 + Math.floor(rng() * 10);
+  const craters = [];
+  for (let c = 0; c < numCraters; c++) {
+    craters.push({ cu: rng(), cv: rng(), cr: 0.015 + rng() * 0.05, depth: 0.3 + rng() * 0.5 });
+  }
+  // Lava vents (for terracotta)
+  const numVents = 2 + Math.floor(rng() * 4);
+  const vents = [];
+  for (let vv = 0; vv < numVents; vv++) {
+    vents.push({ vu: rng(), vv: rng(), vr: 0.03 + rng() * 0.08 });
+  }
 
   for (let py = 0; py < S; py++) {
     for (let px = 0; px < S * 2; px++) {
       const u = px / (S * 2);
       const v = py / S;
 
-      let t;
-      const oct = Q.texOctaves;
-      const oct2 = Math.max(2, oct - 1);
-      if (isBanded) {
-        const warp = fbm(n1, u, v, oct, 2.1, 0.5) * 0.4;
+      let t, r, g, b;
+      let useCustomColor = false;
+
+      if (type === 'gas_blue') {
+        // ── NEPTUNE / URANUS — smooth banded with wispy white clouds ──
+        const warp = fbm(n1, u, v, oct, 2.1, 0.5) * 0.35;
         const band = (Math.sin((v + warp) * Math.PI * numBands) + 1) * 0.5;
-        const detail = fbm(n2, u * 2, v * 2, oct2, 2.0, 0.45) * 0.25;
-        const micro = fbm(n4, u * 6, v * 6, oct2, 2.3, 0.4) * 0.08;
-        t = Math.max(0, Math.min(1, band + detail + micro));
-      } else if (isRocky) {
-        const crater = fbm(n3, u * 3, v * 3, oct, 2.2, 0.5);
-        const base   = fbm(n1, u, v, oct, 2.0, 0.5);
-        const fine   = fbm(n4, u * 8, v * 8, oct2, 2.4, 0.45) * 0.12;
-        t = Math.pow(Math.max(0, base * 0.55 + crater * 0.35 + fine), 0.8);
-      } else if (isIcy) {
-        const crack = Math.abs(fbm(n1, u * 2, v * 2, oct, 2.3, 0.5) - 0.5) * 2;
-        const base  = fbm(n2, u, v, oct2, 2.0, 0.4);
-        const vein  = Math.abs(fbm(n4, u * 5, v * 5, oct2, 2.5, 0.45) - 0.5) * 0.3;
-        t = Math.max(0, Math.min(1, base * 0.45 + (1 - crack * 0.55) + vein));
+        const turb = fbm(n2, u * 3, v * 3, oct, 2.0, 0.45) * 0.2;
+        const wisp = Math.pow(Math.max(0, fbm(n4, u * 5, v * 4, oct2, 2.3, 0.4)), 2.5);
+        t = Math.max(0, Math.min(1, band * 0.65 + turb + 0.15));
+        // Wispy white cloud overlay
+        const ci = t * (pal.length - 1);
+        const ci0 = Math.floor(ci), ci1 = Math.min(ci0 + 1, pal.length - 1);
+        const cf = ci - ci0;
+        const c0 = pal[ci0], c1 = pal[ci1];
+        r = c0[0] + (c1[0]-c0[0]) * cf + wisp * 80;
+        g = c0[1] + (c1[1]-c0[1]) * cf + wisp * 85;
+        b = c0[2] + (c1[2]-c0[2]) * cf + wisp * 70;
+        useCustomColor = true;
+
+      } else if (type === 'amber_gas') {
+        // ── JUPITER — bold turbulent bands with Great Red Spot ──
+        const warp = fbm(n1, u, v, oct, 2.0, 0.55) * 0.5;
+        const warp2 = fbm(n3, u * 2, v, oct2, 2.2, 0.4) * 0.15;
+        const band = (Math.sin((v + warp + warp2) * Math.PI * (numBands + 2)) + 1) * 0.5;
+        const turb = fbm(n2, u * 4, v * 4, oct, 2.1, 0.5) * 0.2;
+        const swirl = fbm(n5, u * 6, v * 6, oct2, 2.3, 0.45) * 0.08;
+        t = Math.max(0, Math.min(1, band * 0.55 + turb + swirl + 0.18));
+
+      } else if (type === 'plasma') {
+        // ── VOLCANIC / PLASMA — dark surface with glowing fissures ──
+        const base = fbm(n1, u * 2, v * 2, oct, 2.1, 0.5);
+        const crack = Math.abs(fbm(n2, u * 4, v * 4, oct, 2.5, 0.5) - 0.5);
+        const heat = Math.pow(Math.max(0, 1 - crack * 3.5), 3.0);
+        t = base * 0.5;
+        // Glowing cracks: override with hot colors
+        const ci = t * (pal.length - 1);
+        const ci0 = Math.floor(ci), ci1 = Math.min(ci0 + 1, pal.length - 1);
+        const cf = ci - ci0;
+        const c0 = pal[ci0], c1 = pal[ci1];
+        r = c0[0] + (c1[0]-c0[0]) * cf + heat * 180;
+        g = c0[1] + (c1[1]-c0[1]) * cf + heat * 80;
+        b = c0[2] + (c1[2]-c0[2]) * cf + heat * 15;
+        useCustomColor = true;
+
+      } else if (type === 'violet_cloud') {
+        // ── GAS GIANT with swirling storms ──
+        const warp = fbm(n1, u * 1.5, v, oct, 2.0, 0.5) * 0.4;
+        const band = (Math.sin((v + warp) * Math.PI * numBands) + 1) * 0.5;
+        const vort = fbm(n3, u * 3, v * 3, oct, 2.2, 0.5);
+        const detail = fbm(n5, u * 8, v * 8, oct2, 2.4, 0.4) * 0.1;
+        t = Math.max(0, Math.min(1, band * 0.5 + vort * 0.35 + detail + 0.1));
+
+      } else if (type === 'dark_nebula') {
+        // ── DARK SHADOWY — barely lit with faint luminous veins ──
+        const base = fbm(n1, u * 2, v * 2, oct, 2.2, 0.5) * 0.35;
+        const vein = Math.pow(Math.abs(fbm(n4, u * 6, v * 6, oct, 2.5, 0.45) - 0.5), 0.5) * 0.4;
+        const glow = Math.pow(Math.max(0, fbm(n5, u * 3, v * 3, oct2, 2.3, 0.4)), 3);
+        t = Math.max(0, Math.min(1, base + vein));
+        const ci = t * (pal.length - 1);
+        const ci0 = Math.floor(ci), ci1 = Math.min(ci0 + 1, pal.length - 1);
+        const cf = ci - ci0;
+        const c0 = pal[ci0], c1 = pal[ci1];
+        r = c0[0] + (c1[0]-c0[0]) * cf + glow * 60;
+        g = c0[1] + (c1[1]-c0[1]) * cf + glow * 30;
+        b = c0[2] + (c1[2]-c0[2]) * cf + glow * 90;
+        useCustomColor = true;
+
+      } else if (type === 'ice') {
+        // ── ICY WORLD — cracked ice sheets with blue-white ridges ──
+        const base = fbm(n1, u * 1.5, v * 1.5, oct, 2.0, 0.5) * 0.4 + 0.3;
+        const crack = Math.abs(fbm(n2, u * 3, v * 3, oct, 2.4, 0.5) - 0.5);
+        const ridge = Math.pow(Math.max(0, 1 - crack * 4), 1.5);
+        const frost = fbm(n5, u * 8, v * 8, oct2, 2.5, 0.4) * 0.08;
+        const vein = Math.abs(fbm(n4, u * 5, v * 5, oct2, 2.5, 0.45) - 0.5);
+        t = Math.max(0, Math.min(1, base + ridge * 0.3 + frost));
+        // Bright ice ridges
+        const ci = t * (pal.length - 1);
+        const ci0 = Math.floor(ci), ci1 = Math.min(ci0 + 1, pal.length - 1);
+        const cf = ci - ci0;
+        const c0 = pal[ci0], c1 = pal[ci1];
+        r = c0[0] + (c1[0]-c0[0]) * cf + ridge * 55;
+        g = c0[1] + (c1[1]-c0[1]) * cf + ridge * 60;
+        b = c0[2] + (c1[2]-c0[2]) * cf + ridge * 65;
+        // Blue tint in cracks
+        if (crack < 0.15) { r *= 0.7; b = Math.min(255, b * 1.3 + 15); }
+        useCustomColor = true;
+
+      } else if (type === 'rocky_orange') {
+        // ── MARS-LIKE — dusty terrain with dark maria and polar caps ──
+        const base = fbm(n1, u * 2, v * 2, oct, 2.1, 0.5);
+        const maria = Math.pow(fbm(n3, u * 1.5, v * 1.5, oct2, 2.0, 0.45), 1.5);
+        const dust = fbm(n5, u * 8, v * 8, oct2, 2.4, 0.4) * 0.1;
+        t = Math.max(0, Math.min(1, base * 0.5 + maria * 0.3 + dust + 0.15));
+        // Polar ice caps
+        const polarFade = Math.pow(Math.max(0, Math.abs(v - 0.5) * 2 - 0.7) / 0.3, 1.5);
+        // Apply craters
+        let craterDark = 0;
+        for (const cr of craters) {
+          let du = Math.abs(u - cr.cu); if (du > 0.5) du = 1 - du;
+          const dv2 = v - cr.cv;
+          const d = Math.sqrt(du*du + dv2*dv2);
+          if (d < cr.cr) {
+            const e = d / cr.cr;
+            craterDark += e > 0.8 ? (1-e)*3 : -cr.depth*(1-e*1.2)*0.3;
+          }
+        }
+        t = Math.max(0, Math.min(1, t + craterDark));
+        const ci = t * (pal.length - 1);
+        const ci0 = Math.floor(ci), ci1 = Math.min(ci0 + 1, pal.length - 1);
+        const cf = ci - ci0;
+        const c0 = pal[ci0], c1 = pal[ci1];
+        r = c0[0] + (c1[0]-c0[0]) * cf;
+        g = c0[1] + (c1[1]-c0[1]) * cf;
+        b = c0[2] + (c1[2]-c0[2]) * cf;
+        // Polar caps: white-blue
+        if (polarFade > 0) {
+          r = r + (180 - r) * polarFade;
+          g = g + (190 - g) * polarFade;
+          b = b + (200 - b) * polarFade;
+        }
+        useCustomColor = true;
+
+      } else if (type === 'jungle') {
+        // ── LUSH WORLD — dense forests, rivers, cloud wisps ──
+        const base = fbm(n1, u * 2, v * 2, oct, 2.0, 0.5);
+        const canopy = fbm(n3, u * 4, v * 4, oct, 2.2, 0.45);
+        const river = Math.pow(Math.max(0, 1 - Math.abs(fbm(n2, u * 3, v * 3, oct, 2.3, 0.5) - 0.5) * 5), 2);
+        const cloud = Math.pow(Math.max(0, fbm(n5, u * 2, v * 1.5, oct2, 2.0, 0.4) - 0.55) * 4, 1.5);
+        const detail = fbm(n4, u * 10, v * 10, oct2, 2.4, 0.4) * 0.06;
+        t = Math.max(0, Math.min(1, base * 0.3 + canopy * 0.4 + detail + 0.2));
+        // Latitude variation: tropical dense → temperate lighter
+        const latBias = 1 - Math.abs(v - 0.5) * 0.6;
+        t *= latBias;
+        const ci = t * (pal.length - 1);
+        const ci0 = Math.floor(ci), ci1 = Math.min(ci0 + 1, pal.length - 1);
+        const cf = ci - ci0;
+        const c0 = pal[ci0], c1 = pal[ci1];
+        r = c0[0] + (c1[0]-c0[0]) * cf;
+        g = c0[1] + (c1[1]-c0[1]) * cf;
+        b = c0[2] + (c1[2]-c0[2]) * cf;
+        // River channels: dark blue-green
+        if (river > 0.1) {
+          const rv = Math.min(1, river);
+          r = r * (1 - rv * 0.6);
+          g = g * (1 - rv * 0.2);
+          b = b + rv * 35;
+        }
+        // Cloud wisps: white overlay
+        r += cloud * 65; g += cloud * 70; b += cloud * 60;
+        useCustomColor = true;
+
+      } else if (type === 'acid') {
+        // ── TOXIC / VENUS-LIKE — thick swirling clouds, muted yellow-green ──
+        const warp = fbm(n1, u * 1.5, v, oct, 2.0, 0.55) * 0.5;
+        const cloud1 = fbm(n2, u * 2 + warp, v * 2, oct, 2.1, 0.5);
+        const cloud2 = fbm(n3, u * 3 - warp * 0.5, v * 3, oct2, 2.2, 0.45);
+        const swirl = fbm(n5, u * 6, v * 6, oct2, 2.3, 0.4) * 0.12;
+        t = Math.max(0, Math.min(1, cloud1 * 0.5 + cloud2 * 0.3 + swirl + 0.15));
+        // Y-shaped cloud feature like Venus
+        const yWave = Math.sin(u * Math.PI * 2 + v * 3) * 0.1;
+        t += yWave * 0.15;
+        t = Math.max(0, Math.min(1, t));
+
+      } else if (type === 'terracotta') {
+        // ── VOLCANIC FIRE WORLD — lava flows, dark crust, glowing vents ──
+        const crust = fbm(n1, u * 2, v * 2, oct, 2.1, 0.5);
+        const crack = Math.abs(fbm(n2, u * 3, v * 3, oct, 2.4, 0.5) - 0.5);
+        const lava = Math.pow(Math.max(0, 1 - crack * 3), 2.5);
+        const fine = fbm(n5, u * 8, v * 8, oct2, 2.4, 0.4) * 0.08;
+        t = Math.max(0, Math.min(1, crust * 0.5 + fine + 0.1));
+        const ci = t * (pal.length - 1);
+        const ci0 = Math.floor(ci), ci1 = Math.min(ci0 + 1, pal.length - 1);
+        const cf = ci - ci0;
+        const c0 = pal[ci0], c1 = pal[ci1];
+        r = c0[0] + (c1[0]-c0[0]) * cf;
+        g = c0[1] + (c1[1]-c0[1]) * cf;
+        b = c0[2] + (c1[2]-c0[2]) * cf;
+        // Lava glow in cracks: bright orange-red
+        r += lava * 160;
+        g += lava * 60;
+        b += lava * 8;
+        // Vent hotspots
+        for (const vt of vents) {
+          let du = Math.abs(u - vt.vu); if (du > 0.5) du = 1 - du;
+          const dv2 = v - vt.vv;
+          const d = Math.sqrt(du*du + dv2*dv2) / vt.vr;
+          if (d < 1) {
+            const glow = Math.pow(1 - d, 2);
+            r += glow * 140; g += glow * 45; b += glow * 5;
+          }
+        }
+        useCustomColor = true;
+
+      } else if (type === 'desert') {
+        // ── DUNE WORLD — wind-sculpted ridges, dust storms, oasis patches ──
+        const base = fbm(n1, u * 2, v * 2, oct, 2.0, 0.5);
+        const dune = (Math.sin((u * 12 + fbm(n3, u, v, oct2, 2.1, 0.4) * 2) * Math.PI) + 1) * 0.25;
+        const dust = fbm(n4, u * 6, v * 6, oct2, 2.3, 0.4) * 0.1;
+        const storm = Math.pow(Math.max(0, fbm(n5, u * 1.5, v * 1.5, oct2, 2.0, 0.45) - 0.6) * 4, 1.5);
+        t = Math.max(0, Math.min(1, base * 0.4 + dune + dust + 0.2));
+        const ci = t * (pal.length - 1);
+        const ci0 = Math.floor(ci), ci1 = Math.min(ci0 + 1, pal.length - 1);
+        const cf = ci - ci0;
+        const c0 = pal[ci0], c1 = pal[ci1];
+        r = c0[0] + (c1[0]-c0[0]) * cf;
+        g = c0[1] + (c1[1]-c0[1]) * cf;
+        b = c0[2] + (c1[2]-c0[2]) * cf;
+        // Dust storm haze
+        r += storm * 50; g += storm * 40; b += storm * 25;
+        useCustomColor = true;
+
+      } else if (type === 'ancient') {
+        // ── WORN CRATERED — Mercury/Moon-like, heavily cratered highlands ──
+        const base = fbm(n1, u * 1.5, v * 1.5, oct, 2.0, 0.5);
+        const highland = fbm(n3, u * 2, v * 2, oct, 2.2, 0.5) * 0.3;
+        const fine = fbm(n5, u * 10, v * 10, oct2, 2.5, 0.4) * 0.06;
+        t = Math.max(0, Math.min(1, base * 0.45 + highland + fine + 0.15));
+        // Dense craters
+        for (const cr of craters) {
+          let du = Math.abs(u - cr.cu); if (du > 0.5) du = 1 - du;
+          const dv2 = v - cr.cv;
+          const d = Math.sqrt(du*du + dv2*dv2);
+          if (d < cr.cr) {
+            const e = d / cr.cr;
+            if (e > 0.78) t += (1 - e) * 1.2;
+            else t -= cr.depth * (1 - e * 1.2) * 0.35;
+          }
+        }
+        t = Math.max(0, Math.min(1, t));
+
+      } else if (type === 'metallic') {
+        // ── INDUSTRIAL / IRON WORLD — smooth metallic sheen with grooves ──
+        const base = fbm(n1, u * 2, v * 2, oct, 2.0, 0.5) * 0.4 + 0.3;
+        const groove = Math.abs(Math.sin((v * 20 + fbm(n3, u*3, v*3, oct2, 2.2, 0.4) * 3) * Math.PI));
+        const spec = fbm(n5, u * 8, v * 8, oct2, 2.4, 0.4);
+        t = Math.max(0, Math.min(1, base + groove * 0.15 + spec * 0.08));
+
+      } else if (type === 'ocean') {
+        // ── WATER WORLD — deep ocean with island chains and clouds ──
+        const depth = fbm(n1, u * 2, v * 2, oct, 2.0, 0.5);
+        const shelf = fbm(n3, u * 3, v * 3, oct, 2.2, 0.45);
+        const land = Math.max(0, depth * 0.5 + shelf * 0.5 - 0.42);
+        const cloud = Math.pow(Math.max(0, fbm(n5, u * 2, v * 1.5, oct2, 2.0, 0.4) - 0.5) * 3.5, 1.5);
+        const wave = fbm(n4, u * 8, v * 8, oct2, 2.4, 0.4) * 0.05;
+        const isLand = land > 0;
+        if (isLand) {
+          // Green-brown land
+          const lt = Math.min(1, land * 4);
+          r = 28 + lt * 35; g = 45 + lt * 30; b = 20 + lt * 12;
+        } else {
+          // Ocean depth gradient
+          t = Math.max(0, Math.min(1, depth * 0.6 + wave + 0.2));
+          const ci = t * (pal.length - 1);
+          const ci0 = Math.floor(ci), ci1 = Math.min(ci0 + 1, pal.length - 1);
+          const cf = ci - ci0;
+          const c0 = pal[ci0], c1 = pal[ci1];
+          r = c0[0] + (c1[0]-c0[0]) * cf;
+          g = c0[1] + (c1[1]-c0[1]) * cf;
+          b = c0[2] + (c1[2]-c0[2]) * cf;
+        }
+        // Cloud overlay
+        r += cloud * 55; g += cloud * 58; b += cloud * 50;
+        useCustomColor = true;
+
+      } else if (type === 'verdant') {
+        // ── EARTH-LIKE — continents, oceans, ice caps, clouds ──
+        const elev = fbm(n1, u * 2, v * 2, oct, 2.0, 0.5);
+        const detail = fbm(n3, u * 4, v * 4, oct, 2.2, 0.45);
+        const h = elev * 0.6 + detail * 0.4;
+        const seaLevel = 0.42;
+        const cloud = Math.pow(Math.max(0, fbm(n5, u * 2.5, v * 2, oct2, 2.0, 0.4) - 0.48) * 3.5, 1.2);
+        const polarFade = Math.pow(Math.max(0, Math.abs(v - 0.5) * 2 - 0.72) / 0.28, 1.5);
+        if (h < seaLevel) {
+          // Ocean
+          const d = (seaLevel - h) / seaLevel;
+          r = 8 + d * 5;
+          g = 18 + d * 15;
+          b = 42 + d * 30;
+        } else {
+          // Land: elevation-based biomes
+          const lh = (h - seaLevel) / (1 - seaLevel);
+          if (lh < 0.25) {
+            // Coastal lowlands — sandy green
+            r = 32 + lh * 40; g = 50 + lh * 60; b = 22 + lh * 15;
+          } else if (lh < 0.55) {
+            // Forests — deep green
+            const f = (lh - 0.25) / 0.3;
+            r = 18 + f * 15; g = 42 + f * 25; b = 16 + f * 8;
+          } else if (lh < 0.8) {
+            // Highlands — brown
+            const f = (lh - 0.55) / 0.25;
+            r = 52 + f * 25; g = 42 + f * 10; b = 22 + f * 8;
+          } else {
+            // Mountain peaks — grey/white
+            const f = (lh - 0.8) / 0.2;
+            r = 75 + f * 60; g = 72 + f * 62; b = 68 + f * 65;
+          }
+        }
+        // Polar caps
+        if (polarFade > 0) {
+          r = r + (195 - r) * polarFade;
+          g = g + (200 - g) * polarFade;
+          b = b + (210 - b) * polarFade;
+        }
+        // Clouds
+        r += cloud * 55; g += cloud * 58; b += cloud * 52;
+        useCustomColor = true;
+
       } else {
+        // ── DEFAULT fallback — generic noise terrain ──
         t = fbm(n1, u * 1.5, v * 1.5, oct, 2.1, 0.5);
         const detail = fbm(n4, u * 4, v * 4, oct2, 2.2, 0.45) * 0.15;
-        t = Math.max(0, Math.min(1, t * 0.75 + fbm(n2, u, v, 5, 2.0, 0.5) * 0.2 + detail));
+        t = Math.max(0, Math.min(1, t * 0.75 + fbm(n2, u, v, oct, 2.0, 0.5) * 0.2 + detail));
       }
 
-      // Storm spot
-      if (hasStorm) {
+      // Storm spot (gas giants only)
+      if (hasStorm && ['gas_blue','amber_gas','violet_cloud'].includes(type)) {
         const du = Math.min(Math.abs(u - stormU), 1 - Math.abs(u - stormU));
-        const dv = v - stormV;
-        const sd = Math.sqrt(du*du + dv*dv) / stormR;
-        if (sd < 1) t = Math.max(0, Math.min(1, t * 0.3 + (1 - sd) * 0.7));
+        const dv2 = v - stormV;
+        const sd = Math.sqrt(du*du + dv2*dv2) / stormR;
+        if (sd < 1) {
+          const swirl = Math.pow(1 - sd, 1.5);
+          if (!useCustomColor) {
+            t = Math.max(0, Math.min(1, t * (1 - swirl * 0.5) + swirl * 0.8));
+          } else {
+            r += swirl * 40; g += swirl * 20; b -= swirl * 10;
+          }
+        }
       }
 
-      // Pick color from palette
-      const ci = t * (pal.length - 1);
-      const ci0 = Math.floor(ci), ci1 = Math.min(ci0 + 1, pal.length - 1);
-      const cf = ci - ci0;
-      const c0 = pal[ci0], c1 = pal[ci1];
-      const r = Math.round(c0[0] + (c1[0]-c0[0]) * cf);
-      const g = Math.round(c0[1] + (c1[1]-c0[1]) * cf);
-      const b = Math.round(c0[2] + (c1[2]-c0[2]) * cf);
+      // Palette lookup for types that didn't set custom color
+      if (!useCustomColor) {
+        t = Math.max(0, Math.min(1, t));
+        const ci = t * (pal.length - 1);
+        const ci0 = Math.floor(ci), ci1 = Math.min(ci0 + 1, pal.length - 1);
+        const cf = ci - ci0;
+        const c0 = pal[ci0], c1 = pal[ci1];
+        r = c0[0] + (c1[0]-c0[0]) * cf;
+        g = c0[1] + (c1[1]-c0[1]) * cf;
+        b = c0[2] + (c1[2]-c0[2]) * cf;
+      }
 
-      // Limb darkening: darken edges of sphere (approximated via equirectangular v→lat)
+      // Limb darkening
       const lat  = (v - 0.5) * Math.PI;
       const limb = Math.pow(Math.cos(lat), 0.5);
-      // Also apply longitudinal limb darkening for equirectangular
       const lon = (u - 0.5) * Math.PI * 2;
       const lonLimb = 0.7 + 0.3 * Math.pow(Math.max(0, Math.cos(lon * 0.5)), 0.4);
       const totalLimb = limb * lonLimb;
 
       const i4 = (py * S * 2 + px) * 4;
-      data[i4]   = Math.round(r * totalLimb);
-      data[i4+1] = Math.round(g * totalLimb);
-      data[i4+2] = Math.round(b * totalLimb);
+      data[i4]   = Math.min(255, Math.max(0, Math.round(r * totalLimb)));
+      data[i4+1] = Math.min(255, Math.max(0, Math.round(g * totalLimb)));
+      data[i4+2] = Math.min(255, Math.max(0, Math.round(b * totalLimb)));
       data[i4+3] = 255;
     }
   }
