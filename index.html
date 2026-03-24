@@ -2310,6 +2310,51 @@ glowCtx.fillStyle = glowGrad;
 glowCtx.fillRect(0, 0, 128, 128);
 const glowTexture = new THREE.CanvasTexture(glowCanvas);
 
+// ─── ATMOSPHERE SHADER — Fresnel rim glow on a slightly larger sphere ───────
+const atmVertShader = `
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  void main() {
+    vNormal = normalize(normalMatrix * normal);
+    vec4 mvPos = modelViewMatrix * vec4(position, 1.0);
+    vViewDir = normalize(-mvPos.xyz);
+    gl_Position = projectionMatrix * mvPos;
+  }
+`;
+const atmFragShader = `
+  uniform vec3  uColor;
+  uniform float uIntensity;
+  uniform float uPower;
+  varying vec3 vNormal;
+  varying vec3 vViewDir;
+  void main() {
+    float fresnel = 1.0 - dot(vNormal, vViewDir);
+    fresnel = pow(clamp(fresnel, 0.0, 1.0), uPower);
+    gl_FragColor = vec4(uColor, fresnel * uIntensity);
+  }
+`;
+
+// Atmosphere colors per planet type — what their sky/haze would look like
+const ATM_COLORS = {
+  ice:           [0.45, 0.55, 0.75],  // pale blue haze
+  gas_blue:      [0.2,  0.4,  0.85],  // deep blue
+  rocky_orange:  [0.7,  0.4,  0.2],   // dusty orange haze
+  jungle:        [0.3,  0.65, 0.35],  // green haze
+  acid:          [0.6,  0.65, 0.2],   // yellow-green toxic
+  terracotta:    [0.8,  0.3,  0.1],   // fiery red-orange
+  desert:        [0.75, 0.6,  0.3],   // sandy haze
+  ancient:       [0.5,  0.45, 0.35],  // dusty grey-brown
+  violet_cloud:  [0.5,  0.25, 0.7],   // purple haze
+  metallic:      [0.45, 0.5,  0.6],   // steel blue-grey
+  ocean:         [0.2,  0.45, 0.8],   // water blue
+  dark_nebula:   [0.4,  0.15, 0.55],  // dark purple
+  amber_gas:     [0.75, 0.5,  0.15],  // warm amber
+  verdant:       [0.25, 0.55, 0.4],   // teal-green
+  plasma:        [0.7,  0.15, 0.35],  // red-pink
+};
+
+const atmSphereGeo = new THREE.SphereGeometry(1, Q.sphereSegs[0], Q.sphereSegs[1]);
+
 // ─── NODE MESHES ────────────────────────────────────────────────────────────
 const sphereGeo = new THREE.SphereGeometry(1, Q.sphereSegs[0], Q.sphereSegs[1]);
 const nodeMeshes = [];
@@ -2355,7 +2400,33 @@ nodes.forEach(n => {
   n.atm = atm;
   n.atmMat = atmMat;
 
-  n.outerAtm = null; // removed — saves 200+ draw calls for barely visible 0.02 opacity meshes
+  // 3D atmosphere shell — Fresnel rim glow (skip on mobile for perf)
+  if (!isMobileDevice) {
+    const pType = PLANET_TYPES[n.domain] || 'ocean';
+    const ac = ATM_COLORS[pType] || [0.4, 0.5, 0.7];
+    const atmShellMat = new THREE.ShaderMaterial({
+      vertexShader: atmVertShader,
+      fragmentShader: atmFragShader,
+      uniforms: {
+        uColor:     { value: new THREE.Vector3(ac[0], ac[1], ac[2]) },
+        uIntensity: { value: 0.55 },
+        uPower:     { value: 2.8 },
+      },
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      side: THREE.BackSide,
+      depthWrite: false,
+    });
+    const atmShell = new THREE.Mesh(atmSphereGeo, atmShellMat);
+    const atmScale = n.size * 2.2 * 1.14; // 14% larger than planet surface
+    atmShell.scale.setScalar(atmScale);
+    atmShell.position.set(n.x, n.y, n.z);
+    scene.add(atmShell);
+    n.atmShell = atmShell;
+    n.atmShellMat = atmShellMat;
+  } else {
+    n.atmShell = null;
+  }
 
   // Planetary particle rings on larger nodes (size >= 18) — skip on mobile
   if (n.size >= 18 && !isMobileDevice) {
@@ -3950,6 +4021,7 @@ function updateScene() {
       n.mesh.rotation.x *= 0.97;
     }
     if (n.atm) n.atm.position.set(n.x, n.y, n.z);
+    if (n.atmShell) n.atmShell.position.set(n.x, n.y, n.z);
     if (n.outerAtm) n.outerAtm.position.set(n.x, n.y, n.z);
     if (n.ring && n.ring.mat) {
       n.ring.mat.uniforms.uCenter.value.set(n.x, n.y, n.z);
