@@ -3870,9 +3870,10 @@ function simTick() {
 function updateScene() {
   for (const n of nodes) {
     n.mesh.position.set(n.x, n.y, n.z);
-    // Pause auto-rotation during inspect mode for the focused planet
-    if (!(planetInspectMode && focusedNode === n)) {
-      n.mesh.rotation.y += n.mesh.userData.rotSpeed;
+    n.mesh.rotation.y += n.mesh.userData.rotSpeed;
+    // Gently ease x-rotation back to 0 when not being dragged
+    if (!planetDragging || focusedNode !== n) {
+      n.mesh.rotation.x *= 0.97;
     }
     if (n.atm) n.atm.position.set(n.x, n.y, n.z);
     if (n.outerAtm) n.outerAtm.position.set(n.x, n.y, n.z);
@@ -3941,9 +3942,8 @@ function animateCamTo(endPos, endLook, frames) {
 // Two-phase focus camera: zoom in → decelerate → pull back 25% → hold
 let focusCamAnim = null;
 
-// ── Planet inspect mode — second click lets you rotate the planet by dragging ──
-let planetInspectMode = false;
-let inspectDragging   = false;
+// ── Planet rotation — drag focused planet to spin it, release to let it drift ──
+let planetDragging = false;
 
 function startFocusCamAnim(nodePos) {
   camAnim = null;
@@ -3965,26 +3965,36 @@ function startFocusCamAnim(nodePos) {
 canvas.addEventListener('pointerdown', e => {
   if (e.target !== canvas) return;
   isDragging = true;
-  inspectDragging = planetInspectMode;
   lastInteraction = performance.now();
   prevX = mouseDownX = e.clientX;
   prevY = mouseDownY = e.clientY;
   canvas.setPointerCapture(e.pointerId);
   if (camAnim) camAnim = null;
+
+  // Check if clicking on the focused planet → start planet drag
+  planetDragging = false;
+  if (focusedNode) {
+    mouse2d.x = (e.clientX / window.innerWidth)  * 2 - 1;
+    mouse2d.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse2d, camera);
+    const ph = raycaster.intersectObject(focusedNode.mesh);
+    if (ph.length > 0) {
+      planetDragging = true;
+    }
+  }
 });
 canvas.addEventListener('pointerup', e => {
   isDragging = false;
-  inspectDragging = false;
+  planetDragging = false;
   canvas.releasePointerCapture(e.pointerId);
 });
 canvas.addEventListener('pointermove', e => {
   if (isDragging) {
     const dx = e.clientX - prevX, dy = e.clientY - prevY;
-    if (inspectDragging && focusedNode) {
-      // Rotate the focused planet mesh
+    if (planetDragging && focusedNode) {
+      // Rotate the focused planet mesh directly
       focusedNode.mesh.rotation.y += dx * 0.008;
       focusedNode.mesh.rotation.x += dy * 0.008;
-      // Clamp x rotation to avoid flipping
       focusedNode.mesh.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, focusedNode.mesh.rotation.x));
     } else {
       camTheta -= dx * 0.006;
@@ -4629,9 +4639,8 @@ function getNodeScreenPos(n) {
 }
 
 function focusNode(n) {
-  planetInspectMode = false;
+  planetDragging = false;
   if (focusedNode) {
-    focusedNode.mesh.rotation.x = 0; // reset any inspect tilt
     delete focusedNode._restX;
     delete focusedNode._restY;
     delete focusedNode._restZ;
@@ -4670,10 +4679,8 @@ function focusNode(n) {
 }
 
 function exitInspectAndUnfocus() {
-  planetInspectMode = false;
+  planetDragging = false;
   if (focusedNode) {
-    // Reset planet rotation to normal axis (undo any manual x-axis tilt)
-    focusedNode.mesh.rotation.x = 0;
     delete focusedNode._restX; delete focusedNode._restY; delete focusedNode._restZ;
     delete focusedNode._floatStart;
   }
@@ -4971,24 +4978,10 @@ canvas.addEventListener('click', e => {
 
   if (hits.length > 0) {
     const n = hits[0].object.userData.node;
-    if (focusedNode === n && !planetInspectMode) {
-      // Second click → enter inspect mode: zoom closer, allow manual rotation
-      planetInspectMode = true;
-      // Zoom camera closer to planet surface
-      if (focusCamAnim) {
-        const nodePos = new THREE.Vector3(n.x, n.y, n.z);
-        const dir = camera.position.clone().sub(nodePos).normalize();
-        const inspectDist = n.size * 2.2 * 2.5; // close to surface
-        const inspectPos = nodePos.clone().add(dir.multiplyScalar(inspectDist));
-        animateCamTo(inspectPos, nodePos, 50);
-        focusCamAnim = null; // stop focus hold drift
-      }
-    } else if (focusedNode === n && planetInspectMode) {
-      // Third click on same planet → exit inspect and unfocus
+    if (focusedNode === n) {
+      // Second click on same planet → unfocus
       exitInspectAndUnfocus();
     } else {
-      // Click different planet
-      if (planetInspectMode) planetInspectMode = false;
       focusNode(n);
     }
   } else if (focusedNode) {
