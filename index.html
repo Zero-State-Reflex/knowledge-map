@@ -1557,13 +1557,31 @@ const useBloom = !isMobileDevice;
     size: 1.4,
   });
 
+  // Per-star twinkle: store base sizes and random phase/speed per star
+  const baseSizes = new Float32Array(sizes);
+  const twinklePhase = new Float32Array(STAR_COUNT);
+  const twinkleSpeed = new Float32Array(STAR_COUNT);
+  for (let i = 0; i < STAR_COUNT; i++) {
+    twinklePhase[i] = Math.random() * Math.PI * 2;
+    twinkleSpeed[i] = 0.5 + Math.random() * 2.5; // varied shimmer rates
+  }
+
   scene.add(new THREE.Points(geo, mat));
 
-  // Subtle twinkle — slowly modulate overall opacity with a soft sine
+  // Animate: each star pulses size independently for realistic shimmer
   let twinkleT = 0;
+  const sizeArr = geo.attributes.size.array;
   const twinkleTick = () => {
-    twinkleT += 0.004;
-    mat.opacity = 0.72 + Math.sin(twinkleT) * 0.16;
+    twinkleT += 0.016;
+    // Only update a batch per frame for performance (cycle through all)
+    const batchSize = Math.min(600, STAR_COUNT);
+    const offset = Math.floor(twinkleT * 100) % STAR_COUNT;
+    for (let j = 0; j < batchSize; j++) {
+      const i = (offset + j) % STAR_COUNT;
+      const wave = Math.sin(twinkleT * twinkleSpeed[i] + twinklePhase[i]);
+      sizeArr[i] = baseSizes[i] * (0.6 + 0.4 * (wave * 0.5 + 0.5));
+    }
+    geo.attributes.size.needsUpdate = true;
   };
   // Register twinkle in animation loop via a global hook
   window._starTwinkle = twinkleTick;
