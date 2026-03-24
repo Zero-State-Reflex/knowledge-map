@@ -572,6 +572,7 @@
 <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
 <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
 <script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
 <script src="https://unpkg.com/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
 // ─── GALILEO SPACE FACTS — typed out during loading ─────────────────────────
@@ -4083,8 +4084,11 @@ let voyagerHitbox = null;
 function buildVoyager() {
   voyagerGroup = new THREE.Group();
 
-  // ── Load NASA's official Voyager GLB model ──
+  // ── Load NASA's official Voyager GLB model (Draco-compressed) ──
+  const dracoLoader = new THREE.DRACOLoader();
+  dracoLoader.setDecoderPath('https://unpkg.com/three@0.128.0/examples/js/libs/draco/gltf/');
   const loader = new THREE.GLTFLoader();
+  loader.setDRACOLoader(dracoLoader);
   loader.load('Assests/voyager.glb', (gltf) => {
     const model = gltf.scene;
     // Auto-scale: measure bounding box, normalize to ~10 units wide
@@ -4100,12 +4104,18 @@ function buildVoyager() {
     model.traverse(child => {
       if (child.isMesh && child.material) {
         const mat = child.material;
+        // Make sure it's lit — set emissive so it's visible even in shadow
         if (mat.emissive) {
-          mat.emissiveIntensity = Math.max(mat.emissiveIntensity || 0, 0.08);
+          mat.emissive.setHex(0x333333);
+          mat.emissiveIntensity = 0.3;
         }
+        // Ensure double-sided rendering
+        mat.side = THREE.DoubleSide;
+        mat.needsUpdate = true;
       }
     });
     voyagerGroup.add(model);
+    console.log('Voyager GLB loaded successfully, children:', model.children.length);
   }, undefined, (err) => {
     console.warn('Failed to load Voyager GLB, falling back to placeholder', err);
     // Minimal fallback — simple shape so it's not invisible
