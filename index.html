@@ -4405,6 +4405,7 @@ buildComet();
 // ─── VOYAGER ZOOM — click to inspect the probe up close ──────────────────────
 let voyagerFocused = false;
 let voyagerCamAnim = null;
+let voyagerDragging = false;
 
 function focusVoyager() {
   if (voyagerFocused) return;
@@ -4415,8 +4416,8 @@ function focusVoyager() {
   }
   const vPos = voyagerGroup.position.clone();
   const dir  = camera.position.clone().sub(vPos).normalize();
-  const closePos = vPos.clone().add(dir.clone().multiplyScalar(80));  // medium shot
-  const holdPos  = vPos.clone().add(dir.clone().multiplyScalar(100)); // pull back to show full satellite
+  const closePos = vPos.clone().add(dir.clone().multiplyScalar(40));  // close enough to see detail
+  const holdPos  = vPos.clone().add(dir.clone().multiplyScalar(55)); // slight pull-back, still close
   voyagerCamAnim = {
     startPos:  camera.position.clone(),
     startLook: lookTarget.clone(),
@@ -4447,8 +4448,8 @@ function updateVoyagerCam() {
   if (voyagerGroup) {
     vc.vPos.copy(voyagerGroup.position);
     const dir = vc.startPos.clone().sub(vc.vPos).normalize();
-    vc.closePos.copy(vc.vPos).addScaledVector(dir, 80);
-    vc.holdPos.copy(vc.vPos).addScaledVector(dir, 100);
+    vc.closePos.copy(vc.vPos).addScaledVector(dir, 40);
+    vc.holdPos.copy(vc.vPos).addScaledVector(dir, 55);
   }
   if (vc.phase === 'zoomIn') {
     const raw  = Math.min(vc.t / vc.zoomFrames, 1);
@@ -4479,13 +4480,13 @@ function updateVoyagerCam() {
     lookTarget.lerp(voyagerGroup.position, 0.05);
     camera.lookAt(lookTarget);
     camera.position.lerpVectors(camera.position, voyagerGroup.position.clone().add(
-      camera.position.clone().sub(voyagerGroup.position).normalize().multiplyScalar(100)
+      camera.position.clone().sub(voyagerGroup.position).normalize().multiplyScalar(55)
     ), 0.03);
     // Show the info card positioned below Voyager with space
     const sp = toScreen(voyagerGroup.position);
     const card = document.getElementById('voyager-card');
     card.style.left = (sp.x - 100) + 'px';
-    card.style.top = Math.min(sp.y + 120, window.innerHeight - 140) + 'px';
+    card.style.top = Math.min(sp.y + 100, window.innerHeight - 140) + 'px';
     if (!card.classList.contains('visible')) card.classList.add('visible');
   }
 }
@@ -4876,6 +4877,7 @@ canvas.addEventListener('pointerdown', e => {
 
   // Check if clicking on the focused planet → start planet drag
   planetDragging = false;
+  voyagerDragging = false;
   if (focusedNode) {
     mouse2d.x = (e.clientX / window.innerWidth)  * 2 - 1;
     mouse2d.y = -(e.clientY / window.innerHeight) * 2 + 1;
@@ -4887,10 +4889,21 @@ canvas.addEventListener('pointerdown', e => {
       planetDragging = true;
     }
   }
+  // Check if dragging Voyager when focused on it
+  if (voyagerFocused && voyagerHitbox) {
+    mouse2d.x = (e.clientX / window.innerWidth)  * 2 - 1;
+    mouse2d.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse2d, camera);
+    const vh = raycaster.intersectObject(voyagerHitbox);
+    if (vh.length > 0) {
+      voyagerDragging = true;
+    }
+  }
 });
 canvas.addEventListener('pointerup', e => {
   isDragging = false;
   planetDragging = false;
+  voyagerDragging = false;
   canvas.releasePointerCapture(e.pointerId);
 });
 canvas.addEventListener('pointermove', e => {
@@ -4912,6 +4925,20 @@ canvas.addEventListener('pointermove', e => {
         systemQuat.premultiply(_dragQuat);
         // Also rotate the planet mesh itself so it spins with the system
         focusedNode.mesh.quaternion.premultiply(_dragQuat);
+      }
+    } else if (voyagerDragging && voyagerFocused && voyagerGroup) {
+      // Rotate Voyager model around its center using camera-relative axes
+      const camRight = new THREE.Vector3();
+      const camUp    = new THREE.Vector3();
+      camera.matrixWorld.extractBasis(camRight, camUp, new THREE.Vector3());
+      const axis = new THREE.Vector3();
+      axis.copy(camUp).multiplyScalar(dx * 0.008)
+          .addScaledVector(camRight, -dy * 0.008);
+      const ang = axis.length();
+      if (ang > 0.0001) {
+        axis.normalize();
+        const q = new THREE.Quaternion().setFromAxisAngle(axis, ang);
+        voyagerGroup.quaternion.premultiply(q);
       }
     } else {
       camTheta -= dx * 0.006;
