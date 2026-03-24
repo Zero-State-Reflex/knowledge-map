@@ -2472,6 +2472,9 @@ nodes.forEach(n => {
       pRing.mat.uniforms.uTiltY.value.copy(tiltY);
       scene.add(pRing.points);
       n.ring = pRing;
+      // Store base tilt vectors so system drag can rotate them
+      pRing._baseTiltX = tiltX.clone();
+      pRing._baseTiltY = tiltY.clone();
     } catch(e) {
       console.warn('Particle ring failed for', n.id, e);
       n.ring = null;
@@ -2997,7 +3000,9 @@ function updateMoons() {
     const ox = Math.cos(m.angle) * m.orbitR;
     const oy = Math.sin(m.angle) * m.orbitR * sinI;
     const oz = Math.sin(m.angle) * m.orbitR * cosI;
-    const wx = cx + ox, wy = cy + oy, wz = cz + oz;
+    // Apply system drag rotation to orbit offset
+    const _off = new THREE.Vector3(ox, oy, oz).applyQuaternion(systemQuat);
+    const wx = cx + _off.x, wy = cy + _off.y, wz = cz + _off.z;
 
     m.mesh.position.set(wx, wy, wz);
     m.mesh.rotation.y += m.mesh.userData.rotSpeed || 0.008;
@@ -3010,8 +3015,10 @@ function updateMoons() {
       const cA = Math.cos(tiltA), sA = Math.sin(tiltA);
       const cB = Math.cos(tiltB), sB = Math.sin(tiltB);
       m.ring.mat.uniforms.uCenter.value.set(wx, wy, wz);
-      m.ring.mat.uniforms.uTiltX.value.set(cB, 0, -sB);
-      m.ring.mat.uniforms.uTiltY.value.set(sB * sA, cA, cB * sA);
+      const _mTiltX = new THREE.Vector3(cB, 0, -sB).applyQuaternion(systemQuat);
+      const _mTiltY = new THREE.Vector3(sB * sA, cA, cB * sA).applyQuaternion(systemQuat);
+      m.ring.mat.uniforms.uTiltX.value.copy(_mTiltX);
+      m.ring.mat.uniforms.uTiltY.value.copy(_mTiltY);
       m.ring.mat.uniforms.uTime.value += 0.008;
       m.ring.mat.uniforms.uOpacity.value = m.moonAlpha * 0.7;
     }
@@ -3036,9 +3043,14 @@ function updateMoons() {
         const frac = s / TRAIL_SEGS;
         const a = m.angle - frac * trailSpan;
         const idx3 = s * 3;
-        posArr[idx3]     = cx + Math.cos(a) * m.orbitR + off[0];
-        posArr[idx3 + 1] = cy + Math.sin(a) * m.orbitR * sinI + off[1];
-        posArr[idx3 + 2] = cz + Math.sin(a) * m.orbitR * cosI + off[2];
+        const _tp = new THREE.Vector3(
+          Math.cos(a) * m.orbitR + off[0],
+          Math.sin(a) * m.orbitR * sinI + off[1],
+          Math.sin(a) * m.orbitR * cosI + off[2]
+        ).applyQuaternion(systemQuat);
+        posArr[idx3]     = cx + _tp.x;
+        posArr[idx3 + 1] = cy + _tp.y;
+        posArr[idx3 + 2] = cz + _tp.z;
         alpArr[s] = Math.pow(1 - frac, 2.2) * 0.7;
       }
       tr.geo.attributes.position.needsUpdate = true;
@@ -4040,6 +4052,11 @@ function updateScene() {
     if (n.ring && n.ring.mat) {
       n.ring.mat.uniforms.uCenter.value.set(n.x, n.y, n.z);
       n.ring.mat.uniforms.uTime.value += 0.003;
+      // When focused, apply system drag rotation to ring tilt vectors
+      if (focusedNode === n && n.ring._baseTiltX) {
+        n.ring.mat.uniforms.uTiltX.value.copy(n.ring._baseTiltX).applyQuaternion(systemQuat);
+        n.ring.mat.uniforms.uTiltY.value.copy(n.ring._baseTiltY).applyQuaternion(systemQuat);
+      }
     }
   }
   updateMoons();
@@ -4102,8 +4119,11 @@ function animateCamTo(endPos, endLook, frames) {
 // Two-phase focus camera: zoom in → decelerate → pull back 25% → hold
 let focusCamAnim = null;
 
-// ── Planet rotation — drag focused planet to spin it, release to let it drift ──
+// ── Planet rotation — drag focused planet to spin the whole mini solar system ──
 let planetDragging = false;
+const systemQuat = new THREE.Quaternion();       // accumulated drag rotation for the whole system
+const _dragAxis  = new THREE.Vector3();          // temp vector for drag axis
+const _dragQuat  = new THREE.Quaternion();       // temp quaternion per drag frame
 
 function startFocusCamAnim(nodePos) {
   camAnim = null;
@@ -4137,7 +4157,9 @@ canvas.addEventListener('pointerdown', e => {
     mouse2d.x = (e.clientX / window.innerWidth)  * 2 - 1;
     mouse2d.y = -(e.clientY / window.innerHeight) * 2 + 1;
     raycaster.setFromCamera(mouse2d, camera);
-    const ph = raycaster.intersectObject(focusedNode.mesh);
+    // Hit-test the planet and all moon meshes — dragging any of them rotates the whole system
+    const hitTargets = [focusedNode.mesh, ...moonMeshes];
+    const ph = raycaster.intersectObjects(hitTargets);
     if (ph.length > 0) {
       planetDragging = true;
     }
@@ -4152,10 +4174,22 @@ canvas.addEventListener('pointermove', e => {
   if (isDragging) {
     const dx = e.clientX - prevX, dy = e.clientY - prevY;
     if (planetDragging && focusedNode) {
-      // Rotate the focused planet mesh directly
-      focusedNode.mesh.rotation.y += dx * 0.008;
-      focusedNode.mesh.rotation.x += dy * 0.008;
-      focusedNode.mesh.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, focusedNode.mesh.rotation.x));
+      // Rotate the whole mini solar system (planet + moons + rings)
+      // Build an incremental rotation from camera-relative drag
+      const camRight = new THREE.Vector3();
+      const camUp    = new THREE.Vector3();
+      camera.matrixWorld.extractBasis(camRight, camUp, new THREE.Vector3());
+      // Horizontal drag → rotate around camera up; vertical → around camera right
+      _dragAxis.copy(camUp).multiplyScalar(dx * 0.008)
+               .addScaledVector(camRight, -dy * 0.008);
+      const angle = _dragAxis.length();
+      if (angle > 0.0001) {
+        _dragAxis.normalize();
+        _dragQuat.setFromAxisAngle(_dragAxis, angle);
+        systemQuat.premultiply(_dragQuat);
+        // Also rotate the planet mesh itself so it spins with the system
+        focusedNode.mesh.quaternion.premultiply(_dragQuat);
+      }
     } else {
       camTheta -= dx * 0.006;
       camPhi = Math.max(0.08, Math.min(Math.PI - 0.08, camPhi - dy * 0.006));
@@ -4813,6 +4847,7 @@ function focusNode(n) {
   }
   focusCamAnim = null;
   focusedNode  = n;
+  systemQuat.identity(); // reset system rotation for new planet
   n._restX = n.x; n._restY = n.y; n._restZ = n.z;
   n._floatStart = undefined;
   dimToNeighbors(n);
