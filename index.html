@@ -2400,32 +2400,45 @@ nodes.forEach(n => {
   n.atm = atm;
   n.atmMat = atmMat;
 
-  // 3D atmosphere shell — Fresnel rim glow (skip on mobile for perf)
+  // 3D atmosphere — multi-shell gaussian falloff (skip on mobile for perf)
   if (!isMobileDevice) {
     const pType = PLANET_TYPES[n.domain] || 'ocean';
     const ac = ATM_COLORS[pType] || [0.4, 0.5, 0.7];
-    const atmShellMat = new THREE.ShaderMaterial({
-      vertexShader: atmVertShader,
-      fragmentShader: atmFragShader,
-      uniforms: {
-        uColor:     { value: new THREE.Vector3(ac[0], ac[1], ac[2]) },
-        uIntensity: { value: 0.55 },
-        uPower:     { value: 2.8 },
-      },
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      side: THREE.BackSide,
-      depthWrite: false,
+    // 4 concentric shells: each larger and softer for a fuzzy real-atmosphere look
+    const atmShells = [];
+    const shellLayers = [
+      { scale: 1.08, intensity: 0.50, power: 3.2 },  // tight inner glow
+      { scale: 1.16, intensity: 0.30, power: 2.4 },  // mid haze
+      { scale: 1.28, intensity: 0.15, power: 1.8 },  // soft outer
+      { scale: 1.45, intensity: 0.06, power: 1.2 },  // faint wispy edge
+    ];
+    shellLayers.forEach(layer => {
+      const shellMat = new THREE.ShaderMaterial({
+        vertexShader: atmVertShader,
+        fragmentShader: atmFragShader,
+        uniforms: {
+          uColor:     { value: new THREE.Vector3(ac[0], ac[1], ac[2]) },
+          uIntensity: { value: layer.intensity },
+          uPower:     { value: layer.power },
+        },
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        side: THREE.BackSide,
+        depthWrite: false,
+      });
+      const shell = new THREE.Mesh(atmSphereGeo, shellMat);
+      shell.scale.setScalar(n.size * 2.2 * layer.scale);
+      shell.position.set(n.x, n.y, n.z);
+      scene.add(shell);
+      atmShells.push(shell);
     });
-    const atmShell = new THREE.Mesh(atmSphereGeo, atmShellMat);
-    const atmScale = n.size * 2.2 * 1.14; // 14% larger than planet surface
-    atmShell.scale.setScalar(atmScale);
-    atmShell.position.set(n.x, n.y, n.z);
-    scene.add(atmShell);
-    n.atmShell = atmShell;
-    n.atmShellMat = atmShellMat;
+    n.atmShells = atmShells;
+    // Keep backward compat: atmShell points to innermost shell
+    n.atmShell = atmShells[0];
+    n.atmShellMat = atmShells[0].material;
   } else {
     n.atmShell = null;
+    n.atmShells = null;
   }
 
   // Planetary particle rings on larger nodes (size >= 18) — skip on mobile
@@ -4021,7 +4034,8 @@ function updateScene() {
       n.mesh.rotation.x *= 0.97;
     }
     if (n.atm) n.atm.position.set(n.x, n.y, n.z);
-    if (n.atmShell) n.atmShell.position.set(n.x, n.y, n.z);
+    if (n.atmShells) n.atmShells.forEach(s => s.position.set(n.x, n.y, n.z));
+    else if (n.atmShell) n.atmShell.position.set(n.x, n.y, n.z);
     if (n.outerAtm) n.outerAtm.position.set(n.x, n.y, n.z);
     if (n.ring && n.ring.mat) {
       n.ring.mat.uniforms.uCenter.value.set(n.x, n.y, n.z);
