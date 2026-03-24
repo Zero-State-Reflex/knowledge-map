@@ -1788,6 +1788,48 @@ const light3 = new THREE.PointLight(0x886644, 1.0, 6000);
 light3.position.set(0, -1000, 300);
 scene.add(light3);
 
+// ─── DOMAIN FOG — colored volumetric haze at each cluster center ─────────────
+(function buildDomainFog() {
+  if (isMobileDevice) return;
+  const fogCv = document.createElement('canvas');
+  fogCv.width = fogCv.height = 256;
+  const fCtx = fogCv.getContext('2d');
+  const fGrad = fCtx.createRadialGradient(128, 128, 0, 128, 128, 128);
+  fGrad.addColorStop(0,   'rgba(255,255,255,0.6)');
+  fGrad.addColorStop(0.3, 'rgba(255,255,255,0.25)');
+  fGrad.addColorStop(0.6, 'rgba(255,255,255,0.06)');
+  fGrad.addColorStop(1,   'rgba(255,255,255,0)');
+  fCtx.fillStyle = fGrad;
+  fCtx.fillRect(0, 0, 256, 256);
+  const fogTex = new THREE.CanvasTexture(fogCv);
+
+  Object.entries(DOMAIN_CENTERS).forEach(([domain, pos]) => {
+    const domInfo = DOMAINS[domain];
+    if (!domInfo) return;
+    const col = new THREE.Color(domInfo.color);
+    // 3 offset fog sprites per domain for volume
+    for (let f = 0; f < 3; f++) {
+      const fogMat = new THREE.SpriteMaterial({
+        map: fogTex,
+        color: col,
+        transparent: true,
+        opacity: 0.035 + Math.random() * 0.02,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const fog = new THREE.Sprite(fogMat);
+      const scale = 350 + Math.random() * 250;
+      fog.scale.set(scale, scale * (0.6 + Math.random() * 0.4), 1);
+      fog.position.set(
+        pos[0] + (Math.random() - 0.5) * 180,
+        pos[1] + (Math.random() - 0.5) * 180,
+        pos[2] + (Math.random() - 0.5) * 180
+      );
+      scene.add(fog);
+    }
+  });
+})();
+
 // ─── PROCEDURAL PLANET TEXTURES ─────────────────────────────────────────────
 // Simple seeded pseudo-random
 function seededRand(seed) {
