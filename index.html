@@ -1600,8 +1600,50 @@ const useBloom = !isMobileDevice;
     }
     geo.attributes.size.needsUpdate = true;
   };
+  // ── Parallax star layers — closer shells that drift for depth ────────────
+  const parallaxLayers = [];
+  const layerConfigs = [
+    { radius: 6000, count: Math.floor(STAR_COUNT * 0.3), size: 1.0, opacity: 0.5, drift: 0.00008 },
+    { radius: 3500, count: Math.floor(STAR_COUNT * 0.15), size: 0.8, opacity: 0.3, drift: 0.00018 },
+  ];
+  layerConfigs.forEach(cfg => {
+    const lPos = new Float32Array(cfg.count * 3);
+    const lCol = new Float32Array(cfg.count * 3);
+    const lSiz = new Float32Array(cfg.count);
+    for (let i = 0; i < cfg.count; i++) {
+      const u = Math.random(), v = Math.random();
+      const th = 2 * Math.PI * u, ph = Math.acos(2 * v - 1);
+      lPos[i*3]   = cfg.radius * Math.sin(ph) * Math.cos(th);
+      lPos[i*3+1] = cfg.radius * Math.sin(ph) * Math.sin(th);
+      lPos[i*3+2] = cfg.radius * Math.cos(ph);
+      const ti = starTints[Math.floor(Math.random() * starTints.length)];
+      const br = 0.3 + Math.random() * 0.4;
+      lCol[i*3] = ti[0]*br; lCol[i*3+1] = ti[1]*br; lCol[i*3+2] = ti[2]*br;
+      lSiz[i] = 0.4 + Math.random() * cfg.size;
+    }
+    const lGeo = new THREE.BufferGeometry();
+    lGeo.setAttribute('position', new THREE.BufferAttribute(lPos, 3));
+    lGeo.setAttribute('color',    new THREE.BufferAttribute(lCol, 3));
+    lGeo.setAttribute('size',     new THREE.BufferAttribute(lSiz, 1));
+    const lMat = new THREE.PointsMaterial({
+      vertexColors: true, sizeAttenuation: false, transparent: true,
+      opacity: cfg.opacity, depthWrite: false, size: cfg.size,
+    });
+    const pts = new THREE.Points(lGeo, lMat);
+    scene.add(pts);
+    parallaxLayers.push({ points: pts, drift: cfg.drift });
+  });
+
   // Register twinkle in animation loop via a global hook
-  window._starTwinkle = twinkleTick;
+  const origTwinkle = twinkleTick;
+  window._starTwinkle = () => {
+    origTwinkle();
+    // Parallax drift — inner layers rotate slightly each frame
+    parallaxLayers.forEach(layer => {
+      layer.points.rotation.y += layer.drift;
+      layer.points.rotation.x += layer.drift * 0.3;
+    });
+  };
 })();
 
 // ─── BLACK HOLE ───────────────────────────────────────────────────────────────
