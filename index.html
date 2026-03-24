@@ -287,6 +287,27 @@
   }
   #more-info-btn.visible { opacity:1; }
   #more-info-btn:hover { background:rgba(200,180,120,0.2); color:#e8d89a; }
+  #sat-card {
+    position:fixed; z-index:200; pointer-events:auto;
+    background: rgba(8,12,20,0.88); border:1px solid rgba(180,160,120,0.3);
+    border-radius:10px; padding:16px 20px; color:#ddd8cc;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
+    opacity:0; transition: opacity 0.5s; pointer-events:none;
+    min-width:200px; max-width:280px;
+    box-shadow: 0 0 30px rgba(180,160,120,0.1);
+  }
+  #sat-card.visible { opacity:1; pointer-events:auto; }
+  #sat-card h3 { margin:0 0 4px; font-size:15px; letter-spacing:0.04em; color:#f0e8d0; }
+  #sat-card .sat-launched { margin:0 0 8px; font-size:10px; color:#998866; text-transform:uppercase; letter-spacing:0.06em; }
+  #sat-card .sat-mission { margin:0 0 12px; font-size:11px; color:#aaa598; line-height:1.4; }
+  #sat-card a {
+    display:inline-block; padding:7px 16px; background:rgba(180,160,120,0.15);
+    border:1px solid rgba(180,160,120,0.35); border-radius:6px;
+    color:#d4c8a0; text-decoration:none; font-size:11px; letter-spacing:0.04em;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  #sat-card a:hover { background:rgba(180,160,120,0.3); border-color:rgba(180,160,120,0.6); }
   #node-info-wiki {
     display:inline-block; margin-bottom:20px;
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:11px; letter-spacing:0.08em;
@@ -556,6 +577,12 @@
 <div id="welcome-overlay"><div id="welcome-text">Welcome to the Map of Human Knowledge</div></div>
 <canvas id="c"></canvas>
 <div id="lens-flare"></div>
+<div id="sat-card">
+  <h3 id="sat-card-name"></h3>
+  <div class="sat-launched" id="sat-card-launched"></div>
+  <div class="sat-mission" id="sat-card-mission"></div>
+  <a id="sat-card-link" href="#" target="_blank">Learn more &rarr;</a>
+</div>
 <div id="voyager-card">
   <h3>VOYAGER 1</h3>
   <p>Launched 1977 — the farthest human-made object,<br>now over 15 billion miles from Earth</p>
@@ -3701,18 +3728,18 @@ let shipMeshForRaycast = null; // the hitbox mesh for raycasting
 
 // ─── NASA SATELLITE CATALOG — real GLB models with info links ────────────────
 const SATELLITE_CATALOG = [
-  { file: 'Assests/hubble.glb',   name: 'Hubble Space Telescope',        url: 'https://en.wikipedia.org/wiki/Hubble_Space_Telescope' },
-  { file: 'Assests/cassini.glb',  name: 'Cassini-Huygens',               url: 'https://en.wikipedia.org/wiki/Cassini%E2%80%93Huygens' },
-  { file: 'Assests/parker.glb',   name: 'Parker Solar Probe',            url: 'https://en.wikipedia.org/wiki/Parker_Solar_Probe' },
-  { file: 'Assests/chandra.glb',  name: 'Chandra X-ray Observatory',     url: 'https://en.wikipedia.org/wiki/Chandra_X-ray_Observatory' },
-  { file: 'Assests/lro.glb',      name: 'Lunar Reconnaissance Orbiter',  url: 'https://en.wikipedia.org/wiki/Lunar_Reconnaissance_Orbiter' },
-  { file: 'Assests/fermi.glb',    name: 'Fermi Gamma-ray Telescope',     url: 'https://en.wikipedia.org/wiki/Fermi_Gamma-ray_Space_Telescope' },
-  { file: 'Assests/spitzer.glb',  name: 'Spitzer Space Telescope',       url: 'https://en.wikipedia.org/wiki/Spitzer_Space_Telescope' },
-  { file: 'Assests/kepler.glb',   name: 'Kepler Space Telescope',        url: 'https://en.wikipedia.org/wiki/Kepler_space_telescope' },
-  { file: 'Assests/dawn.glb',     name: 'Dawn Spacecraft',               url: 'https://en.wikipedia.org/wiki/Dawn_(spacecraft)' },
-  { file: 'Assests/pioneer.glb',  name: 'Pioneer 10',                    url: 'https://en.wikipedia.org/wiki/Pioneer_10' },
-  { file: 'Assests/mro.glb',      name: 'Mars Reconnaissance Orbiter',   url: 'https://en.wikipedia.org/wiki/Mars_Reconnaissance_Orbiter' },
-  { file: 'Assests/iss.glb',      name: 'International Space Station',   url: 'https://en.wikipedia.org/wiki/International_Space_Station' },
+  { file: 'Assests/hubble.glb',   name: 'Hubble Space Telescope',        url: 'https://en.wikipedia.org/wiki/Hubble_Space_Telescope',        launched: 'April 24, 1990',  mission: 'Optical/UV/IR space telescope observing galaxies, nebulae, and exoplanets from low Earth orbit' },
+  { file: 'Assests/cassini.glb',  name: 'Cassini-Huygens',               url: 'https://en.wikipedia.org/wiki/Cassini%E2%80%93Huygens',       launched: 'October 15, 1997', mission: 'Saturn orbiter that studied the planet\'s rings, moons, and atmosphere for 13 years' },
+  { file: 'Assests/parker.glb',   name: 'Parker Solar Probe',            url: 'https://en.wikipedia.org/wiki/Parker_Solar_Probe',             launched: 'August 12, 2018',  mission: 'Closest-ever solar probe studying the Sun\'s corona, solar wind, and magnetic fields' },
+  { file: 'Assests/chandra.glb',  name: 'Chandra X-ray Observatory',     url: 'https://en.wikipedia.org/wiki/Chandra_X-ray_Observatory',      launched: 'July 23, 1999',    mission: 'X-ray telescope detecting radiation from hot regions like exploding stars and galaxy clusters' },
+  { file: 'Assests/lro.glb',      name: 'Lunar Reconnaissance Orbiter',  url: 'https://en.wikipedia.org/wiki/Lunar_Reconnaissance_Orbiter',   launched: 'June 18, 2009',    mission: 'Detailed 3D mapping of the Moon\'s surface to identify landing sites and lunar resources' },
+  { file: 'Assests/fermi.glb',    name: 'Fermi Gamma-ray Telescope',     url: 'https://en.wikipedia.org/wiki/Fermi_Gamma-ray_Space_Telescope',launched: 'June 11, 2008',    mission: 'Gamma-ray observatory studying black holes, pulsars, and the origins of cosmic rays' },
+  { file: 'Assests/spitzer.glb',  name: 'Spitzer Space Telescope',       url: 'https://en.wikipedia.org/wiki/Spitzer_Space_Telescope',        launched: 'August 25, 2003',  mission: 'Infrared telescope that revealed hidden star-forming regions, exoplanets, and distant galaxies' },
+  { file: 'Assests/kepler.glb',   name: 'Kepler Space Telescope',        url: 'https://en.wikipedia.org/wiki/Kepler_space_telescope',         launched: 'March 7, 2009',    mission: 'Planet-hunting telescope that discovered over 2,600 exoplanets using the transit method' },
+  { file: 'Assests/dawn.glb',     name: 'Dawn Spacecraft',               url: 'https://en.wikipedia.org/wiki/Dawn_(spacecraft)',               launched: 'September 27, 2007', mission: 'First spacecraft to orbit two extraterrestrial bodies — asteroid Vesta and dwarf planet Ceres' },
+  { file: 'Assests/pioneer.glb',  name: 'Pioneer 10',                    url: 'https://en.wikipedia.org/wiki/Pioneer_10',                     launched: 'March 2, 1972',    mission: 'First spacecraft to traverse the asteroid belt and make a flyby of Jupiter' },
+  { file: 'Assests/mro.glb',      name: 'Mars Reconnaissance Orbiter',   url: 'https://en.wikipedia.org/wiki/Mars_Reconnaissance_Orbiter',    launched: 'August 12, 2005',  mission: 'High-resolution Mars orbiter searching for water, studying weather, and scouting landing sites' },
+  { file: 'Assests/iss.glb',      name: 'International Space Station',   url: 'https://en.wikipedia.org/wiki/International_Space_Station',    launched: 'November 20, 1998', mission: 'Permanently crewed orbital laboratory for scientific research in microgravity' },
 ];
 let _lastSatIdx = -1; // avoid repeating same satellite consecutively
 
@@ -4104,6 +4131,8 @@ function buildShip() {
     spawnTime: performance.now(),
     satName: sat.name,
     satUrl: sat.url,
+    satMission: sat.mission,
+    satLaunched: sat.launched,
   };
 
 }
@@ -4132,7 +4161,8 @@ function updateShip() {
   // Fade in
   shipData.alpha += ((elapsed > 800 ? 1.0 : 0.0) - shipData.alpha) * 0.04;
 
-  shipData.angle += shipData.speed;
+  // Freeze orbit when satellite is focused
+  if (!satFocused) shipData.angle += shipData.speed;
 
   const cosI = Math.cos(shipData.incl), sinI = Math.sin(shipData.incl);
   const ox = Math.cos(shipData.angle) * shipData.orbitR;
@@ -4157,6 +4187,75 @@ function updateShip() {
       child.material.opacity = shipData.alpha;
     }
   });
+}
+
+// ─── SATELLITE ZOOM — click orbiting satellite to inspect it ─────────────────
+let satFocused = false;
+let satCamAnim = null;
+let satDragging = false;
+
+function focusSatellite() {
+  if (satFocused || !shipGroup || !shipData) return;
+  satFocused = true;
+  const sPos = shipGroup.position.clone();
+  const dir = camera.position.clone().sub(sPos).normalize();
+  satCamAnim = {
+    startPos: camera.position.clone(),
+    startLook: lookTarget.clone(),
+    targetPos: sPos.clone().add(dir.multiplyScalar(45)),
+    sPos,
+    phase: 'zoomIn',
+    t: 0,
+    frames: 70,
+  };
+  // Show card
+  const card = document.getElementById('sat-card');
+  document.getElementById('sat-card-name').textContent = shipData.satName;
+  document.getElementById('sat-card-launched').textContent = 'Launched ' + shipData.satLaunched;
+  document.getElementById('sat-card-mission').textContent = shipData.satMission;
+  const link = document.getElementById('sat-card-link');
+  link.href = shipData.satUrl;
+}
+
+function unfocusSatellite() {
+  if (!satFocused) return;
+  satFocused = false;
+  satCamAnim = null;
+  satDragging = false;
+  document.getElementById('sat-card').classList.remove('visible');
+}
+
+function updateSatCam() {
+  if (!satCamAnim || !shipGroup) return;
+  const sc = satCamAnim;
+  sc.t++;
+  // Track satellite live position
+  sc.sPos.copy(shipGroup.position);
+  if (sc.phase === 'zoomIn') {
+    const raw = Math.min(sc.t / sc.frames, 1);
+    const ease = 1 - Math.pow(1 - raw, 3);
+    const dir = sc.startPos.clone().sub(sc.sPos).normalize();
+    const target = sc.sPos.clone().add(dir.multiplyScalar(45));
+    camera.position.lerpVectors(sc.startPos, target, ease);
+    lookTarget.lerp(sc.sPos, 0.1);
+    camera.lookAt(lookTarget);
+    if (raw >= 1) {
+      sc.phase = 'hold';
+    }
+  } else {
+    // Hold — follow the satellite, show card
+    lookTarget.lerp(shipGroup.position, 0.06);
+    camera.lookAt(lookTarget);
+    const dir = camera.position.clone().sub(shipGroup.position).normalize();
+    const ideal = shipGroup.position.clone().add(dir.multiplyScalar(45));
+    camera.position.lerp(ideal, 0.03);
+
+    const sp = toScreen(shipGroup.position);
+    const card = document.getElementById('sat-card');
+    card.style.left = Math.min(sp.x + 50, window.innerWidth - 300) + 'px';
+    card.style.top = Math.max(20, sp.y - 80) + 'px';
+    if (!card.classList.contains('visible')) card.classList.add('visible');
+  }
 }
 
 // ─── VOYAGER 1 — free-flying probe traversing the entire system ──────────────
@@ -4841,6 +4940,7 @@ function updateScene() {
   updateShip();
   updateVoyager();
   updateVoyagerCam();
+  updateSatCam();
   updateComet();
   updateAurora();
   updateLensFlare();
@@ -4910,17 +5010,15 @@ const _dragQuat  = new THREE.Quaternion();       // temp quaternion per drag fra
 function startFocusCamAnim(nodePos) {
   camAnim = null;
   const dir      = camera.position.clone().sub(nodePos).normalize();
-  const closePos = nodePos.clone().add(dir.clone().multiplyScalar(180));  // close stop
-  const holdPos  = nodePos.clone().add(dir.clone().multiplyScalar(230));  // hold = 25% back
+  const holdPos  = nodePos.clone().add(dir.clone().multiplyScalar(200));  // final hold distance
   focusCamAnim = {
     startPos:  camera.position.clone(),
     startLook: lookTarget.clone(),
     nodePos:   nodePos.clone(),
-    closePos, holdPos,
-    phase: 'zoomIn',  // zoomIn → pullBack → done
+    holdPos,
+    phase: 'zoomIn',  // zoomIn → hold
     t: 0,
-    zoomFrames: 75,   // frames to zoom in
-    pullFrames:  55,  // frames to pull back
+    zoomFrames: 90,   // frames to zoom in (smooth single sweep)
   };
 }
 
@@ -4947,6 +5045,14 @@ canvas.addEventListener('pointerdown', e => {
       planetDragging = true;
     }
   }
+  // Check if dragging satellite when focused on it
+  if (satFocused && shipMeshForRaycast) {
+    mouse2d.x = (e.clientX / window.innerWidth)  * 2 - 1;
+    mouse2d.y = -(e.clientY / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse2d, camera);
+    const sh = raycaster.intersectObject(shipMeshForRaycast);
+    if (sh.length > 0) satDragging = true;
+  }
   // Check if dragging Voyager when focused on it
   if (voyagerFocused && voyagerHitbox) {
     mouse2d.x = (e.clientX / window.innerWidth)  * 2 - 1;
@@ -4962,6 +5068,7 @@ canvas.addEventListener('pointerup', e => {
   isDragging = false;
   planetDragging = false;
   voyagerDragging = false;
+  satDragging = false;
   canvas.releasePointerCapture(e.pointerId);
 });
 canvas.addEventListener('pointermove', e => {
@@ -4983,6 +5090,20 @@ canvas.addEventListener('pointermove', e => {
         systemQuat.premultiply(_dragQuat);
         // Also rotate the planet mesh itself so it spins with the system
         focusedNode.mesh.quaternion.premultiply(_dragQuat);
+      }
+    } else if (satDragging && satFocused && shipGroup) {
+      // Rotate satellite model
+      const camRight = new THREE.Vector3();
+      const camUp    = new THREE.Vector3();
+      camera.matrixWorld.extractBasis(camRight, camUp, new THREE.Vector3());
+      const axis = new THREE.Vector3();
+      axis.copy(camUp).multiplyScalar(dx * 0.008)
+          .addScaledVector(camRight, -dy * 0.008);
+      const ang = axis.length();
+      if (ang > 0.0001) {
+        axis.normalize();
+        const q = new THREE.Quaternion().setFromAxisAngle(axis, ang);
+        shipGroup.quaternion.premultiply(q);
       }
     } else if (voyagerDragging && voyagerFocused && voyagerGroup) {
       // Rotate Voyager model around its center using camera-relative axes
@@ -5057,7 +5178,7 @@ function doHover(e) {
     if (shipHits.length > 0) {
       specialHovered = true;
       canvas.style.cursor = 'pointer';
-      hoverLabelEl.textContent = (shipData?.satName || 'Satellite') + ' — View on Wikipedia →';
+      hoverLabelEl.textContent = satFocused ? 'Click to exit' : (shipData?.satName || 'Satellite') + ' — Click to inspect';
       const sp = toScreen(shipGroup.position);
       hoverLabelEl.style.left = sp.x + 'px';
       hoverLabelEl.style.top = (sp.y - 24) + 'px';
@@ -5728,7 +5849,7 @@ function exitInspectAndUnfocus() {
     delete focusedNode._floatStart;
   }
   focusCamAnim = null;
-  clearFocusLabel(); clearFocusEdges(); clearMoons(); clearAurora(); clearShip();
+  clearFocusLabel(); clearFocusEdges(); clearMoons(); clearAurora(); unfocusSatellite(); clearShip();
   focusedNode = null;
   resetDim();
   hideMoreInfoBtn();
@@ -5751,7 +5872,7 @@ function showBlackHoleCard() {
     delete focusedNode._restX; delete focusedNode._restY; delete focusedNode._restZ;
     delete focusedNode._floatStart;
     focusCamAnim = null;
-    clearFocusLabel(); clearFocusEdges(); clearMoons(); clearAurora(); clearShip();
+    clearFocusLabel(); clearFocusEdges(); clearMoons(); clearAurora(); unfocusSatellite(); clearShip();
     focusedNode = null;
     resetDim();
   }
@@ -6009,11 +6130,15 @@ canvas.addEventListener('click', e => {
     }
   }
 
-  // Check spaceship (NASA satellite) first
+  // Check spaceship (NASA satellite) — click to zoom in, click again to exit
   if (shipMeshForRaycast && focusedNode && shipData) {
     const shipHits = raycaster.intersectObject(shipMeshForRaycast, true);
     if (shipHits.length > 0) {
-      window.open(shipData.satUrl, '_blank');
+      if (satFocused) {
+        unfocusSatellite();
+      } else {
+        focusSatellite();
+      }
       return;
     }
   }
@@ -6811,44 +6936,29 @@ function animate() {
     // the node was at click time. Update it from focusedNode each frame.
     if (focusedNode) {
       fc.nodePos.set(focusedNode.x, focusedNode.y, focusedNode.z);
-      // Recompute close/hold along the same direction
       const dir = fc.startPos.clone().sub(fc.nodePos).normalize();
-      fc.closePos.copy(fc.nodePos).addScaledVector(dir, 180);
-      fc.holdPos .copy(fc.nodePos).addScaledVector(dir, 230);
+      fc.holdPos.copy(fc.nodePos).addScaledVector(dir, 200);
     }
 
     if (fc.phase === 'zoomIn') {
       const raw  = Math.min(fc.t / fc.zoomFrames, 1);
-      const ease = 1 - Math.pow(1 - raw, 3); // cubic ease-out
-      camera.position.lerpVectors(fc.startPos, fc.closePos, ease);
-      // FIX 4: lerp lookTarget smoothly rather than hard lookAt each frame
+      // Smooth ease-out for a single clean sweep — no pullback bounce
+      const ease = 1 - Math.pow(1 - raw, 3);
+      camera.position.lerpVectors(fc.startPos, fc.holdPos, ease);
       lookTarget.lerp(fc.nodePos, 0.08);
       camera.lookAt(lookTarget);
       if (fc.t >= fc.zoomFrames) {
-        fc.phase     = 'pullBack';
-        fc.t         = 0;
-        fc.pullStart = camera.position.clone();
-      }
-
-    } else if (fc.phase === 'pullBack') {
-      const raw  = Math.min(fc.t / fc.pullFrames, 1);
-      const ease = 0.5 - 0.5 * Math.cos(raw * Math.PI); // sine ease-in-out
-      camera.position.lerpVectors(fc.pullStart, fc.holdPos, ease);
-      lookTarget.lerp(fc.nodePos, 0.06);
-      camera.lookAt(lookTarget);
-      if (fc.t >= fc.pullFrames) {
         fc.phase = 'hold';
-        // FIX 3: sync spherical coords so orbit system knows where we ended up
+        // Sync spherical coords so orbit system knows where we ended up
         const p = camera.position;
         camRadius = p.length();
         camPhi    = Math.acos(Math.max(-1, Math.min(1, p.y / camRadius)));
         camTheta  = Math.atan2(p.x, p.z);
-        // FIX 5: now that camera is settled, lock node rest to its actual position
         if (focusedNode) {
           focusedNode._restX = focusedNode.x;
           focusedNode._restY = focusedNode.y;
           focusedNode._restZ = focusedNode.z;
-          focusedNode._floatStart = undefined; // restart float ease from here
+          focusedNode._floatStart = undefined;
         }
       }
 
