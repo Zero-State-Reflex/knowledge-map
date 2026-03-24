@@ -548,6 +548,11 @@
 <button id="path-btn">Show Path</button>
 <div id="constellation-toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://unpkg.com/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
 <script>
 // ─── GALILEO SPACE FACTS — typed out during loading ─────────────────────────
 (function() {
@@ -1428,6 +1433,18 @@ renderer.toneMappingExposure = 1.2;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 12000);
 
+// ─── BLOOM POST-PROCESSING ───────────────────────────────────────────────────
+const composer = new THREE.EffectComposer(renderer);
+composer.addPass(new THREE.RenderPass(scene, camera));
+const bloomPass = new THREE.UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  isMobileDevice ? 0.25 : 0.45,   // strength — subtle overall, black hole emissives will pop
+  0.6,    // radius — how far the bloom spreads
+  0.75    // threshold — only bright things bloom
+);
+if (!isMobileDevice) composer.addPass(bloomPass);
+const useBloom = !isMobileDevice;
+
 // ─── STAR FIELD ──────────────────────────────────────────────────────────────
 (function buildStars() {
   const STAR_COUNT = Q.starCount;
@@ -1555,8 +1572,8 @@ const BH_POS = new THREE.Vector3(3200, -800, -5500);
   // ── Accretion disk — flat torus, tilted, glowing orange→white→blue ────────
   // Build as layered rings: warm inner, bright mid, cool outer
   const diskLayers = [
-    { inner: 270, outer: 310, color: 0xffffff, opacity: 0.18 }, // white-hot innermost
-    { inner: 305, outer: 370, color: 0xffeedd, opacity: 0.24 }, // bright inner
+    { inner: 270, outer: 310, color: 0xffffff, opacity: 0.35 }, // white-hot innermost — drives bloom
+    { inner: 305, outer: 370, color: 0xffeedd, opacity: 0.38 }, // bright inner — drives bloom
     { inner: 365, outer: 440, color: 0xffaa44, opacity: 0.16 }, // warm orange
     { inner: 435, outer: 530, color: 0xff8833, opacity: 0.12 }, // orange mid
     { inner: 525, outer: 640, color: 0xcc5511, opacity: 0.08 }, // deep red outer
@@ -6006,7 +6023,7 @@ function animate() {
   // During intro zoom: only render, skip all physics and heavy updates
   if (isIntroZooming) {
     updateScene();
-    renderer.render(scene, camera);
+    useBloom ? composer.render() : renderer.render(scene, camera);
     return;
   }
 
@@ -6138,7 +6155,7 @@ function animate() {
     }
   }
 
-  renderer.render(scene, camera);
+  useBloom ? composer.render() : renderer.render(scene, camera);
   updateFocusLabelPos();
   // Keep leader dot locked on node surface
   if (focusedNode && nodeInfoEl.classList.contains('visible')) {
@@ -6155,6 +6172,8 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+  bloomPass.resolution.set(window.innerWidth, window.innerHeight);
   // Reposition info panel to stay within the new viewport
   if (focusedNode && nodeInfoEl.classList.contains('visible')) {
     const sp = getNodeScreenPos(focusedNode);
