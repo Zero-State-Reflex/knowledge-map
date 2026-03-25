@@ -5006,6 +5006,8 @@ function simTick() {
 const lensFlareEl = document.getElementById('lens-flare');
 function updateLensFlare() {
   if (isMobileDevice) return;
+  // Don't show during intro zoom or before textures are ready
+  if (_introZoom || !_allTexturesReady) { lensFlareEl.style.opacity = '0'; return; }
   let bestBright = 0;
   let bestY = 0.5;
   let bestColor = '#ffeedd';
