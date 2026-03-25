@@ -4190,7 +4190,7 @@ function updateShip() {
   shipGroup.rotation.z = Math.cos(now * 0.00025) * 0.05;
 
   // Scale and opacity — 1.5x to make detail visible in orbit
-  shipGroup.scale.setScalar(shipData.alpha * 1.5);
+  shipGroup.scale.setScalar(shipData.alpha * 2.25);
 
   // Fade model materials opacity
   shipGroup.traverse(child => {
@@ -4246,7 +4246,7 @@ function updateSatCam() {
   sc.sPos.copy(shipGroup.position);
 
   // Camera target: position satellite at center of screen
-  const holdDist = 22;
+  const holdDist = 12;
   const dir = sc.startPos.clone().sub(sc.sPos).normalize();
   const holdPos = sc.sPos.clone().add(dir.multiplyScalar(holdDist));
 
@@ -4257,10 +4257,12 @@ function updateSatCam() {
       ? 2 * raw * raw
       : 1 - Math.pow(-2 * raw + 2, 2) / 2;
     camera.position.lerpVectors(sc.startPos, holdPos, ease);
-    lookTarget.lerp(sc.sPos, 0.06);
+    lookTarget.lerp(sc.sPos, 0.1);
     camera.lookAt(lookTarget);
     if (raw >= 1) {
       sc.phase = 'hold';
+      // Snap look target to satellite center for perfect centering
+      lookTarget.copy(shipGroup.position);
       // Show hint text
       const hint = document.getElementById('sat-spin-hint');
       const sp = toScreen(shipGroup.position);
@@ -4273,12 +4275,12 @@ function updateSatCam() {
       }, 5000);
     }
   } else {
-    // Hold — keep camera centered on satellite, show card to the right
-    lookTarget.lerp(shipGroup.position, 0.05);
+    // Hold — lock camera centered on satellite
+    lookTarget.copy(shipGroup.position);
     camera.lookAt(lookTarget);
     const d = camera.position.clone().sub(shipGroup.position).normalize();
     const ideal = shipGroup.position.clone().add(d.multiplyScalar(holdDist));
-    camera.position.lerp(ideal, 0.03);
+    camera.position.lerp(ideal, 0.05);
 
     // Position card to the right of the satellite with generous buffer
     const sp = toScreen(shipGroup.position);
