@@ -1544,7 +1544,7 @@ renderer.setPixelRatio(Q.pixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x020408, 1);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
+renderer.toneMappingExposure = 0.9;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 12000);
@@ -1948,17 +1948,17 @@ if (!isMobileDevice) {
 })();
 
 
-scene.add(new THREE.AmbientLight(0x223344, 3.4));
-// Warm key light — like a distant star (reduced 15%)
-const light1 = new THREE.PointLight(0xffd4a0, 2.55, 8000);
+scene.add(new THREE.AmbientLight(0x223344, 1.8));
+// Warm key light — like a distant star
+const light1 = new THREE.PointLight(0xffd4a0, 1.4, 8000);
 light1.position.set(800, 1200, 600);
 scene.add(light1);
-// Cool fill — opposite side for color contrast (reduced 15%)
-const light2 = new THREE.PointLight(0x4466cc, 1.275, 7000);
+// Cool fill — opposite side for color contrast
+const light2 = new THREE.PointLight(0x4466cc, 0.7, 7000);
 light2.position.set(-900, -500, -500);
 scene.add(light2);
-// Rim from below (reduced 15%)
-const light3 = new THREE.PointLight(0x886644, 0.85, 6000);
+// Rim from below
+const light3 = new THREE.PointLight(0x886644, 0.5, 6000);
 light3.position.set(0, -1000, 300);
 scene.add(light3);
 
