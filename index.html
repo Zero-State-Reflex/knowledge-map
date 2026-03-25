@@ -5420,9 +5420,23 @@ focusLabelEl.style.cssText = `
 document.body.appendChild(focusLabelEl);
 
 function applyFocusLabel(n) {
-  focusLabelEl.textContent = n.id;
-  focusLabelEl.style.color = DOMAINS[n.domain]?.color || '#f0e4b0';
-  focusLabelEl.style.opacity = '0'; // panel shows name — label hidden while focused
+  if (n.id === 'Human Being') {
+    focusLabelEl.textContent = 'HOME';
+    focusLabelEl.style.color = '#ddeeff';
+    focusLabelEl.style.fontFamily = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+    focusLabelEl.style.fontSize = 'clamp(36px, 5vw, 72px)';
+    focusLabelEl.style.letterSpacing = '-0.03em';
+    focusLabelEl.style.fontWeight = '700';
+    focusLabelEl.style.opacity = '1';
+  } else {
+    focusLabelEl.textContent = n.id;
+    focusLabelEl.style.color = DOMAINS[n.domain]?.color || '#f0e4b0';
+    focusLabelEl.style.fontFamily = "'Cinzel', serif";
+    focusLabelEl.style.fontSize = 'clamp(20px, 2.75vw, 40px)';
+    focusLabelEl.style.letterSpacing = '0.02em';
+    focusLabelEl.style.fontWeight = '700';
+    focusLabelEl.style.opacity = '0'; // panel shows name — label hidden while focused
+  }
 }
 
 function clearFocusLabel() {
@@ -5759,18 +5773,7 @@ function repositionGallery() {
 }
 
 function showInfo(n, screenX, screenY) {
-  if (n.id === 'Human Being') {
-    nodeInfoName.textContent = 'HOME';
-    nodeInfoName.style.fontSize = '36px';
-    nodeInfoName.style.letterSpacing = '-0.04em';
-    nodeInfoName.style.fontFamily = "'Helvetica Neue', Helvetica, Arial, sans-serif";
-    nodeInfoName.style.fontWeight = '700';
-  } else {
-    nodeInfoName.textContent = n.id;
-    nodeInfoName.style.fontSize = '';
-    nodeInfoName.style.letterSpacing = '';
-    nodeInfoName.style.fontWeight = '';
-  }
+  nodeInfoName.textContent = n.id;
   nodeInfoDom.textContent  = n.domain;
   nodeInfoDom.style.color  = DOMAINS[n.domain]?.color || '#aaa';
   nodeInfoDesc.textContent = NODE_DESCRIPTIONS[n.id] || '';
