@@ -308,6 +308,16 @@
     transition: background 0.2s, border-color 0.2s;
   }
   #sat-card a:hover { background:rgba(180,160,120,0.3); border-color:rgba(180,160,120,0.6); }
+  #sat-spin-hint {
+    position:fixed; z-index:210; pointer-events:none;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+    font-size:13px; letter-spacing:0.06em; color:rgba(220,210,190,0.8);
+    text-transform:uppercase; text-align:center;
+    text-shadow: 0 0 15px rgba(200,180,120,0.4);
+    opacity:0; transition: opacity 0.6s ease;
+    transform: translateX(-50%);
+  }
+  #sat-spin-hint.visible { opacity:1; }
   #node-info-wiki {
     display:inline-block; margin-bottom:20px;
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:11px; letter-spacing:0.08em;
@@ -577,6 +587,7 @@
 <div id="welcome-overlay"><div id="welcome-text">Welcome to the Map of Human Knowledge</div></div>
 <canvas id="c"></canvas>
 <div id="lens-flare"></div>
+<div id="sat-spin-hint">Click and Drag to Spin the Satellite</div>
 <div id="sat-card">
   <h3 id="sat-card-name"></h3>
   <div class="sat-launched" id="sat-card-launched"></div>
@@ -4193,6 +4204,7 @@ function updateShip() {
 let satFocused = false;
 let satCamAnim = null;
 let satDragging = false;
+let _satHintTimer = null;
 
 function focusSatellite() {
   if (satFocused || !shipGroup || !shipData) return;
@@ -4202,19 +4214,18 @@ function focusSatellite() {
   satCamAnim = {
     startPos: camera.position.clone(),
     startLook: lookTarget.clone(),
-    targetPos: sPos.clone().add(dir.multiplyScalar(20)),
     sPos,
     phase: 'zoomIn',
     t: 0,
-    frames: 70,
+    frames: 120, // slow smooth zoom
   };
-  // Show card
-  const card = document.getElementById('sat-card');
+  // Populate card (don't show yet — wait for hold phase)
   document.getElementById('sat-card-name').textContent = shipData.satName;
   document.getElementById('sat-card-launched').textContent = 'Launched ' + shipData.satLaunched;
   document.getElementById('sat-card-mission').textContent = shipData.satMission;
-  const link = document.getElementById('sat-card-link');
-  link.href = shipData.satUrl;
+  document.getElementById('sat-card-link').href = shipData.satUrl;
+  // Show spin hint after zoom completes
+  if (_satHintTimer) clearTimeout(_satHintTimer);
 }
 
 function unfocusSatellite() {
@@ -4223,37 +4234,57 @@ function unfocusSatellite() {
   satCamAnim = null;
   satDragging = false;
   document.getElementById('sat-card').classList.remove('visible');
+  document.getElementById('sat-spin-hint').classList.remove('visible');
+  if (_satHintTimer) { clearTimeout(_satHintTimer); _satHintTimer = null; }
 }
 
 function updateSatCam() {
   if (!satCamAnim || !shipGroup) return;
   const sc = satCamAnim;
   sc.t++;
-  // Track satellite live position
+  // Track satellite live position (orbit is frozen but just in case)
   sc.sPos.copy(shipGroup.position);
+
+  // Camera target: position satellite at center of screen
+  const holdDist = 22;
+  const dir = sc.startPos.clone().sub(sc.sPos).normalize();
+  const holdPos = sc.sPos.clone().add(dir.multiplyScalar(holdDist));
+
   if (sc.phase === 'zoomIn') {
     const raw = Math.min(sc.t / sc.frames, 1);
-    const ease = 1 - Math.pow(1 - raw, 3);
-    const dir = sc.startPos.clone().sub(sc.sPos).normalize();
-    const target = sc.sPos.clone().add(dir.multiplyScalar(20));
-    camera.position.lerpVectors(sc.startPos, target, ease);
-    lookTarget.lerp(sc.sPos, 0.1);
+    // Slow ease-in-out for cinematic feel
+    const ease = raw < 0.5
+      ? 2 * raw * raw
+      : 1 - Math.pow(-2 * raw + 2, 2) / 2;
+    camera.position.lerpVectors(sc.startPos, holdPos, ease);
+    lookTarget.lerp(sc.sPos, 0.06);
     camera.lookAt(lookTarget);
     if (raw >= 1) {
       sc.phase = 'hold';
+      // Show hint text
+      const hint = document.getElementById('sat-spin-hint');
+      const sp = toScreen(shipGroup.position);
+      hint.style.left = sp.x + 'px';
+      hint.style.top = (sp.y + 80) + 'px';
+      hint.classList.add('visible');
+      // Fade hint after 5 seconds
+      _satHintTimer = setTimeout(() => {
+        hint.classList.remove('visible');
+      }, 5000);
     }
   } else {
-    // Hold — follow the satellite, show card
-    lookTarget.lerp(shipGroup.position, 0.06);
+    // Hold — keep camera centered on satellite, show card to the right
+    lookTarget.lerp(shipGroup.position, 0.05);
     camera.lookAt(lookTarget);
-    const dir = camera.position.clone().sub(shipGroup.position).normalize();
-    const ideal = shipGroup.position.clone().add(dir.multiplyScalar(20));
+    const d = camera.position.clone().sub(shipGroup.position).normalize();
+    const ideal = shipGroup.position.clone().add(d.multiplyScalar(holdDist));
     camera.position.lerp(ideal, 0.03);
 
+    // Position card to the right of the satellite
     const sp = toScreen(shipGroup.position);
     const card = document.getElementById('sat-card');
-    card.style.left = Math.max(10, sp.x - 130) + 'px';
-    card.style.top = Math.min(sp.y + 140, window.innerHeight - 160) + 'px';
+    card.style.left = Math.min(sp.x + 120, window.innerWidth - 260) + 'px';
+    card.style.top = Math.max(20, sp.y - 60) + 'px';
     if (!card.classList.contains('visible')) card.classList.add('visible');
   }
 }
@@ -5178,7 +5209,9 @@ function doHover(e) {
     if (shipHits.length > 0) {
       specialHovered = true;
       canvas.style.cursor = 'pointer';
-      hoverLabelEl.textContent = satFocused ? 'Click to exit' : (shipData?.satName || 'Satellite') + ' — Click to inspect';
+      if (!satFocused) {
+        hoverLabelEl.textContent = (shipData?.satName || 'Satellite') + ' — Click to inspect';
+      }
       const sp = toScreen(shipGroup.position);
       hoverLabelEl.style.left = sp.x + 'px';
       hoverLabelEl.style.top = (sp.y - 24) + 'px';
@@ -6130,12 +6163,13 @@ canvas.addEventListener('click', e => {
     }
   }
 
-  // Check spaceship (NASA satellite) — click to zoom in, click again to exit
+  // Check spaceship (NASA satellite) — click to zoom in; when focused, click does nothing (drag to spin)
   if (shipMeshForRaycast && focusedNode && shipData) {
     const shipHits = raycaster.intersectObject(shipMeshForRaycast, true);
     if (shipHits.length > 0) {
       if (satFocused) {
-        unfocusSatellite();
+        // Do nothing on click — user drags to spin, clicks empty space to exit
+        return;
       } else {
         focusSatellite();
       }
@@ -6163,6 +6197,9 @@ canvas.addEventListener('click', e => {
     } else {
       focusNode(n);
     }
+  } else if (satFocused && focusedNode) {
+    // Exit satellite zoom, stay on planet
+    unfocusSatellite();
   } else if (focusedNode) {
     exitInspectAndUnfocus();
   } else if (voyagerFocused) {
