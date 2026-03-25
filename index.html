@@ -5759,7 +5759,18 @@ function repositionGallery() {
 }
 
 function showInfo(n, screenX, screenY) {
-  nodeInfoName.textContent = n.id;
+  if (n.id === 'Human Being') {
+    nodeInfoName.textContent = 'HOME';
+    nodeInfoName.style.fontSize = '36px';
+    nodeInfoName.style.letterSpacing = '-0.04em';
+    nodeInfoName.style.fontFamily = "'Helvetica Neue', Helvetica, Arial, sans-serif";
+    nodeInfoName.style.fontWeight = '700';
+  } else {
+    nodeInfoName.textContent = n.id;
+    nodeInfoName.style.fontSize = '';
+    nodeInfoName.style.letterSpacing = '';
+    nodeInfoName.style.fontWeight = '';
+  }
   nodeInfoDom.textContent  = n.domain;
   nodeInfoDom.style.color  = DOMAINS[n.domain]?.color || '#aaa';
   nodeInfoDesc.textContent = NODE_DESCRIPTIONS[n.id] || '';
