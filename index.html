@@ -988,7 +988,7 @@ const NODES_RAW = [
   ["Chronobiology",      "Consciousness & Fringe", 11],
 
   // ─── CENTER NODE — Human Being ──────────────────────────────
-  ["Human Being",        "Interdisciplinary", 28],
+  ["Human Being",        "Interdisciplinary", 38],
 ];
 
 const NODE_DESCRIPTIONS = {
@@ -1948,17 +1948,17 @@ if (!isMobileDevice) {
 })();
 
 
-scene.add(new THREE.AmbientLight(0x223344, 4.0));
-// Warm key light — like a distant star
-const light1 = new THREE.PointLight(0xffd4a0, 3.0, 8000);
+scene.add(new THREE.AmbientLight(0x223344, 3.4));
+// Warm key light — like a distant star (reduced 15%)
+const light1 = new THREE.PointLight(0xffd4a0, 2.55, 8000);
 light1.position.set(800, 1200, 600);
 scene.add(light1);
-// Cool fill — opposite side for color contrast
-const light2 = new THREE.PointLight(0x4466cc, 1.5, 7000);
+// Cool fill — opposite side for color contrast (reduced 15%)
+const light2 = new THREE.PointLight(0x4466cc, 1.275, 7000);
 light2.position.set(-900, -500, -500);
 scene.add(light2);
-// Rim from below
-const light3 = new THREE.PointLight(0x886644, 1.0, 6000);
+// Rim from below (reduced 15%)
+const light3 = new THREE.PointLight(0x886644, 0.85, 6000);
 light3.position.set(0, -1000, 300);
 scene.add(light3);
 
