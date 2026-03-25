@@ -5042,7 +5042,7 @@ const _dragAxis  = new THREE.Vector3();          // temp vector for drag axis
 const _dragQuat  = new THREE.Quaternion();       // temp quaternion per drag frame
 
 function startFocusCamAnim(nodePos) {
-  camAnim = null;
+  camAnim = null; // kill any unfocus animation
   const dir      = camera.position.clone().sub(nodePos).normalize();
   const closePos = nodePos.clone().add(dir.clone().multiplyScalar(180));
   const holdPos  = nodePos.clone().add(dir.clone().multiplyScalar(230));
@@ -5050,6 +5050,7 @@ function startFocusCamAnim(nodePos) {
     startPos:  camera.position.clone(),
     startLook: lookTarget.clone(),
     nodePos:   nodePos.clone(),
+    dir:       dir.clone(), // lock the approach direction
     closePos, holdPos,
     phase: 'zoomIn',
     t: 0,
@@ -6953,8 +6954,8 @@ function animate() {
   // FIX 2: suppress auto-rotation entirely while a node is focused
   const canAutoRotate = !focusedNode && !focusCamAnim;
 
-  // General camera animation (unfocus)
-  if (camAnim) {
+  // General camera animation (unfocus) — skip if focus anim is running
+  if (camAnim && !focusCamAnim) {
     camAnim.t++;
     const t    = Math.min(camAnim.t / camAnim.frames, 1);
     const ease = t < 0.5 ? 2*t*t : -1 + (4-2*t)*t;
@@ -6978,11 +6979,12 @@ function animate() {
 
     // FIX 5: keep nodePos locked to where the float will settle, not where
     // the node was at click time. Update it from focusedNode each frame.
+    // Update lookAt target to follow node, but use LOCKED direction for camera path
     if (focusedNode) {
       fc.nodePos.set(focusedNode.x, focusedNode.y, focusedNode.z);
-      const dir = fc.startPos.clone().sub(fc.nodePos).normalize();
-      fc.closePos.copy(fc.nodePos).addScaledVector(dir, 180);
-      fc.holdPos .copy(fc.nodePos).addScaledVector(dir, 230);
+      // Recompute targets using the locked approach direction (not recomputed)
+      fc.closePos.copy(fc.nodePos).addScaledVector(fc.dir, 180);
+      fc.holdPos .copy(fc.nodePos).addScaledVector(fc.dir, 230);
     }
 
     if (fc.phase === 'zoomIn') {
