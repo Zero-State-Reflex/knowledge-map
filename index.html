@@ -308,6 +308,68 @@
     transition: background 0.2s, border-color 0.2s;
   }
   #sat-card a:hover { background:rgba(180,160,120,0.3); border-color:rgba(180,160,120,0.6); }
+  #take-me-home-btn {
+    position:fixed; z-index:210; pointer-events:auto; cursor:pointer;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+    font-size:12px; letter-spacing:0.06em; font-weight:600;
+    color:#aaddff; background:rgba(4,6,15,0.85);
+    border:1px solid rgba(100,160,220,0.35); border-radius:20px;
+    padding:9px 20px; backdrop-filter:blur(8px);
+    opacity:0; transition:opacity 0.4s; display:none; text-transform:uppercase;
+  }
+  #take-me-home-btn.visible { opacity:1; display:block; }
+  #take-me-home-btn:hover { background:rgba(100,160,220,0.2); color:#ccefff; }
+
+  #home-dialog {
+    position:fixed; z-index:300; top:50%; left:50%;
+    transform:translate(-50%,-50%);
+    background:rgba(6,10,22,0.94); border:1px solid rgba(100,160,220,0.3);
+    border-radius:14px; padding:28px 32px; min-width:340px;
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+    color:#ddeeff; opacity:0; pointer-events:none;
+    transition: opacity 0.35s; box-shadow: 0 0 40px rgba(60,120,200,0.15);
+  }
+  #home-dialog.visible { opacity:1; pointer-events:auto; }
+  #home-dialog h3 {
+    margin:0 0 6px; font-size:18px; letter-spacing:0.04em; color:#f0f4ff;
+  }
+  #home-dialog p {
+    margin:0 0 16px; font-size:11px; color:#7799bb; line-height:1.4;
+  }
+  #home-dialog input {
+    width:100%; box-sizing:border-box; padding:10px 14px;
+    background:rgba(255,255,255,0.06); border:1px solid rgba(100,160,220,0.3);
+    border-radius:8px; color:#ddeeff; font-size:14px;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
+    outline:none; transition: border-color 0.2s;
+  }
+  #home-dialog input:focus { border-color:rgba(100,160,220,0.6); }
+  #home-dialog input::placeholder { color:rgba(120,150,190,0.5); }
+  #home-dialog .home-actions {
+    display:flex; gap:10px; margin-top:14px; justify-content:flex-end;
+  }
+  #home-dialog .home-btn {
+    padding:8px 18px; border-radius:6px; font-size:12px;
+    letter-spacing:0.04em; cursor:pointer; border:1px solid rgba(100,160,220,0.3);
+    background:rgba(100,160,220,0.15); color:#aaddff;
+    transition: background 0.2s;
+  }
+  #home-dialog .home-btn:hover { background:rgba(100,160,220,0.3); }
+  #home-dialog .home-btn.cancel { background:transparent; color:#7799bb; }
+  #home-dialog .home-btn.cancel:hover { background:rgba(255,255,255,0.05); }
+  #home-dialog .home-status {
+    margin-top:10px; font-size:11px; color:#7799bb; min-height:16px;
+  }
+  #home-pin {
+    position:fixed; z-index:150; pointer-events:none;
+    width:12px; height:12px; border-radius:50%;
+    background:rgba(100,200,255,0.8); box-shadow: 0 0 15px rgba(100,200,255,0.6), 0 0 30px rgba(100,200,255,0.3);
+    transform:translate(-50%,-50%);
+    opacity:0; transition: opacity 0.5s;
+  }
+  #home-pin.visible { opacity:1; }
+
   #sat-spin-hint {
     position:fixed; z-index:210; pointer-events:none;
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
@@ -587,6 +649,18 @@
 <div id="welcome-overlay"><div id="welcome-text">Welcome to the Map of Human Knowledge</div></div>
 <canvas id="c"></canvas>
 <div id="lens-flare"></div>
+<div id="take-me-home-btn">🌍 Take Me Home</div>
+<div id="home-dialog">
+  <h3>Take Me Home</h3>
+  <p>Enter your address and the Earth will rotate to show you where you are in the cosmos.</p>
+  <input id="home-input" type="text" placeholder="e.g. 123 Main St, New York, NY" autocomplete="off">
+  <div class="home-actions">
+    <button class="home-btn cancel" id="home-cancel">Cancel</button>
+    <button class="home-btn" id="home-go">Find Me</button>
+  </div>
+  <div class="home-status" id="home-status"></div>
+</div>
+<div id="home-pin"></div>
 <div id="sat-spin-hint">Click and Drag to Spin the Satellite</div>
 <div id="sat-card">
   <h3 id="sat-card-name"></h3>
@@ -5912,6 +5986,14 @@ function focusNode(n) {
     if (focusedNode === n) {
       const sp = getNodeScreenPos(n);
       showInfo(n, sp.x, sp.y);
+      // Show "Take Me Home" button only for the Earth node
+      if (n.id === 'Human Being') {
+        const btn = document.getElementById('take-me-home-btn');
+        const nsp = getNodeScreenPos(n);
+        btn.style.left = (nsp.x - 60) + 'px';
+        btn.style.top = (nsp.y + n.size * 2.2 + 30) + 'px';
+        btn.classList.add('visible');
+      }
     }
   }, 2200);
 }
@@ -5929,6 +6011,9 @@ function exitInspectAndUnfocus() {
   hideMoreInfoBtn();
   hideInfo();
   hideGallery();
+  document.getElementById('take-me-home-btn').classList.remove('visible');
+  document.getElementById('home-dialog').classList.remove('visible');
+  document.getElementById('home-pin').classList.remove('visible');
   const endPos = new THREE.Vector3(
     camRadius * Math.sin(camPhi) * Math.sin(camTheta),
     camRadius * Math.cos(camPhi),
@@ -6262,6 +6347,120 @@ canvas.addEventListener('click', e => {
     animateCamTo(endPos, new THREE.Vector3(0,0,0), 70);
   }
 });
+
+// ─── TAKE ME HOME — geocode address and rotate Earth ─────────────────────────
+(function() {
+  const btn      = document.getElementById('take-me-home-btn');
+  const dialog   = document.getElementById('home-dialog');
+  const input    = document.getElementById('home-input');
+  const goBtn    = document.getElementById('home-go');
+  const cancelBtn= document.getElementById('home-cancel');
+  const statusEl = document.getElementById('home-status');
+  const pinEl    = document.getElementById('home-pin');
+
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    dialog.classList.add('visible');
+    input.value = '';
+    statusEl.textContent = '';
+    setTimeout(() => input.focus(), 100);
+  });
+
+  cancelBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    dialog.classList.remove('visible');
+  });
+
+  goBtn.addEventListener('click', e => { e.stopPropagation(); doGeocode(); });
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') doGeocode(); });
+
+  function doGeocode() {
+    const addr = input.value.trim();
+    if (!addr) { statusEl.textContent = 'Please enter an address.'; return; }
+    statusEl.textContent = 'Searching...';
+
+    fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(addr)}`, {
+      headers: { 'Accept': 'application/json' }
+    })
+    .then(r => r.json())
+    .then(results => {
+      if (!results || results.length === 0) {
+        statusEl.textContent = 'Location not found. Try a different address.';
+        return;
+      }
+      const lat = parseFloat(results[0].lat);
+      const lng = parseFloat(results[0].lon);
+      const name = results[0].display_name.split(',').slice(0, 3).join(',');
+      statusEl.textContent = 'Found: ' + name;
+
+      // Close dialog after brief pause
+      setTimeout(() => dialog.classList.remove('visible'), 1200);
+
+      // Rotate Earth to show this location
+      rotateEarthTo(lat, lng);
+    })
+    .catch(err => {
+      console.warn('Geocode error:', err);
+      statusEl.textContent = 'Network error. Please try again.';
+    });
+  }
+
+  function rotateEarthTo(lat, lng) {
+    const human = nodeMap.get('Human Being');
+    if (!human || !human.mesh) return;
+
+    // Convert lat/lng to rotation angles
+    // Latitude → rotation around X, Longitude → rotation around Y
+    // Earth textures have 0° longitude at center, so adjust
+    const targetRotY = -lng * Math.PI / 180 + Math.PI; // longitude → Y rotation
+    const targetRotX = lat * Math.PI / 180;             // latitude → X tilt
+
+    // Smooth animate the Earth rotation
+    const startRotY = human.mesh.rotation.y;
+    const startRotX = human.mesh.rotation.x;
+    const frames = 120;
+    let frame = 0;
+
+    // Also zoom camera closer to Earth if not already close
+    const earthPos = new THREE.Vector3(human.x, human.y, human.z);
+
+    function animateRotation() {
+      frame++;
+      const raw = Math.min(frame / frames, 1);
+      const ease = raw < 0.5 ? 2 * raw * raw : 1 - Math.pow(-2 * raw + 2, 2) / 2;
+
+      // Lerp rotation
+      human.mesh.rotation.y = startRotY + (targetRotY - startRotY) * ease;
+      human.mesh.rotation.x = startRotX + (targetRotX - startRotX) * ease;
+
+      // Update pin position — project the lat/lng point on the sphere surface
+      if (raw > 0.3) {
+        const latRad = lat * Math.PI / 180;
+        const lngRad = lng * Math.PI / 180;
+        const r = human.size * 2.2;
+        // Point on sphere in local space
+        const localPt = new THREE.Vector3(
+          r * Math.cos(latRad) * Math.sin(lngRad),
+          r * Math.sin(latRad),
+          r * Math.cos(latRad) * Math.cos(lngRad)
+        );
+        // Apply mesh rotation
+        localPt.applyEuler(human.mesh.rotation);
+        // To world space
+        const worldPt = new THREE.Vector3(human.x + localPt.x, human.y + localPt.y, human.z + localPt.z);
+        const sp = toScreen(worldPt);
+        pinEl.style.left = sp.x + 'px';
+        pinEl.style.top = sp.y + 'px';
+        if (!pinEl.classList.contains('visible')) pinEl.classList.add('visible');
+      }
+
+      if (frame < frames) {
+        requestAnimationFrame(animateRotation);
+      }
+    }
+    animateRotation();
+  }
+})();
 
 // ─── AUDIO ───────────────────────────────────────────────────────────────────
 let audioCtx = null;
@@ -7098,6 +7297,13 @@ function animate() {
 
   useBloom ? composer.render() : renderer.render(scene, camera);
   updateFocusLabelPos();
+  // Keep "Take Me Home" button below Earth
+  const _thmBtn = document.getElementById('take-me-home-btn');
+  if (focusedNode && focusedNode.id === 'Human Being' && _thmBtn.classList.contains('visible')) {
+    const _esp = getNodeScreenPos(focusedNode);
+    _thmBtn.style.left = (_esp.x - 60) + 'px';
+    _thmBtn.style.top = (_esp.y + 70) + 'px';
+  }
   // Keep leader dot locked on node surface
   if (focusedNode && nodeInfoEl.classList.contains('visible')) {
     const sp = getNodeScreenPos(focusedNode);
