@@ -3722,7 +3722,27 @@ function updateMoons() {
     });
 
     const sp = toScreen(new THREE.Vector3(wx, wy, wz));
-    const vis = sp.x > 0 && sp.x < window.innerWidth && sp.y > 0 && sp.y < window.innerHeight;
+    const onScreen = sp.x > 0 && sp.x < window.innerWidth && sp.y > 0 && sp.y < window.innerHeight;
+
+    // Check if moon is behind the planet from the camera's perspective
+    const planetPos = new THREE.Vector3(cx, cy, cz);
+    const moonPos   = new THREE.Vector3(wx, wy, wz);
+    const camToMoon   = moonPos.clone().sub(camera.position);
+    const camToPlanet = planetPos.clone().sub(camera.position);
+    // Moon is "behind" if it's farther from camera than the planet center
+    // AND the angular separation from the planet center is small (within planet radius)
+    const moonDist   = camToMoon.length();
+    const planetDist = camToPlanet.length();
+    const planetR    = focusedNode.size * 2.2;
+    // Project moon offset onto the view plane perpendicular to camera→planet
+    const moonOffset = moonPos.clone().sub(planetPos);
+    const viewDir    = camToPlanet.clone().normalize();
+    const behindDist = moonOffset.dot(viewDir); // positive = behind planet
+    const lateralDist = moonOffset.clone().addScaledVector(viewDir, -behindDist).length();
+    // Hidden if moon is behind the planet and within its silhouette radius
+    const behindPlanet = behindDist > 0 && lateralDist < planetR * 1.2;
+    const vis = onScreen && !behindPlanet;
+
     m.label.style.left    = sp.x + 'px';
     m.label.style.top     = (sp.y + m.mSize + 8) + 'px';
     m.label.style.opacity = vis ? (m.moonAlpha * 0.9).toFixed(3) : '0';
