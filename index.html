@@ -99,9 +99,10 @@
     position:fixed; inset:0; z-index:9999;
     display:flex; align-items:center; justify-content:center;
     background:transparent; pointer-events:none;
-    opacity:0; transition:opacity 1.2s ease;
+    opacity:0; transition:opacity 1.5s ease;
   }
   #welcome-overlay.visible { opacity:1; }
+  #welcome-overlay.hidden { opacity:0 !important; visibility:hidden; }
   #welcome-text {
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
     font-size:clamp(22px, 3.5vw, 48px); font-weight:300;
@@ -7156,7 +7157,8 @@ function onTexturesReady() {
   setTimeout(() => {
     if (welcome) {
       welcome.classList.remove('visible');
-      setTimeout(() => welcome.remove(), 1300);
+      welcome.classList.add('hidden');
+      setTimeout(() => welcome.remove(), 1600);
     }
     // Start intro zoom
     _introZoom = { startRadius: 5000, endRadius: CAM_HOME_RADIUS, t: 0, frames: 120 };
