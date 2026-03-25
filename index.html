@@ -78,12 +78,12 @@
   }
   .galileo-fact .galileo-attr {
     display:block;
-    margin-top:6px;
+    margin-bottom:8px;
     font-size:10px;
-    letter-spacing:0.1em;
+    letter-spacing:0.12em;
     text-transform:uppercase;
     font-style:normal;
-    color:rgba(200,180,120,0.4);
+    color:rgba(200,180,120,0.5);
   }
   @keyframes galileo-float {
     0%, 100% { transform: translateY(0); }
@@ -647,6 +647,7 @@
 <div id="loading-screen">
   <div class="galileo-wrap">
     <img class="galileo-img" src="Assests/Galileo.jpg" alt="Galileo Galilei">
+    <div class="galileo-name" style="font-size:11px; letter-spacing:0.1em; text-transform:uppercase; color:rgba(200,180,120,0.5); margin-bottom:16px; font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">Galileo Galilei</div>
     <div class="galileo-fact" id="galileo-fact"></div>
   </div>
   <div class="atom">
@@ -761,10 +762,10 @@
   let i = 0;
   function typeNext() {
     if (i <= pick.length) {
-      el.innerHTML = '"' + pick.slice(0, i) + '<span style="opacity:0.4">|</span>"'
-        + '<span class="galileo-attr">— Galileo Galilei</span>';
+      el.innerHTML = '<span class="galileo-attr">Space Fact:</span> "'
+        + pick.slice(0, i) + '<span style="opacity:0.4">|</span>"';
       i++;
-      setTimeout(typeNext, 28 + Math.random() * 18);
+      setTimeout(typeNext, 45 + Math.random() * 30);
     }
   }
   typeNext();
