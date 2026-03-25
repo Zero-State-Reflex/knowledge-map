@@ -2856,11 +2856,15 @@ nodes.forEach(n => {
     const ac = ATM_COLORS[pType] || [0.4, 0.5, 0.7];
     // 4 concentric shells: each larger and softer for a fuzzy real-atmosphere look
     const atmShells = [];
+    // 7 shells for smooth gradient — no visible banding
     const shellLayers = [
-      { scale: 1.08, intensity: 0.50, power: 3.2 },  // tight inner glow
-      { scale: 1.16, intensity: 0.30, power: 2.4 },  // mid haze
-      { scale: 1.28, intensity: 0.15, power: 1.8 },  // soft outer
-      { scale: 1.45, intensity: 0.06, power: 1.2 },  // faint wispy edge
+      { scale: 1.04, intensity: 0.35, power: 4.0 },
+      { scale: 1.08, intensity: 0.28, power: 3.2 },
+      { scale: 1.13, intensity: 0.20, power: 2.6 },
+      { scale: 1.19, intensity: 0.14, power: 2.1 },
+      { scale: 1.26, intensity: 0.09, power: 1.7 },
+      { scale: 1.35, intensity: 0.05, power: 1.3 },
+      { scale: 1.48, intensity: 0.02, power: 1.0 },
     ];
     shellLayers.forEach(layer => {
       const shellMat = new THREE.ShaderMaterial({
@@ -5840,9 +5844,9 @@ function tickDim() {
     if (n.atmShells && n._targetShellDim !== undefined) {
       if (n._shellDim === undefined) n._shellDim = 1.0;
       n._shellDim += (n._targetShellDim - n._shellDim) * 0.08;
-      const baseIntensities = [0.50, 0.30, 0.15, 0.06];
+      const baseIntensities = [0.35, 0.28, 0.20, 0.14, 0.09, 0.05, 0.02];
       n.atmShells.forEach((shell, i) => {
-        shell.material.uniforms.uIntensity.value = baseIntensities[i] * n._shellDim;
+        shell.material.uniforms.uIntensity.value = (baseIntensities[i] || 0.02) * n._shellDim;
       });
     }
   });
@@ -6890,8 +6894,10 @@ function generateAllTextures(callback) {
     // Special case: "Human Being" gets NASA Blue Marble Earth texture
     if (n.id === 'Human Being') {
       new THREE.TextureLoader().load(
-        'https://eoimages.gsfc.nasa.gov/images/imagerecords/57000/57735/land_ocean_ice_cloud_2048.jpg',
-        tex => { n.mesh.material.map = tex; n.mesh.material.needsUpdate = true; }
+        'Assests/earth_blue_marble.jpg',
+        tex => { n.mesh.material.map = tex; n.mesh.material.needsUpdate = true; },
+        undefined,
+        err => console.warn('Earth texture failed:', err)
       );
       setTimeout(next, 0);
       return;
