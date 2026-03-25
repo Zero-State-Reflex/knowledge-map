@@ -165,7 +165,7 @@
     text-transform:uppercase;
   }
   #node-info {
-    max-width:420px; width:420px; padding:28px 32px 32px;
+    max-width:300px; width:300px; padding:18px 20px 20px;
     opacity:0; transition:opacity 0.35s ease;
     background:rgba(4,6,15,0.92); border:1px solid rgba(200,180,120,0.22);
     border-radius:10px; backdrop-filter:blur(10px);
@@ -176,7 +176,7 @@
     display:flex; flex-direction:column; align-items:center; gap:2.5px;
     padding:5px 0 6px; cursor:grab; user-select:none;
     width:33%; margin:0 auto;
-    position:relative; top:-20px; margin-bottom:-14px;
+    position:relative; top:-12px; margin-bottom:-8px;
   }
   #node-info-drag:active { cursor:grabbing; }
   #node-info-drag span {
@@ -186,19 +186,19 @@
   }
   #node-info-drag:hover span { background:rgba(200,180,120,0.45); }
   #node-info-img-wrap {
-    width:100%; height:110px; overflow:hidden; border-radius:8px;
-    margin-bottom:16px; display:none; background:rgba(255,255,255,0.03);
+    width:100%; height:80px; overflow:hidden; border-radius:6px;
+    margin-bottom:10px; display:none; background:rgba(255,255,255,0.03);
   }
   #node-info-img-wrap.visible { display:block; }
   #node-info-img {
-    width:100%; height:110px; object-fit:cover; display:block;
+    width:100%; height:80px; object-fit:cover; display:block;
     opacity:0; transition:opacity 0.4s ease;
   }
   #node-info-img.loaded { opacity:1; }
-  #node-info-name { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:30px; font-weight:700; letter-spacing:0.02em; color:#e8d89a; margin-bottom:8px; }
-  #node-info-domain { font-size:11px; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:20px; }
-  #node-info-desc { font-size:15px; line-height:1.75; color:rgba(215,205,185,0.88); letter-spacing:0.02em; margin-bottom:22px; }
-  #node-info-related-label { font-size:10px; letter-spacing:0.06em; text-transform:uppercase; color:rgba(160,150,130,0.6); margin-bottom:12px; }
+  #node-info-name { font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:20px; font-weight:700; letter-spacing:0.02em; color:#e8d89a; margin-bottom:4px; }
+  #node-info-domain { font-size:10px; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:12px; }
+  #node-info-desc { font-size:13px; line-height:1.6; color:rgba(215,205,185,0.88); letter-spacing:0.02em; margin-bottom:14px; }
+  #node-info-related-label { font-size:9px; letter-spacing:0.06em; text-transform:uppercase; color:rgba(160,150,130,0.6); margin-bottom:8px; }
   #node-info-related { display:flex; flex-wrap:wrap; gap:8px; }
   .related-chip {
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:11px; padding:5px 13px;
@@ -4202,7 +4202,7 @@ function focusSatellite() {
   satCamAnim = {
     startPos: camera.position.clone(),
     startLook: lookTarget.clone(),
-    targetPos: sPos.clone().add(dir.multiplyScalar(45)),
+    targetPos: sPos.clone().add(dir.multiplyScalar(20)),
     sPos,
     phase: 'zoomIn',
     t: 0,
@@ -4235,7 +4235,7 @@ function updateSatCam() {
     const raw = Math.min(sc.t / sc.frames, 1);
     const ease = 1 - Math.pow(1 - raw, 3);
     const dir = sc.startPos.clone().sub(sc.sPos).normalize();
-    const target = sc.sPos.clone().add(dir.multiplyScalar(45));
+    const target = sc.sPos.clone().add(dir.multiplyScalar(20));
     camera.position.lerpVectors(sc.startPos, target, ease);
     lookTarget.lerp(sc.sPos, 0.1);
     camera.lookAt(lookTarget);
@@ -4247,13 +4247,13 @@ function updateSatCam() {
     lookTarget.lerp(shipGroup.position, 0.06);
     camera.lookAt(lookTarget);
     const dir = camera.position.clone().sub(shipGroup.position).normalize();
-    const ideal = shipGroup.position.clone().add(dir.multiplyScalar(45));
+    const ideal = shipGroup.position.clone().add(dir.multiplyScalar(20));
     camera.position.lerp(ideal, 0.03);
 
     const sp = toScreen(shipGroup.position);
     const card = document.getElementById('sat-card');
-    card.style.left = Math.min(sp.x + 50, window.innerWidth - 300) + 'px';
-    card.style.top = Math.max(20, sp.y - 80) + 'px';
+    card.style.left = Math.max(10, sp.x - 130) + 'px';
+    card.style.top = Math.min(sp.y + 140, window.innerHeight - 160) + 'px';
     if (!card.classList.contains('visible')) card.classList.add('visible');
   }
 }
