@@ -4331,13 +4331,16 @@ function focusSatellite() {
   satCamDist = SAT_DEFAULT_DIST;
   const sPos = shipGroup.position.clone();
   const dir = camera.position.clone().sub(sPos).normalize();
+  const holdPos = sPos.clone().add(dir.clone().multiplyScalar(satCamDist));
   satCamAnim = {
     startPos: camera.position.clone(),
     startLook: lookTarget.clone(),
     sPos,
+    dir: dir.clone(),  // lock approach direction
+    holdPos,
     phase: 'zoomIn',
     t: 0,
-    frames: 120, // slow smooth zoom
+    frames: 90, // smooth zoom
   };
   // Populate card (don't show yet — wait for hold phase)
   document.getElementById('sat-card-name').textContent = shipData.satName;
@@ -4362,25 +4365,19 @@ function updateSatCam() {
   if (!satCamAnim || !shipGroup) return;
   const sc = satCamAnim;
   sc.t++;
-  // Track satellite live position (orbit is frozen but just in case)
-  sc.sPos.copy(shipGroup.position);
-
-  // Camera target: position satellite at center of screen (scroll-controlled distance)
-  const dir = sc.startPos.clone().sub(sc.sPos).normalize();
-  const holdPos = sc.sPos.clone().add(dir.multiplyScalar(satCamDist));
 
   if (sc.phase === 'zoomIn') {
+    // Update holdPos to track satellite but keep locked direction
+    sc.sPos.copy(shipGroup.position);
+    sc.holdPos.copy(sc.sPos).addScaledVector(sc.dir, satCamDist);
+
     const raw = Math.min(sc.t / sc.frames, 1);
-    // Slow ease-in-out for cinematic feel
-    const ease = raw < 0.5
-      ? 2 * raw * raw
-      : 1 - Math.pow(-2 * raw + 2, 2) / 2;
-    camera.position.lerpVectors(sc.startPos, holdPos, ease);
-    lookTarget.lerp(sc.sPos, 0.1);
+    const ease = 1 - Math.pow(1 - raw, 3); // cubic ease-out — no overshoot
+    camera.position.lerpVectors(sc.startPos, sc.holdPos, ease);
+    lookTarget.lerp(sc.sPos, 0.08);
     camera.lookAt(lookTarget);
     if (raw >= 1) {
       sc.phase = 'hold';
-      // Snap look target to satellite center for perfect centering
       lookTarget.copy(shipGroup.position);
       // Show hint text
       const hint = document.getElementById('sat-spin-hint');
