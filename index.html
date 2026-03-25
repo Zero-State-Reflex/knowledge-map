@@ -7116,7 +7116,7 @@ function generateAllTextures(callback) {
     // Special case: "Human Being" gets NASA Blue Marble Earth texture
     if (n.id === 'Human Being') {
       new THREE.TextureLoader().load(
-        'Assests/earth_blue_marble.jpg',
+        'Assests/earth_no_clouds.jpg',
         tex => { n.mesh.material.map = tex; n.mesh.material.needsUpdate = true; },
         undefined,
         err => console.warn('Earth texture failed:', err)
