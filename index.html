@@ -2749,31 +2749,36 @@ const atmFragShader = `
   }
 
   void main() {
-    // Base Fresnel rim — thicker at grazing angles (simulates ray depth through shell)
     float NdotV = dot(vNormal, vViewDir);
     float rim = 1.0 - abs(NdotV);
 
-    // Volumetric depth: approximate path length through a thin shell
-    // At grazing angles the ray passes through more atmosphere
-    float depth = pow(rim, 0.8) * 1.5;
+    // Smooth gaussian-like falloff instead of hard pow — eliminates banding
+    float softRim = smoothstep(0.0, 1.0, rim);
+    softRim = softRim * softRim; // extra smoothing
 
-    // Animated noise — slow swirling turbulence across the surface
+    // Volumetric depth with smooth fade
+    float depth = smoothstep(0.0, 1.0, pow(rim, 0.6)) * 1.2;
+
+    // Animated noise — slow swirling turbulence
     float t = uTime * 0.15;
     vec3 noiseCoord = vWorldPos * 0.025 + vec3(t * 0.3, t * 0.2, t * 0.1);
     float n1 = snoise(noiseCoord);
     float n2 = snoise(noiseCoord * 2.1 + vec3(5.2, 1.3, 3.7));
-    float turb = 0.7 + 0.3 * (n1 * 0.6 + n2 * 0.4); // 0.4 to 1.0 range
+    float turb = 0.7 + 0.3 * (n1 * 0.6 + n2 * 0.4);
 
-    // Combine: Fresnel envelope × volumetric depth × turbulence
-    float glow = pow(clamp(rim, 0.0, 1.0), uPower) * depth * turb;
+    // Soft outer edge fade — prevents hard geometric shell boundary
+    float edgeFade = smoothstep(1.0, 0.65, rim);
 
-    // Inner glow: slight brightness even when looking straight at it
-    float inner = (1.0 - rim) * 0.08 * turb;
+    // Combine with smoothstep envelope instead of pow
+    float glow = smoothstep(0.0, 1.0, pow(clamp(rim, 0.0, 1.0), uPower * 0.7)) * depth * turb;
 
-    float alpha = clamp((glow + inner) * uIntensity, 0.0, 1.0);
+    // Soft inner fill
+    float inner = (1.0 - rim) * 0.06 * turb;
 
-    // Color: slightly brighter at the rim edges
-    vec3 col = uColor + vec3(0.15, 0.1, 0.05) * rim;
+    float alpha = clamp((glow * edgeFade + inner) * uIntensity, 0.0, 1.0);
+
+    // Color: slightly warmer at edges
+    vec3 col = uColor + vec3(0.1, 0.07, 0.03) * softRim;
 
     gl_FragColor = vec4(col, alpha);
   }
@@ -2941,15 +2946,15 @@ nodes.forEach(n => {
     const ac = ATM_COLORS[pType] || [0.4, 0.5, 0.7];
     // 4 concentric shells: each larger and softer for a fuzzy real-atmosphere look
     const atmShells = [];
-    // 7 shells for smooth gradient — no visible banding
+    // 7 overlapping shells with soft shader edges — seamless gradient
     const shellLayers = [
-      { scale: 1.04, intensity: 0.35, power: 4.0 },
-      { scale: 1.08, intensity: 0.28, power: 3.2 },
-      { scale: 1.13, intensity: 0.20, power: 2.6 },
-      { scale: 1.19, intensity: 0.14, power: 2.1 },
-      { scale: 1.26, intensity: 0.09, power: 1.7 },
-      { scale: 1.35, intensity: 0.05, power: 1.3 },
-      { scale: 1.48, intensity: 0.02, power: 1.0 },
+      { scale: 1.03, intensity: 0.30, power: 3.5 },
+      { scale: 1.07, intensity: 0.24, power: 3.0 },
+      { scale: 1.12, intensity: 0.18, power: 2.5 },
+      { scale: 1.18, intensity: 0.13, power: 2.0 },
+      { scale: 1.25, intensity: 0.08, power: 1.6 },
+      { scale: 1.34, intensity: 0.04, power: 1.2 },
+      { scale: 1.46, intensity: 0.015, power: 0.9 },
     ];
     shellLayers.forEach(layer => {
       const shellMat = new THREE.ShaderMaterial({
@@ -5959,7 +5964,7 @@ function tickDim() {
     if (n.atmShells && n._targetShellDim !== undefined) {
       if (n._shellDim === undefined) n._shellDim = 1.0;
       n._shellDim += (n._targetShellDim - n._shellDim) * 0.08;
-      const baseIntensities = [0.35, 0.28, 0.20, 0.14, 0.09, 0.05, 0.02];
+      const baseIntensities = [0.30, 0.24, 0.18, 0.13, 0.08, 0.04, 0.015];
       n.atmShells.forEach((shell, i) => {
         shell.material.uniforms.uIntensity.value = (baseIntensities[i] || 0.02) * n._shellDim;
       });
