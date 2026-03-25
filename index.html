@@ -5978,6 +5978,9 @@ function focusNode(n) {
     resetDim();
     hideMoreInfoBtn();
     hideInfo();
+    document.getElementById('take-me-home-btn').classList.remove('visible');
+    document.getElementById('home-dialog').classList.remove('visible');
+    document.getElementById('home-pin').classList.remove('visible');
   }
   focusCamAnim = null;
   focusedNode  = n;
