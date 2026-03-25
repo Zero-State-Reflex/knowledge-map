@@ -4265,7 +4265,7 @@ function updateSatCam() {
       const hint = document.getElementById('sat-spin-hint');
       const sp = toScreen(shipGroup.position);
       hint.style.left = sp.x + 'px';
-      hint.style.top = (sp.y + 80) + 'px';
+      hint.style.top = (sp.y + 130) + 'px';
       hint.classList.add('visible');
       // Fade hint after 5 seconds
       _satHintTimer = setTimeout(() => {
@@ -4280,11 +4280,12 @@ function updateSatCam() {
     const ideal = shipGroup.position.clone().add(d.multiplyScalar(holdDist));
     camera.position.lerp(ideal, 0.03);
 
-    // Position card to the right of the satellite
+    // Position card to the right of the satellite with generous buffer
     const sp = toScreen(shipGroup.position);
+    const bufferX = 180; // keep this much clear space around the sat horizontally
     const card = document.getElementById('sat-card');
-    card.style.left = Math.min(sp.x + 120, window.innerWidth - 260) + 'px';
-    card.style.top = Math.max(20, sp.y - 60) + 'px';
+    card.style.left = Math.min(sp.x + bufferX, window.innerWidth - 270) + 'px';
+    card.style.top = Math.max(20, sp.y - 50) + 'px';
     if (!card.classList.contains('visible')) card.classList.add('visible');
   }
 }
@@ -5041,15 +5042,17 @@ const _dragQuat  = new THREE.Quaternion();       // temp quaternion per drag fra
 function startFocusCamAnim(nodePos) {
   camAnim = null;
   const dir      = camera.position.clone().sub(nodePos).normalize();
-  const holdPos  = nodePos.clone().add(dir.clone().multiplyScalar(200));  // final hold distance
+  const closePos = nodePos.clone().add(dir.clone().multiplyScalar(180));
+  const holdPos  = nodePos.clone().add(dir.clone().multiplyScalar(230));
   focusCamAnim = {
     startPos:  camera.position.clone(),
     startLook: lookTarget.clone(),
     nodePos:   nodePos.clone(),
-    holdPos,
-    phase: 'zoomIn',  // zoomIn → hold
+    closePos, holdPos,
+    phase: 'zoomIn',
     t: 0,
-    zoomFrames: 90,   // frames to zoom in (smooth single sweep)
+    zoomFrames: 75,
+    pullFrames: 55,
   };
 }
 
@@ -5868,9 +5871,11 @@ function focusNode(n) {
     buildShip();
     startKnowledgeRipple(n);
   }, 100);
+  // Show note card with leader line after zoom settles
   setTimeout(() => {
     if (focusedNode === n) {
-      showMoreInfoBtn(n);
+      const sp = getNodeScreenPos(n);
+      showInfo(n, sp.x, sp.y);
     }
   }, 2200);
 }
@@ -6974,19 +6979,30 @@ function animate() {
     if (focusedNode) {
       fc.nodePos.set(focusedNode.x, focusedNode.y, focusedNode.z);
       const dir = fc.startPos.clone().sub(fc.nodePos).normalize();
-      fc.holdPos.copy(fc.nodePos).addScaledVector(dir, 200);
+      fc.closePos.copy(fc.nodePos).addScaledVector(dir, 180);
+      fc.holdPos .copy(fc.nodePos).addScaledVector(dir, 230);
     }
 
     if (fc.phase === 'zoomIn') {
       const raw  = Math.min(fc.t / fc.zoomFrames, 1);
-      // Smooth ease-out for a single clean sweep — no pullback bounce
       const ease = 1 - Math.pow(1 - raw, 3);
-      camera.position.lerpVectors(fc.startPos, fc.holdPos, ease);
+      camera.position.lerpVectors(fc.startPos, fc.closePos, ease);
       lookTarget.lerp(fc.nodePos, 0.08);
       camera.lookAt(lookTarget);
       if (fc.t >= fc.zoomFrames) {
+        fc.phase     = 'pullBack';
+        fc.t         = 0;
+        fc.pullStart = camera.position.clone();
+      }
+
+    } else if (fc.phase === 'pullBack') {
+      const raw  = Math.min(fc.t / fc.pullFrames, 1);
+      const ease = 0.5 - 0.5 * Math.cos(raw * Math.PI);
+      camera.position.lerpVectors(fc.pullStart, fc.holdPos, ease);
+      lookTarget.lerp(fc.nodePos, 0.06);
+      camera.lookAt(lookTarget);
+      if (fc.t >= fc.pullFrames) {
         fc.phase = 'hold';
-        // Sync spherical coords so orbit system knows where we ended up
         const p = camera.position;
         camRadius = p.length();
         camPhi    = Math.acos(Math.max(-1, Math.min(1, p.y / camRadius)));
