@@ -986,6 +986,9 @@ const NODES_RAW = [
   ["Integral Theory",    "Consciousness & Fringe", 12],
   ["Transpersonal Psychology","Consciousness & Fringe",13],
   ["Chronobiology",      "Consciousness & Fringe", 11],
+
+  // ─── CENTER NODE — Human Being ──────────────────────────────
+  ["Human Being",        "Interdisciplinary", 28],
 ];
 
 const NODE_DESCRIPTIONS = {
@@ -1235,6 +1238,7 @@ const NODE_DESCRIPTIONS = {
   "Integral Theory": "Ken Wilber's framework synthesizing developmental psychology, spirituality, and systems theory into a unified worldview.",
   "Transpersonal Psychology": "Extends psychology beyond the personal self to include spiritual and transcendent aspects of human experience.",
   "Chronobiology": "Studies biological rhythms — circadian clocks, seasonal cycles — and how time is encoded in living systems.",
+  "Human Being": "The nexus of all knowledge — observer, creator, and subject. Every discipline on this map exists because a human mind dared to ask why.",
 };
 
 const EDGES_DEF = [
@@ -1474,6 +1478,13 @@ const EDGES_DEF = [
   ["Morphic Resonance","Biology"],["Morphic Resonance","Consciousness Studies"],
   ["Chronobiology","Biology"],["Chronobiology","Neuroscience"],["Chronobiology","Physics"],
   ["Anomalous Cognition","Psychology"],["Anomalous Cognition","Parapsychology"],
+
+  // ─── Human Being — connected to key nodes across all domains ──
+  ["Human Being","Philosophy"],["Human Being","Biology"],["Human Being","Psychology"],
+  ["Human Being","Mathematics"],["Human Being","Physics"],["Human Being","Medicine & Health (Med)"],
+  ["Human Being","Neuroscience"],["Human Being","Sociology"],["Human Being","Religion"],
+  ["Human Being","Arts & Culture"],["Human Being","Consciousness Studies"],["Human Being","Genetics"],
+  ["Human Being","Anthropology"],["Human Being","Music"],["Human Being","Language"],
 ];
 
 // ─── 3D DOMAIN CLUSTER CENTERS ─────────────────────────────────────────────
@@ -1511,6 +1522,14 @@ NODES_RAW.forEach(([name, domain, size]) => {
   });
 });
 const nodes = Array.from(nodeMap.values());
+
+// Pin "Human Being" at the center of the universe
+const humanNode = nodeMap.get('Human Being');
+if (humanNode) {
+  humanNode.x = 0; humanNode.y = 0; humanNode.z = 0;
+  humanNode.vx = 0; humanNode.vy = 0; humanNode.vz = 0;
+  humanNode._pinned = true; // flag to skip force sim
+}
 
 const links = [];
 EDGES_DEF.forEach(([a, b]) => {
@@ -4884,6 +4903,7 @@ function simTick() {
         delete n._hoverReleaseTime;
       }
     }
+    if (n._pinned) { n.vx = 0; n.vy = 0; n.vz = 0; continue; }
     n.vx *= decay; n.vy *= decay; n.vz *= decay;
     n.x += n.vx; n.y += n.vy; n.z += n.vz;
   }
@@ -5674,6 +5694,14 @@ function showInfo(n, screenX, screenY) {
   imgEl.src = '';
 
   const domainColor = DOMAINS[n.domain]?.color || '#c8b89a';
+
+  // Special case: Human Being gets Creation of Adam
+  if (n.id === 'Human Being') {
+    imgEl.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/5/5b/Michelangelo_-_Creation_of_Adam_%28cropped%29.jpg/1280px-Michelangelo_-_Creation_of_Adam_%28cropped%29.jpg';
+    imgEl.alt = 'The Creation of Adam — Michelangelo';
+    imgWrap.classList.add('visible');
+    imgEl.onload = () => imgEl.classList.add('loaded');
+  } else {
   fetchWikiImage(n.id).then(url => {
     if (focusedNode !== n) return;
     if (url) {
@@ -5693,6 +5721,7 @@ function showInfo(n, screenX, screenY) {
       imgEl.onload = () => imgEl.classList.add('loaded');
     }
   });
+  } // end else (non-Human Being)
 
   // Wikipedia link — encode spaces as underscores, standard WP convention
   const wikiSlug = encodeURIComponent(n.id.replace(/ /g, '_'));
@@ -6858,6 +6887,15 @@ function generateAllTextures(callback) {
       return;
     }
     const n = nodes[i++];
+    // Special case: "Human Being" gets NASA Blue Marble Earth texture
+    if (n.id === 'Human Being') {
+      new THREE.TextureLoader().load(
+        'https://eoimages.gsfc.nasa.gov/images/imagerecords/57000/57735/land_ocean_ice_cloud_2048.jpg',
+        tex => { n.mesh.material.map = tex; n.mesh.material.needsUpdate = true; }
+      );
+      setTimeout(next, 0);
+      return;
+    }
     const tex = makePlanetTexture(n.domain, n.id);
     n.mesh.material.map = tex;
     n.mesh.material.needsUpdate = true;
