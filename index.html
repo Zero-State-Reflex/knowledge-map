@@ -4313,10 +4313,15 @@ let satFocused = false;
 let satCamAnim = null;
 let satDragging = false;
 let _satHintTimer = null;
+let satCamDist = 12;        // current scroll-controlled distance to satellite
+const SAT_MIN_DIST = 4;     // closest zoom — fills the screen
+const SAT_DEFAULT_DIST = 12; // default hold distance
+const SAT_EXIT_DIST = 30;   // scroll past this → exit satellite view
 
 function focusSatellite() {
   if (satFocused || !shipGroup || !shipData) return;
   satFocused = true;
+  satCamDist = SAT_DEFAULT_DIST;
   const sPos = shipGroup.position.clone();
   const dir = camera.position.clone().sub(sPos).normalize();
   satCamAnim = {
@@ -4353,10 +4358,9 @@ function updateSatCam() {
   // Track satellite live position (orbit is frozen but just in case)
   sc.sPos.copy(shipGroup.position);
 
-  // Camera target: position satellite at center of screen
-  const holdDist = 12;
+  // Camera target: position satellite at center of screen (scroll-controlled distance)
   const dir = sc.startPos.clone().sub(sc.sPos).normalize();
-  const holdPos = sc.sPos.clone().add(dir.multiplyScalar(holdDist));
+  const holdPos = sc.sPos.clone().add(dir.multiplyScalar(satCamDist));
 
   if (sc.phase === 'zoomIn') {
     const raw = Math.min(sc.t / sc.frames, 1);
@@ -4387,8 +4391,8 @@ function updateSatCam() {
     lookTarget.copy(shipGroup.position);
     camera.lookAt(lookTarget);
     const d = camera.position.clone().sub(shipGroup.position).normalize();
-    const ideal = shipGroup.position.clone().add(d.multiplyScalar(holdDist));
-    camera.position.lerp(ideal, 0.05);
+    const ideal = shipGroup.position.clone().add(d.multiplyScalar(satCamDist));
+    camera.position.lerp(ideal, 0.08);
 
     // Position card to the right of the satellite with generous buffer
     const sp = toScreen(shipGroup.position);
@@ -5278,9 +5282,19 @@ canvas.addEventListener('pointermove', e => {
 });
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
-  camRadius *= 1 + e.deltaY * 0.0018;
-  camRadius = Math.max(180, Math.min(5000, camRadius));
-  setCamFromSpherical();
+  if (satFocused) {
+    // Scroll controls distance to satellite
+    satCamDist *= 1 + e.deltaY * 0.002;
+    if (satCamDist < SAT_MIN_DIST) satCamDist = SAT_MIN_DIST; // lock — can't go past filling screen
+    if (satCamDist > SAT_EXIT_DIST) {
+      // Scrolled far enough out — exit satellite view
+      unfocusSatellite();
+    }
+  } else {
+    camRadius *= 1 + e.deltaY * 0.0018;
+    camRadius = Math.max(180, Math.min(5000, camRadius));
+    setCamFromSpherical();
+  }
 }, { passive: false });
 
 // ─── HOVER ──────────────────────────────────────────────────────────────────
