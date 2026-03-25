@@ -7316,12 +7316,22 @@ function animate() {
 
   useBloom ? composer.render() : renderer.render(scene, camera);
   updateFocusLabelPos();
-  // Keep "Take Me Home" button below Earth
+  // Keep "Take Me Home" button centered under HOME label
   const _thmBtn = document.getElementById('take-me-home-btn');
   if (focusedNode && focusedNode.id === 'Human Being' && _thmBtn.classList.contains('visible')) {
-    const _esp = getNodeScreenPos(focusedNode);
-    _thmBtn.style.left = (_esp.x - 60) + 'px';
-    _thmBtn.style.top = (_esp.y + 70) + 'px';
+    const lblX = parseFloat(focusLabelEl.style.left) || 0;
+    const lblY = parseFloat(focusLabelEl.style.top) || 0;
+    const btnW = _thmBtn.offsetWidth;
+    _thmBtn.style.left = (lblX - btnW / 2) + 'px';
+    _thmBtn.style.top = (lblY + 30) + 'px';
+  }
+  // Fade HOME label as camera zooms closer to Earth
+  if (focusedNode && focusedNode.id === 'Human Being' && focusCamAnim) {
+    const dist = camera.position.distanceTo(new THREE.Vector3(focusedNode.x, focusedNode.y, focusedNode.z));
+    const fadeStart = 800, fadeEnd = 300;
+    const fade = Math.max(0, Math.min(1, (dist - fadeEnd) / (fadeStart - fadeEnd)));
+    focusLabelEl.style.opacity = fade.toFixed(3);
+    _thmBtn.style.opacity = fade.toFixed(3);
   }
   // Keep leader dot locked on node surface
   if (focusedNode && nodeInfoEl.classList.contains('visible')) {
