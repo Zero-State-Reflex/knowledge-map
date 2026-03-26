@@ -4360,8 +4360,13 @@ function updateShip() {
   // Fade in
   shipData.alpha += ((elapsed > 800 ? 1.0 : 0.0) - shipData.alpha) * 0.04;
 
-  // Freeze orbit when satellite is focused
-  if (!satFocused) shipData.angle += shipData.speed;
+  // When satellite is focused, freeze everything — no position or rotation updates
+  if (satFocused) {
+    shipGroup.rotation.y += 0.0015; // gentle spin only
+    return;
+  }
+
+  shipData.angle += shipData.speed;
 
   const cosI = Math.cos(shipData.incl), sinI = Math.sin(shipData.incl);
   const ox = Math.cos(shipData.angle) * shipData.orbitR;
@@ -4372,7 +4377,6 @@ function updateShip() {
   shipGroup.position.set(wx, wy, wz);
 
   // Satellite attitude — gentle oscillation with slow yaw drift
-  // Solar arrays roughly face the "sun" (positive Y direction as convention)
   shipGroup.rotation.y += 0.0015;
   shipGroup.rotation.x = Math.sin(now * 0.0003) * 0.08;
   shipGroup.rotation.z = Math.cos(now * 0.00025) * 0.05;
