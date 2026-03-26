@@ -3034,8 +3034,9 @@ nodes.forEach(n => {
   }
 });
 
-// ─── EDGE LINES ─────────────────────────────────────────────────────────────
-const edgePosArr = new Float32Array(links.length * 6);
+// ─── EDGE LINES — organic curvilinear spider-web connections ─────────────────
+const EDGE_SEGS = 8; // segments per curve
+const edgePosArr = new Float32Array(links.length * EDGE_SEGS * 2 * 3); // pairs of points for LineSegments
 const edgeGeo = new THREE.BufferGeometry();
 const edgePosAttr = new THREE.BufferAttribute(edgePosArr, 3);
 edgePosAttr.usage = THREE.DynamicDrawUsage;
@@ -3045,6 +3046,22 @@ const edgeMat = new THREE.LineBasicMaterial({
 });
 const edgeLines = new THREE.LineSegments(edgeGeo, edgeMat);
 scene.add(edgeLines);
+
+// Pre-generate random organic offsets per link (2 control points each)
+// These stay fixed so the web shape is consistent
+const _edgeOffsets = links.map((l, i) => {
+  let _s = i * 7919 + 31;
+  const r = () => { _s = (_s * 16807 + 1) & 0x7fffffff; return _s / 0x7fffffff; };
+  // Two perpendicular offset vectors with random magnitude for organic feel
+  return {
+    // Control point 1 (at ~33% along the line)
+    ox1: (r() - 0.5) * 2, oy1: (r() - 0.5) * 2, oz1: (r() - 0.5) * 2,
+    mag1: 15 + r() * 35, // offset magnitude — varies the curve amount
+    // Control point 2 (at ~66% along the line)
+    ox2: (r() - 0.5) * 2, oy2: (r() - 0.5) * 2, oz2: (r() - 0.5) * 2,
+    mag2: 15 + r() * 35,
+  };
+});
 
 // ─── TRAVELING PULSE SYSTEM ──────────────────────────────────────────────────
 // A bright line segment slides along each connector edge — no floating orbs.
@@ -5122,10 +5139,34 @@ function updateScene() {
   updateComet();
   updateAurora();
   updateLensFlare();
+  // Update organic curved edges — cubic bezier per link
   let idx = 0;
-  for (const l of links) {
-    edgePosArr[idx++] = l.source.x; edgePosArr[idx++] = l.source.y; edgePosArr[idx++] = l.source.z;
-    edgePosArr[idx++] = l.target.x; edgePosArr[idx++] = l.target.y; edgePosArr[idx++] = l.target.z;
+  for (let li = 0; li < links.length; li++) {
+    const l = links[li];
+    const sx = l.source.x, sy = l.source.y, sz = l.source.z;
+    const tx = l.target.x, ty = l.target.y, tz = l.target.z;
+    const off = _edgeOffsets[li];
+    // Control points offset from the midline
+    const c1x = sx + (tx - sx) * 0.33 + off.ox1 * off.mag1;
+    const c1y = sy + (ty - sy) * 0.33 + off.oy1 * off.mag1;
+    const c1z = sz + (tz - sz) * 0.33 + off.oz1 * off.mag1;
+    const c2x = sx + (tx - sx) * 0.66 + off.ox2 * off.mag2;
+    const c2y = sy + (ty - sy) * 0.66 + off.oy2 * off.mag2;
+    const c2z = sz + (tz - sz) * 0.66 + off.oz2 * off.mag2;
+    // Generate bezier segments as LineSegments pairs
+    let prevX = sx, prevY = sy, prevZ = sz;
+    for (let s = 1; s <= EDGE_SEGS; s++) {
+      const t = s / EDGE_SEGS;
+      const u = 1 - t;
+      // Cubic bezier: B(t) = (1-t)³P0 + 3(1-t)²tP1 + 3(1-t)t²P2 + t³P3
+      const u2 = u * u, u3 = u2 * u, t2 = t * t, t3 = t2 * t;
+      const px = u3*sx + 3*u2*t*c1x + 3*u*t2*c2x + t3*tx;
+      const py = u3*sy + 3*u2*t*c1y + 3*u*t2*c2y + t3*ty;
+      const pz = u3*sz + 3*u2*t*c1z + 3*u*t2*c2z + t3*tz;
+      edgePosArr[idx++] = prevX; edgePosArr[idx++] = prevY; edgePosArr[idx++] = prevZ;
+      edgePosArr[idx++] = px;    edgePosArr[idx++] = py;    edgePosArr[idx++] = pz;
+      prevX = px; prevY = py; prevZ = pz;
+    }
   }
   edgeGeo.attributes.position.needsUpdate = true;
 
