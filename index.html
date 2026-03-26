@@ -156,7 +156,7 @@
   }
   #title {
     position:fixed; top:28px; left:50%; transform:translateX(-50%);
-    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:42px; font-weight:700;
+    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:38px; font-weight:700;
     letter-spacing:0.04em; color:rgba(232,216,154,0.82);
     text-transform:uppercase; z-index:100; pointer-events:none; white-space:nowrap;
     text-shadow:
@@ -415,14 +415,18 @@
   }
   #legend {
     position:fixed; bottom:24px; left:24px; z-index:100;
-    display:flex; flex-direction:column; gap:7px; max-height:80vh; overflow:hidden;
-    background:rgba(0,0,0,0.80); backdrop-filter:blur(2px);
-    padding:16px 18px; border-radius:10px;
+    display:flex; flex-direction:column; gap:5px; max-height:80vh; overflow:hidden;
+    background:transparent;
+    padding:0;
+    transform-origin: bottom left;
   }
   .legend-item {
-    display:flex; align-items:center; gap:9px; font-size:13px;
+    display:flex; align-items:center; gap:7px; font-size:12px;
     letter-spacing:0.08em; color:rgba(180,170,150,0.7); cursor:pointer;
     transition:color 0.2s;
+    transform: rotate(-45deg);
+    transform-origin: left center;
+    white-space:nowrap;
   }
   .legend-item:hover { color:rgba(220,210,190,0.95); }
   .legend-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
