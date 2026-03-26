@@ -189,7 +189,7 @@
     opacity:0; transition:opacity 0.35s ease;
     background:rgba(4,6,15,0.92); border:1px solid rgba(200,180,120,0.22);
     border-radius:10px; backdrop-filter:blur(10px);
-    position:fixed; z-index:120; pointer-events:auto;
+    position:fixed; z-index:200; pointer-events:auto;
   }
   #node-info.visible { opacity:1; }
   #node-info-drag {
@@ -419,7 +419,7 @@
   #node-info-wiki:hover { color:rgba(180,215,255,0.95); border-color:rgba(180,215,255,0.6); }
   #leader-svg {
     position:fixed; top:0; left:0; width:100%; height:100%;
-    pointer-events:none; z-index:115;
+    pointer-events:none; z-index:195;
   }
   #leader-line { stroke:rgba(200,180,120,0.45); stroke-width:1.2; fill:none; stroke-dasharray:4 3; }
   #leader-dot  { fill:rgba(232,216,154,0.9); }
@@ -3792,7 +3792,16 @@ function updateMoons() {
 
     m.label.style.left    = sp.x + 'px';
     m.label.style.top     = (sp.y + m.mSize + 8) + 'px';
-    m.label.style.opacity = vis ? (m.moonAlpha * 0.9).toFixed(3) : '0';
+    // Hide if behind note card
+    let behindCard = false;
+    if (nodeInfoEl.classList.contains('visible')) {
+      const cr = nodeInfoEl.getBoundingClientRect();
+      const lx = sp.x, ly = sp.y + m.mSize + 8;
+      if (lx > cr.left - 10 && lx < cr.right + 10 && ly > cr.top - 10 && ly < cr.bottom + 10) {
+        behindCard = true;
+      }
+    }
+    m.label.style.opacity = (vis && !behindCard) ? (m.moonAlpha * 0.9).toFixed(3) : '0';
   });
 }
 
