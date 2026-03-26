@@ -5140,7 +5140,7 @@ function updateScene() {
 
 // ─── CAMERA / ORBIT ─────────────────────────────────────────────────────────
 const CAM_HOME_RADIUS = 1600;
-let camTheta = 0.5, camPhi = 1.25, camRadius = 5000; // start zoomed out
+let camTheta = 0.3, camPhi = 1.3, camRadius = 250; // start close to Earth at center
 const lookTarget = new THREE.Vector3();
 let isDragging = false, prevX = 0, prevY = 0, mouseDownX = 0, mouseDownY = 0;
 let autoRotate = true;
@@ -7186,29 +7186,32 @@ function onTexturesReady() {
   const ls = document.getElementById('loading-screen');
   const welcome = document.getElementById('welcome-overlay');
 
-  // Fade out loading screen
+  // Fade out loading screen — Earth is already filling the view
   if (ls) { ls.classList.add('hidden'); setTimeout(() => ls.remove(), 900); }
 
-  // Show welcome text after loading screen fades + emit a pulse wave from center
+  // Show welcome text over the Earth close-up
   setTimeout(() => {
     if (welcome) welcome.classList.add('visible');
-    // Fire a ripple from the most connected node (center of knowledge)
-    const centerNode = nodes.slice().sort((a, b) =>
-      (neighborMap.get(b.id) || []).length - (neighborMap.get(a.id) || []).length
-    )[0];
-    if (centerNode) startKnowledgeRipple(centerNode);
   }, 600);
 
-  // Fade out welcome text after 3 seconds, then start intro zoom
+  // Fade out welcome text, then zoom out from Earth to reveal the full map
   setTimeout(() => {
     if (welcome) {
       welcome.classList.remove('visible');
       welcome.classList.add('hidden');
       setTimeout(() => welcome.remove(), 1600);
     }
-    // Start intro zoom
-    _introZoom = { startRadius: 5000, endRadius: CAM_HOME_RADIUS, t: 0, frames: 120 };
-  }, 4000);
+    // Zoom out from Earth close-up to standard overview
+    _introZoom = { startRadius: 250, endRadius: CAM_HOME_RADIUS, t: 0, frames: 180 };
+  }, 3500);
+
+  // Fire ripple after zoom-out reaches the map — timed to when planets become visible
+  setTimeout(() => {
+    const centerNode = nodes.slice().sort((a, b) =>
+      (neighborMap.get(b.id) || []).length - (neighborMap.get(a.id) || []).length
+    )[0];
+    if (centerNode) startKnowledgeRipple(centerNode);
+  }, 5500);
 }
 
 // Start generating textures immediately (behind loading screen)
