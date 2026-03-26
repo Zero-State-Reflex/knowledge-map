@@ -95,6 +95,15 @@
     font-size:11px; letter-spacing:0.12em; text-transform:uppercase;
     color:rgba(200,180,120,0.45);
   }
+  .progress-bar-wrap {
+    width:200px; height:3px; margin-top:14px;
+    background:rgba(200,180,120,0.1); border-radius:2px; overflow:hidden;
+  }
+  .progress-bar-fill {
+    height:100%; width:0%; border-radius:2px;
+    background:linear-gradient(90deg, rgba(200,180,120,0.3), rgba(232,216,154,0.6));
+    transition: width 0.15s ease;
+  }
   #welcome-overlay {
     position:fixed; inset:0; z-index:9999;
     display:flex; align-items:center; justify-content:center;
@@ -669,7 +678,8 @@
     <div class="atom-orbit"><div class="atom-electron"></div></div>
     <div class="atom-orbit"><div class="atom-electron"></div></div>
   </div>
-  <div class="loading-label">Initializing</div>
+  <div class="loading-label" id="loading-label">Initializing</div>
+  <div class="progress-bar-wrap"><div class="progress-bar-fill" id="progress-bar"></div></div>
 </div>
 <div id="welcome-overlay"><div id="welcome-text">Welcome to the Map of Human Knowledge</div></div>
 <canvas id="c"></canvas>
@@ -1648,6 +1658,12 @@ renderer.toneMappingExposure = 0.9;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 12000);
+
+// ─── SHARED GLTF/DRACO LOADER (singleton — reused everywhere) ────────────────
+const _sharedDraco = new THREE.DRACOLoader();
+_sharedDraco.setDecoderPath('https://unpkg.com/three@0.128.0/examples/js/libs/draco/gltf/');
+const _sharedGLTF = new THREE.GLTFLoader();
+_sharedGLTF.setDRACOLoader(_sharedDraco);
 
 // ─── BLOOM POST-PROCESSING ───────────────────────────────────────────────────
 const composer = new THREE.EffectComposer(renderer);
@@ -3935,12 +3951,8 @@ function buildShip() {
 
   shipGroup = new THREE.Group();
 
-  // Load NASA GLB model
-  const dracoLoader = new THREE.DRACOLoader();
-  dracoLoader.setDecoderPath('https://unpkg.com/three@0.128.0/examples/js/libs/draco/gltf/');
-  const loader = new THREE.GLTFLoader();
-  loader.setDRACOLoader(dracoLoader);
-  loader.load(sat.file, (gltf) => {
+  // Load NASA GLB model (shared loader)
+  _sharedGLTF.load(sat.file, (gltf) => {
     const model = gltf.scene;
     const box = new THREE.Box3().setFromObject(model);
     const size = box.getSize(new THREE.Vector3());
@@ -4449,12 +4461,12 @@ function updateSatCam() {
       lookTarget.copy(shipGroup.position);
     }
   } else {
-    // Hold — lock camera centered on satellite
-    lookTarget.copy(shipGroup.position);
+    // Hold — lock camera using the original locked direction (no rubber-banding)
+    sc.sPos.copy(shipGroup.position);
+    const ideal = sc.sPos.clone().addScaledVector(sc.dir, satCamDist);
+    camera.position.lerp(ideal, 0.06);
+    lookTarget.lerp(sc.sPos, 0.06);
     camera.lookAt(lookTarget);
-    const d = camera.position.clone().sub(shipGroup.position).normalize();
-    const ideal = shipGroup.position.clone().add(d.multiplyScalar(satCamDist));
-    camera.position.lerp(ideal, 0.08);
 
     // Position card to the right of the satellite with generous buffer
     const sp = toScreen(shipGroup.position);
@@ -4474,12 +4486,8 @@ let voyagerHitbox = null;
 function buildVoyager() {
   voyagerGroup = new THREE.Group();
 
-  // ── Load NASA's official Voyager GLB model (Draco-compressed) ──
-  const dracoLoader = new THREE.DRACOLoader();
-  dracoLoader.setDecoderPath('https://unpkg.com/three@0.128.0/examples/js/libs/draco/gltf/');
-  const loader = new THREE.GLTFLoader();
-  loader.setDRACOLoader(dracoLoader);
-  loader.load('Assests/voyager.glb', (gltf) => {
+  // ── Load NASA's official Voyager GLB model (shared loader) ──
+  _sharedGLTF.load('Assests/voyager.glb', (gltf) => {
     const model = gltf.scene;
     // Auto-scale: measure bounding box, normalize to ~10 units wide
     const box = new THREE.Box3().setFromObject(model);
@@ -4765,7 +4773,7 @@ function updateComet() {
   d.ionGeo.attributes.position.needsUpdate = true;
 }
 
-buildComet();
+// Comet and Voyager deferred to onTexturesReady for smooth init
 
 // ─── VOYAGER ZOOM — click to inspect the probe up close ──────────────────────
 let voyagerFocused = false;
@@ -4943,8 +4951,7 @@ function updateVoyager() {
   });
 }
 
-// Build Voyager once on load (after nodes are positioned)
-setTimeout(buildVoyager, 2000);
+// Voyager and Comet are now built in onTexturesReady for smooth loading
 
 // ─── LEGEND ─────────────────────────────────────────────────────────────────
 const legendEl = document.getElementById('legend');
@@ -7236,10 +7243,12 @@ function generateAllTextures(callback) {
     const tex = makePlanetTexture(n.domain, n.id);
     n.mesh.material.map = tex;
     n.mesh.material.needsUpdate = true;
-    // Update loading label with progress
+    // Update loading label and progress bar
     const pct = Math.round((i / nodes.length) * 100);
-    const label = document.querySelector('.loading-label');
+    const label = document.getElementById('loading-label');
+    const bar = document.getElementById('progress-bar');
     if (label) label.textContent = `Initializing ${pct}%`;
+    if (bar) bar.style.width = pct + '%';
     setTimeout(next, 0);
   }
   setTimeout(next, 0);
@@ -7268,13 +7277,17 @@ function onTexturesReady() {
     _introZoom = { startRadius: 250, endRadius: CAM_HOME_RADIUS, t: 0, frames: 180 };
   }, 3500);
 
-  // Fire ripple after zoom-out reaches the map — timed to when planets become visible
+  // Fire ripple after zoom-out reaches the map
   setTimeout(() => {
     const centerNode = nodes.slice().sort((a, b) =>
       (neighborMap.get(b.id) || []).length - (neighborMap.get(a.id) || []).length
     )[0];
     if (centerNode) startKnowledgeRipple(centerNode);
   }, 5500);
+
+  // Deferred builds — stagger to avoid frame spike
+  setTimeout(buildComet, 1000);
+  setTimeout(buildVoyager, 2500);
 }
 
 // Start generating textures immediately (behind loading screen)
