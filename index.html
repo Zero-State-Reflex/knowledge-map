@@ -300,25 +300,34 @@
   #more-info-btn:hover { background:rgba(200,180,120,0.2); color:#e8d89a; }
   #sat-card {
     position:fixed; z-index:200; pointer-events:auto;
-    background: rgba(8,12,20,0.88); border:1px solid rgba(180,160,120,0.3);
-    border-radius:10px; padding:16px 20px; color:#ddd8cc;
+    background:rgba(4,6,15,0.92); border:1px solid rgba(200,180,120,0.22);
+    border-radius:10px; padding:18px 20px 20px;
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    opacity:0; transition:opacity 0.35s ease; pointer-events:none;
+    max-width:300px; width:300px;
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
-    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
-    opacity:0; transition: opacity 0.5s; pointer-events:none;
-    min-width:200px; max-width:280px;
-    box-shadow: 0 0 30px rgba(180,160,120,0.1);
+    color:#ddd8cc;
   }
   #sat-card.visible { opacity:1; pointer-events:auto; }
-  #sat-card h3 { margin:0 0 4px; font-size:15px; letter-spacing:0.04em; color:#f0e8d0; }
-  #sat-card .sat-launched { margin:0 0 8px; font-size:10px; color:#998866; text-transform:uppercase; letter-spacing:0.06em; }
-  #sat-card .sat-mission { margin:0 0 12px; font-size:11px; color:#aaa598; line-height:1.4; }
-  #sat-card a {
-    display:inline-block; padding:7px 16px; background:rgba(180,160,120,0.15);
-    border:1px solid rgba(180,160,120,0.35); border-radius:6px;
-    color:#d4c8a0; text-decoration:none; font-size:11px; letter-spacing:0.04em;
-    transition: background 0.2s, border-color 0.2s;
+  #sat-card-img-wrap {
+    width:100%; height:80px; overflow:hidden; border-radius:6px;
+    margin-bottom:10px; background:rgba(255,255,255,0.03);
   }
-  #sat-card a:hover { background:rgba(180,160,120,0.3); border-color:rgba(180,160,120,0.6); }
+  #sat-card-img {
+    width:100%; height:80px; object-fit:cover; display:block;
+    opacity:0; transition:opacity 0.4s ease;
+  }
+  #sat-card-img.loaded { opacity:1; }
+  #sat-card h3 { font-size:20px; font-weight:700; letter-spacing:0.02em; color:#e8d89a; margin:0 0 4px; }
+  #sat-card .sat-launched { font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:rgba(160,150,130,0.6); margin:0 0 12px; }
+  #sat-card .sat-mission { font-size:13px; line-height:1.6; color:rgba(215,205,185,0.88); letter-spacing:0.02em; margin:0 0 14px; }
+  #sat-card a {
+    display:inline-block; margin-bottom:4px;
+    font-size:11px; letter-spacing:0.08em; text-transform:uppercase;
+    color:rgba(140,180,220,0.75); text-decoration:none;
+    transition: color 0.2s;
+  }
+  #sat-card a:hover { color:rgba(180,210,240,1); }
   #take-me-home-btn {
     position:fixed; z-index:210; pointer-events:auto; cursor:pointer;
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
@@ -679,10 +688,11 @@
 <div id="home-pin"></div>
 <div id="sat-spin-hint">Click and Drag to Spin the Satellite</div>
 <div id="sat-card">
+  <div id="sat-card-img-wrap"><img id="sat-card-img" src="" alt=""></div>
   <h3 id="sat-card-name"></h3>
   <div class="sat-launched" id="sat-card-launched"></div>
   <div class="sat-mission" id="sat-card-mission"></div>
-  <a id="sat-card-link" href="#" target="_blank">Learn more &rarr;</a>
+  <a id="sat-card-link" href="#" target="_blank">↗ Wikipedia</a>
 </div>
 <div id="voyager-card">
   <h3>VOYAGER 1</h3>
@@ -4389,7 +4399,23 @@ function focusSatellite() {
   document.getElementById('sat-card-launched').textContent = 'Launched ' + shipData.satLaunched;
   document.getElementById('sat-card-mission').textContent = shipData.satMission;
   document.getElementById('sat-card-link').href = shipData.satUrl;
-  // Show spin hint after zoom completes
+  document.getElementById('sat-card-link').textContent = '↗ Wikipedia: ' + shipData.satName;
+  // Fetch Wikipedia thumbnail for satellite image
+  const satImg = document.getElementById('sat-card-img');
+  satImg.classList.remove('loaded');
+  satImg.src = '';
+  const satSlug = shipData.satUrl.split('/wiki/')[1] || '';
+  if (satSlug) {
+    fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${satSlug}`)
+      .then(r => r.json())
+      .then(d => {
+        if (d.thumbnail && d.thumbnail.source) {
+          satImg.src = d.thumbnail.source;
+          satImg.alt = shipData.satName;
+          satImg.onload = () => satImg.classList.add('loaded');
+        }
+      }).catch(() => {});
+  }
   if (_satHintTimer) clearTimeout(_satHintTimer);
 }
 
@@ -4421,16 +4447,6 @@ function updateSatCam() {
     if (raw >= 1) {
       sc.phase = 'hold';
       lookTarget.copy(shipGroup.position);
-      // Show hint text
-      const hint = document.getElementById('sat-spin-hint');
-      const sp = toScreen(shipGroup.position);
-      hint.style.left = sp.x + 'px';
-      hint.style.top = (sp.y + 130) + 'px';
-      hint.classList.add('visible');
-      // Fade hint after 5 seconds
-      _satHintTimer = setTimeout(() => {
-        hint.classList.remove('visible');
-      }, 5000);
     }
   } else {
     // Hold — lock camera centered on satellite
@@ -5411,7 +5427,9 @@ function doHover(e) {
       specialHovered = true;
       canvas.style.cursor = 'pointer';
       if (!satFocused) {
-        hoverLabelEl.textContent = (shipData?.satName || 'Satellite') + ' — Click to inspect';
+        hoverLabelEl.textContent = (shipData?.satName || 'Satellite');
+      } else {
+        specialHovered = false; // don't show hover label when focused
       }
       const sp = toScreen(shipGroup.position);
       hoverLabelEl.style.left = sp.x + 'px';
