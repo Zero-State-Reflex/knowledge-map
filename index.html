@@ -4456,25 +4456,25 @@ function updateSatCam() {
   sc.t++;
 
   if (sc.phase === 'zoomIn') {
-    // Update holdPos to track satellite but keep locked direction
-    sc.sPos.copy(shipGroup.position);
-    sc.holdPos.copy(sc.sPos).addScaledVector(sc.dir, satCamDist);
-
+    // Do NOT update holdPos during zoom — target is fixed from first frame
+    // This prevents rubber-banding from planet force-sim drift
     const raw = Math.min(sc.t / sc.frames, 1);
-    const ease = 1 - Math.pow(1 - raw, 3); // cubic ease-out — no overshoot
+    const ease = 1 - Math.pow(1 - raw, 3);
     camera.position.lerpVectors(sc.startPos, sc.holdPos, ease);
+    // Look target lerps toward the fixed satellite position
     lookTarget.lerp(sc.sPos, 0.08);
     camera.lookAt(lookTarget);
     if (raw >= 1) {
       sc.phase = 'hold';
+      // Now snap to the satellite's actual live position
       lookTarget.copy(shipGroup.position);
+      sc.dir.copy(camera.position).sub(shipGroup.position).normalize();
     }
   } else {
-    // Hold — lock camera using the original locked direction (no rubber-banding)
-    sc.sPos.copy(shipGroup.position);
-    const ideal = sc.sPos.clone().addScaledVector(sc.dir, satCamDist);
-    camera.position.lerp(ideal, 0.06);
-    lookTarget.lerp(sc.sPos, 0.06);
+    // Hold — use direction locked at end of zoom, track live satellite
+    const ideal = shipGroup.position.clone().addScaledVector(sc.dir, satCamDist);
+    camera.position.lerp(ideal, 0.05);
+    lookTarget.lerp(shipGroup.position, 0.05);
     camera.lookAt(lookTarget);
 
     // Position card to the right of the satellite with generous buffer
