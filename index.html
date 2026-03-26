@@ -2910,7 +2910,7 @@ nodes.forEach(n => {
         uColor:   { value: new THREE.Vector3(cloudColor.r, cloudColor.g, cloudColor.b) },
         uTime:    { value: 0.0 },
         uSeed:    { value: n.id.charCodeAt(0) * 1.7 + n.id.charCodeAt(n.id.length-1) * 0.3 },
-        uOpacity: { value: 0.25 },
+        uOpacity: { value: n.id === 'Human Being' ? 0.08 : 0.25 },
       },
       transparent: true,
       depthWrite: false,
