@@ -4592,7 +4592,7 @@ function buildVoyager() {
     waypoints,
     wpIdx: 0,
     progress: 0,
-    speed: 2.6,        // units per frame — cruising fast
+    speed: 1.2,        // units per frame — gentle cruise
     label,
     glowMat,
     // Trail history
@@ -7289,21 +7289,73 @@ function onTexturesReady() {
   // Fade out loading screen — Earth is already filling the view
   if (ls) { ls.classList.add('hidden'); setTimeout(() => ls.remove(), 900); }
 
-  // Show welcome text over the Earth close-up
-  setTimeout(() => {
-    if (welcome) welcome.classList.add('visible');
-  }, 600);
+  // ── 3D text wrapped around Earth ─────────────────────────────────────────
+  // Render text onto a canvas texture mapped to a sphere around Earth
+  const welcomeText = 'Welcome to the Map of Human Knowledge';
+  const txtCanvas = document.createElement('canvas');
+  txtCanvas.width = 2048; txtCanvas.height = 512;
+  const tCtx = txtCanvas.getContext('2d');
+  tCtx.clearRect(0, 0, 2048, 512);
+  // Draw text centered on the equator band
+  tCtx.font = '700 72px "Helvetica Neue", Helvetica, Arial, sans-serif';
+  tCtx.textAlign = 'center';
+  tCtx.textBaseline = 'middle';
+  tCtx.letterSpacing = '4px';
+  // Glow layers
+  tCtx.shadowColor = 'rgba(232,216,154,0.5)';
+  tCtx.shadowBlur = 30;
+  tCtx.fillStyle = 'rgba(232,216,154,0.9)';
+  tCtx.fillText(welcomeText.toUpperCase(), 1024, 256);
+  // Second pass for sharper text on top of glow
+  tCtx.shadowBlur = 0;
+  tCtx.fillStyle = 'rgba(245,235,210,0.95)';
+  tCtx.fillText(welcomeText.toUpperCase(), 1024, 256);
 
-  // Fade out welcome text, then zoom out from Earth to reveal the full map
-  setTimeout(() => {
-    if (welcome) {
-      welcome.classList.remove('visible');
-      welcome.classList.add('hidden');
-      setTimeout(() => welcome.remove(), 1600);
+  const txtTex = new THREE.CanvasTexture(txtCanvas);
+  const earthNode = nodeMap.get('Human Being');
+  const txtR = earthNode ? earthNode.size * 2.2 * 1.06 : 82;
+  const txtGeo = new THREE.SphereGeometry(txtR, 64, 32);
+  const txtMat = new THREE.MeshBasicMaterial({
+    map: txtTex,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+    side: THREE.FrontSide,
+  });
+  const txtSphere = new THREE.Mesh(txtGeo, txtMat);
+  if (earthNode) txtSphere.position.set(earthNode.x, earthNode.y, earthNode.z);
+  scene.add(txtSphere);
+
+  // Hide the 2D HTML welcome overlay — we're using the 3D version now
+  if (welcome) welcome.style.display = 'none';
+
+  // Fade in the 3D text, slowly rotate, then fade out
+  let _welcomeT = 0;
+  const _welcomeAnim = () => {
+    _welcomeT++;
+    txtSphere.rotation.y += 0.002; // slow rotation around Earth
+
+    if (_welcomeT < 40) {
+      // Fade in (0→1 over ~40 frames)
+      txtMat.opacity = Math.min(1, _welcomeT / 40);
+    } else if (_welcomeT < 180) {
+      // Hold visible
+      txtMat.opacity = 1;
+    } else if (_welcomeT < 260) {
+      // Fade out
+      txtMat.opacity = Math.max(0, 1 - (_welcomeT - 180) / 80);
+    } else {
+      // Done — clean up
+      scene.remove(txtSphere);
+      txtGeo.dispose(); txtMat.dispose(); txtTex.dispose();
+      window._welcomeTextTick = null;
+      // Start zoom out
+      _introZoom = { startRadius: 250, endRadius: CAM_HOME_RADIUS, t: 0, frames: 180 };
+      return;
     }
-    // Zoom out from Earth close-up to standard overview
-    _introZoom = { startRadius: 250, endRadius: CAM_HOME_RADIUS, t: 0, frames: 180 };
-  }, 3500);
+  };
+  // Start after loading screen fades
+  setTimeout(() => { window._welcomeTextTick = _welcomeAnim; }, 600);
 
   // Fire ripple after zoom-out reaches the map
   setTimeout(() => {
@@ -7347,6 +7399,7 @@ function animate() {
   }
 
   if (window._starTwinkle) window._starTwinkle();
+  if (window._welcomeTextTick) window._welcomeTextTick();
   if (window._bhTick) window._bhTick();
   if (window._lensingTick) window._lensingTick();
 
