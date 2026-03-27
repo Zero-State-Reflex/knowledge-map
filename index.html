@@ -7297,7 +7297,7 @@ function onTexturesReady() {
   const tCtx = txtCanvas.getContext('2d');
   tCtx.clearRect(0, 0, 2048, 512);
   // Draw text centered on the equator band
-  tCtx.font = '700 72px "Helvetica Neue", Helvetica, Arial, sans-serif';
+  tCtx.font = '700 38px "Helvetica Neue", Helvetica, Arial, sans-serif';
   tCtx.textAlign = 'center';
   tCtx.textBaseline = 'middle';
   tCtx.letterSpacing = '4px';
@@ -7313,7 +7313,7 @@ function onTexturesReady() {
 
   const txtTex = new THREE.CanvasTexture(txtCanvas);
   const earthNode = nodeMap.get('Human Being');
-  const txtR = earthNode ? earthNode.size * 2.2 * 1.06 : 82;
+  const txtR = earthNode ? earthNode.size * 2.2 * 1.55 : 120; // float well above surface
   const txtGeo = new THREE.SphereGeometry(txtR, 64, 32);
   const txtMat = new THREE.MeshBasicMaterial({
     map: txtTex,
