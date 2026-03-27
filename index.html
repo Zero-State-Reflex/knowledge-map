@@ -6743,43 +6743,56 @@ function playChime(domain) {
   const root = DOMAIN_FREQS[domain] || 65.41;
   const now  = audioCtx.currentTime;
 
-  // Soft tone: pure harmonic series, sine waves only, slow swell
-  // Ratios 1× 2× 3× give a warm organ/pad quality — no inharmonic bell clang
-  const partials = [1, 2, 3, 4];
-  const amps     = [1.0, 0.28, 0.10, 0.04];
-  const attackT  = 0.35;   // slow soft attack
-  const holdT    = 1.0;
-  const decayT   = 4.5;
+  // 3-octave ascending arpeggio — root, +1 oct, +2 oct
+  // Each octave staggers in with a soft delay for a cascading shimmer
+  const octaves = [
+    { freq: root,     delay: 0,    amp: 0.14, decay: 5.0 },   // octave 1 — deepest, longest
+    { freq: root * 2, delay: 0.25, amp: 0.10, decay: 4.0 },   // octave 2 — mid
+    { freq: root * 4, delay: 0.50, amp: 0.06, decay: 3.0 },   // octave 3 — highest, shortest
+  ];
 
-  partials.forEach((ratio, i) => {
+  octaves.forEach(oct => {
+    const t = now + oct.delay;
+    const attackT = 0.3;
+    const holdT   = 0.8;
+
+    // Main tone
     const osc = audioCtx.createOscillator();
-    osc.type  = 'sine';
-    osc.frequency.value = root * ratio;
+    osc.type = 'sine';
+    osc.frequency.value = oct.freq;
 
-    // Slight vibrato on fundamental for warmth
-    if (i === 0) {
-      const vib = audioCtx.createOscillator();
-      vib.frequency.value = 4.5;
-      const vibGain = audioCtx.createGain();
-      vibGain.gain.value = root * 0.003;
-      vib.connect(vibGain);
-      vibGain.connect(osc.frequency);
-      vib.start(now);
-      vib.stop(now + attackT + holdT + decayT);
-    }
+    // Soft harmonic (fifth above) for richness
+    const osc2 = audioCtx.createOscillator();
+    osc2.type = 'sine';
+    osc2.frequency.value = oct.freq * 1.5; // perfect fifth
+    const h2Gain = audioCtx.createGain();
+    h2Gain.gain.value = oct.amp * 0.15; // very quiet harmonic
+    osc2.connect(h2Gain);
 
-    const g  = audioCtx.createGain();
-    const pk = 0.15 * amps[i];
-    g.gain.setValueAtTime(0, now);
-    g.gain.linearRampToValueAtTime(pk, now + attackT);          // slow swell in
-    g.gain.linearRampToValueAtTime(pk * 0.85, now + attackT + holdT); // gentle hold
-    g.gain.linearRampToValueAtTime(0.0001, now + attackT + holdT + decayT); // long fade
+    // Gentle vibrato
+    const vib = audioCtx.createOscillator();
+    vib.frequency.value = 4.2;
+    const vibGain = audioCtx.createGain();
+    vibGain.gain.value = oct.freq * 0.003;
+    vib.connect(vibGain);
+    vibGain.connect(osc.frequency);
+
+    // Envelope
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(oct.amp, t + attackT);
+    g.gain.linearRampToValueAtTime(oct.amp * 0.7, t + attackT + holdT);
+    g.gain.linearRampToValueAtTime(0.0001, t + attackT + holdT + oct.decay);
 
     osc.connect(g);
+    h2Gain.connect(g);
     g.connect(audioCtx._reverb);
     g.connect(audioCtx._masterGain);
-    osc.start(now);
-    osc.stop(now + attackT + holdT + decayT + 0.2);
+
+    const endT = t + attackT + holdT + oct.decay + 0.2;
+    osc.start(t); osc.stop(endT);
+    osc2.start(t); osc2.stop(endT);
+    vib.start(t); vib.stop(endT);
   });
 }
 
