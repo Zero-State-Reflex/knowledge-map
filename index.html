@@ -6671,7 +6671,8 @@ function startAudio() {
 
   // ── Ambient pad layer ─────────────────────────────────────────────────────
   // Slow-evolving drone: stacked detuned sine oscillators
-  const padNotes = [65.41, 130.81, 196.00, 261.63, 329.63]; // C2 pentatonic
+  // Reversed pitch (high→low) and down one octave
+  const padNotes = [164.81, 130.81, 98.00, 65.41, 32.70]; // pentatonic descending, one octave lower
 
   padNotes.forEach((freq, idx) => {
     const count = 3;
@@ -6702,8 +6703,9 @@ function startAudio() {
   });
 
   // ── Slow melodic breath: random pentatonic notes fading in/out ────────────
-  const pentatonic = [130.81, 146.83, 164.81, 196.00, 220.00,
-                      261.63, 293.66, 329.63, 392.00, 440.00];
+  // Down one octave
+  const pentatonic = [65.41, 73.42, 82.41, 98.00, 110.00,
+                      130.81, 146.83, 164.81, 196.00, 220.00];
 
   function breathNote() {
     if (!audioCtx) return;
