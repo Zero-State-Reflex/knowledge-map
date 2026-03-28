@@ -3060,32 +3060,66 @@ nodes.forEach(n => {
   }
 });
 
-// ─── EDGE LINES — organic curvilinear spider-web connections ─────────────────
-const EDGE_SEGS = 8; // segments per curve
-const edgePosArr = new Float32Array(links.length * EDGE_SEGS * 2 * 3); // pairs of points for LineSegments
+// ─── EDGE TENDRILS — flowing energy along undulating organic curves ───────────
+const EDGE_SEGS = 16; // more segments for smooth undulation
+const TENDRIL_COUNT = 2; // strands per connection for organic depth
+// LineSegments: each segment = 2 verts, each tendril = EDGE_SEGS segments
+const edgeSegTotal = links.length * TENDRIL_COUNT * EDGE_SEGS;
+const edgePosArr = new Float32Array(edgeSegTotal * 2 * 3);
+const edgeAlphaArr = new Float32Array(edgeSegTotal * 2);
 const edgeGeo = new THREE.BufferGeometry();
 const edgePosAttr = new THREE.BufferAttribute(edgePosArr, 3);
 edgePosAttr.usage = THREE.DynamicDrawUsage;
+const edgeAlphaAttr = new THREE.BufferAttribute(edgeAlphaArr, 1);
+edgeAlphaAttr.usage = THREE.DynamicDrawUsage;
 edgeGeo.setAttribute('position', edgePosAttr);
-const edgeMat = new THREE.LineBasicMaterial({
-  color: 0xc8bea8, transparent: true, opacity: 0.28,
+edgeGeo.setAttribute('alpha', edgeAlphaAttr);
+
+const edgeMat = new THREE.ShaderMaterial({
+  vertexShader: `
+    attribute float alpha;
+    varying float vAlpha;
+    void main() {
+      vAlpha = alpha;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: `
+    uniform float uGlobalAlpha;
+    varying float vAlpha;
+    void main() {
+      vec3 col = vec3(0.78, 0.72, 0.62) + vec3(0.2, 0.15, 0.06) * vAlpha;
+      gl_FragColor = vec4(col, vAlpha * uGlobalAlpha);
+    }
+  `,
+  uniforms: {
+    uGlobalAlpha: { value: 0.35 },
+  },
+  transparent: true,
+  blending: THREE.AdditiveBlending,
+  depthWrite: false,
 });
 const edgeLines = new THREE.LineSegments(edgeGeo, edgeMat);
 scene.add(edgeLines);
 
-// Pre-generate random organic offsets per link (2 control points each)
-// These stay fixed so the web shape is consistent
+// Pre-generate random organic offsets per link
 const _edgeOffsets = links.map((l, i) => {
   let _s = i * 7919 + 31;
   const r = () => { _s = (_s * 16807 + 1) & 0x7fffffff; return _s / 0x7fffffff; };
-  // Two perpendicular offset vectors with random magnitude for organic feel
   return {
-    // Control point 1 (at ~33% along the line)
     ox1: (r() - 0.5) * 2, oy1: (r() - 0.5) * 2, oz1: (r() - 0.5) * 2,
-    mag1: 15 + r() * 35, // offset magnitude — varies the curve amount
-    // Control point 2 (at ~66% along the line)
+    mag1: 12 + r() * 28,
     ox2: (r() - 0.5) * 2, oy2: (r() - 0.5) * 2, oz2: (r() - 0.5) * 2,
-    mag2: 15 + r() * 35,
+    mag2: 12 + r() * 28,
+    // Per-tendril offsets for strand separation
+    drift1: (r() - 0.5) * 8, drift2: (r() - 0.5) * 8, drift3: (r() - 0.5) * 8,
+    // Unique phase for energy flow animation
+    phase: r() * Math.PI * 2,
+    speed: 0.8 + r() * 1.5,
+    // Undulation params
+    waveAmp: 2 + r() * 6,
+    waveFreq: 1.5 + r() * 3,
+    wavePhase: r() * Math.PI * 2,
   };
 });
 
@@ -5182,36 +5216,65 @@ function updateScene() {
   updateComet();
   updateAurora();
   updateLensFlare();
-  // Update organic curved edges — cubic bezier per link
-  let idx = 0;
+  // Update flowing energy tendrils — undulating bezier curves with alpha animation
+  const _eNow = performance.now() * 0.001;
+  let idx = 0, aIdx = 0;
   for (let li = 0; li < links.length; li++) {
     const l = links[li];
     const sx = l.source.x, sy = l.source.y, sz = l.source.z;
     const tx = l.target.x, ty = l.target.y, tz = l.target.z;
     const off = _edgeOffsets[li];
-    // Control points offset from the midline
-    const c1x = sx + (tx - sx) * 0.33 + off.ox1 * off.mag1;
-    const c1y = sy + (ty - sy) * 0.33 + off.oy1 * off.mag1;
-    const c1z = sz + (tz - sz) * 0.33 + off.oz1 * off.mag1;
-    const c2x = sx + (tx - sx) * 0.66 + off.ox2 * off.mag2;
-    const c2y = sy + (ty - sy) * 0.66 + off.oy2 * off.mag2;
-    const c2z = sz + (tz - sz) * 0.66 + off.oz2 * off.mag2;
-    // Generate bezier segments as LineSegments pairs
-    let prevX = sx, prevY = sy, prevZ = sz;
-    for (let s = 1; s <= EDGE_SEGS; s++) {
-      const t = s / EDGE_SEGS;
-      const u = 1 - t;
-      // Cubic bezier: B(t) = (1-t)³P0 + 3(1-t)²tP1 + 3(1-t)t²P2 + t³P3
-      const u2 = u * u, u3 = u2 * u, t2 = t * t, t3 = t2 * t;
-      const px = u3*sx + 3*u2*t*c1x + 3*u*t2*c2x + t3*tx;
-      const py = u3*sy + 3*u2*t*c1y + 3*u*t2*c2y + t3*ty;
-      const pz = u3*sz + 3*u2*t*c1z + 3*u*t2*c2z + t3*tz;
-      edgePosArr[idx++] = prevX; edgePosArr[idx++] = prevY; edgePosArr[idx++] = prevZ;
-      edgePosArr[idx++] = px;    edgePosArr[idx++] = py;    edgePosArr[idx++] = pz;
-      prevX = px; prevY = py; prevZ = pz;
+
+    for (let strand = 0; strand < TENDRIL_COUNT; strand++) {
+      // Strand offset — each tendril drifts slightly from the main curve
+      const strandOff = (strand - (TENDRIL_COUNT - 1) * 0.5) * 4;
+
+      // Undulating control points — drift with time
+      const wt = _eNow * off.speed + off.wavePhase + strand * 1.5;
+      const wave1 = Math.sin(wt * off.waveFreq) * off.waveAmp;
+      const wave2 = Math.cos(wt * off.waveFreq * 0.7 + 1.3) * off.waveAmp;
+
+      const c1x = sx + (tx - sx) * 0.33 + off.ox1 * (off.mag1 + wave1) + strandOff;
+      const c1y = sy + (ty - sy) * 0.33 + off.oy1 * (off.mag1 + wave1);
+      const c1z = sz + (tz - sz) * 0.33 + off.oz1 * (off.mag1 + wave1) + strandOff * 0.5;
+      const c2x = sx + (tx - sx) * 0.66 + off.ox2 * (off.mag2 + wave2) - strandOff;
+      const c2y = sy + (ty - sy) * 0.66 + off.oy2 * (off.mag2 + wave2);
+      const c2z = sz + (tz - sz) * 0.66 + off.oz2 * (off.mag2 + wave2) - strandOff * 0.5;
+
+      // Energy flow: a bright pulse travels along the curve
+      const flowPos = ((_eNow * off.speed * 0.4 + off.phase) % 1.3) - 0.15;
+
+      let prevX = sx, prevY = sy, prevZ = sz;
+      for (let s = 1; s <= EDGE_SEGS; s++) {
+        const t = s / EDGE_SEGS;
+        const u = 1 - t;
+        const u2 = u * u, u3 = u2 * u, t2 = t * t, t3 = t2 * t;
+        const px = u3*sx + 3*u2*t*c1x + 3*u*t2*c2x + t3*tx;
+        const py = u3*sy + 3*u2*t*c1y + 3*u*t2*c2y + t3*ty;
+        const pz = u3*sz + 3*u2*t*c1z + 3*u*t2*c2z + t3*tz;
+
+        // Alpha: base fade (bright at ends, thin in middle) + energy pulse
+        const tPrev = (s - 1) / EDGE_SEGS;
+        const baseFade = 0.3 + 0.7 * Math.pow(Math.sin(t * Math.PI), 0.4);
+        const baseFadePrev = 0.3 + 0.7 * Math.pow(Math.sin(tPrev * Math.PI), 0.4);
+        // Energy pulse — gaussian around flowPos
+        const pulseW = 0.12;
+        const pulse = Math.exp(-Math.pow((t - flowPos) / pulseW, 2));
+        const pulsePrev = Math.exp(-Math.pow((tPrev - flowPos) / pulseW, 2));
+        const a1 = Math.min(1, baseFadePrev + pulse * 2.5);
+        const a2 = Math.min(1, baseFade + pulsePrev * 2.5);
+
+        edgePosArr[idx++] = prevX; edgePosArr[idx++] = prevY; edgePosArr[idx++] = prevZ;
+        edgePosArr[idx++] = px;    edgePosArr[idx++] = py;    edgePosArr[idx++] = pz;
+        edgeAlphaArr[aIdx++] = a1;
+        edgeAlphaArr[aIdx++] = a2;
+
+        prevX = px; prevY = py; prevZ = pz;
+      }
     }
   }
   edgeGeo.attributes.position.needsUpdate = true;
+  edgeGeo.attributes.alpha.needsUpdate = true;
 
   // Update focused glow edges
   if (focusEdgeLinks.length > 0) {
@@ -6037,7 +6100,7 @@ function dimToNeighbors(n) {
     m._targetShellDim   = inNb ? 1.0 : 0.0;  // fully hide non-neighbor atmosphere shells
     m.mesh.material.transparent = true;
   });
-  edgeMat.opacity = 0.06;
+  edgeMat.uniforms.uGlobalAlpha.value = 0.08;
 }
 function resetDim() {
   nodes.forEach(n => {
@@ -6045,7 +6108,7 @@ function resetDim() {
     n._targetAtmOpacity = 0.06;
     n._targetShellDim   = 1.0;
   });
-  edgeMat.opacity = 0.28;
+  edgeMat.uniforms.uGlobalAlpha.value = 0.35;
 }
 // Call this every frame to lerp toward targets
 function tickDim() {
