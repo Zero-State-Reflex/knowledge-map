@@ -7388,7 +7388,8 @@ function animate() {
   }
 
   // Two-phase focus camera: zoom in → pull back 25%
-  if (focusCamAnim) {
+  // Skip entirely if satellite or voyager has taken over the camera
+  if (focusCamAnim && !satFocused && !voyagerFocused) {
     const fc = focusCamAnim;
     fc.t++;
 
@@ -7436,7 +7437,8 @@ function animate() {
 
     } else {
       // Hold — gentle camera drift around the focused node
-      if (focusedNode) {
+      // Skip if satellite or voyager is zoomed — they control the camera
+      if (focusedNode && !satFocused && !voyagerFocused) {
         if (fc._holdStart === undefined) {
           fc._holdStart = performance.now();
           fc._holdBasePos = camera.position.clone();
