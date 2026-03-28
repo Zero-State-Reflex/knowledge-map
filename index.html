@@ -6190,6 +6190,8 @@ function showBlackHoleCard() {
   }
   blackHoleFocused = true;
   startBHParticles();
+  // Slow pitch shift down — gravitational time dilation effect
+  if (audioCtx && audioCtx._pitchShift) audioCtx._pitchShift(0.25, 4.0);
 
   // Fly camera toward the black hole
   const dir = camera.position.clone().sub(BH_POS).normalize();
@@ -6404,6 +6406,8 @@ function hideBlackHoleCard() {
   stopBHParticles();
   hideInfo();
   hideGallery();
+  // Restore pitch slowly
+  if (audioCtx && audioCtx._pitchRestore) audioCtx._pitchRestore(3.0);
 }
 
 canvas.addEventListener('click', e => {
@@ -6675,12 +6679,14 @@ function startAudio() {
   // Reversed pitch (high→low) and down one octave
   const padNotes = [164.81, 130.81, 98.00, 65.41, 32.70]; // pentatonic descending, one octave lower
 
+  const _padOscillators = []; // store refs for pitch shifting
   padNotes.forEach((freq, idx) => {
     const count = 3;
     for (let v = 0; v < count; v++) {
       const osc = audioCtx.createOscillator();
       osc.type = v === 0 ? 'sine' : 'triangle';
-      osc.frequency.value = freq * (1 + (v - 1) * 0.003); // slight detune
+      const baseFreq = freq * (1 + (v - 1) * 0.003);
+      osc.frequency.value = baseFreq;
 
       // Slow LFO tremolo per voice
       const lfo = audioCtx.createOscillator();
@@ -6700,8 +6706,23 @@ function startAudio() {
 
       osc.start();
       lfo.start();
+      _padOscillators.push({ osc, baseFreq });
     }
   });
+
+  // ── Pitch shift function — slow ramp all pad oscillators ──────────────────
+  // multiplier < 1 = pitch down, 1 = normal, duration in seconds
+  audioCtx._pitchShift = function(multiplier, duration) {
+    const t = audioCtx.currentTime;
+    _padOscillators.forEach(p => {
+      p.osc.frequency.cancelScheduledValues(t);
+      p.osc.frequency.setValueAtTime(p.osc.frequency.value, t);
+      p.osc.frequency.linearRampToValueAtTime(p.baseFreq * multiplier, t + duration);
+    });
+  };
+  audioCtx._pitchRestore = function(duration) {
+    audioCtx._pitchShift(1.0, duration);
+  };
 
   // ── Slow melodic breath: random pentatonic notes fading in/out ────────────
   // Down one octave
