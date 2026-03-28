@@ -4870,13 +4870,7 @@ function updateVoyagerCam() {
   if (!voyagerCamAnim) return;
   const vc = voyagerCamAnim;
   vc.t++;
-  // Track Voyager's live position (it's paused but just in case)
-  if (voyagerGroup) {
-    vc.vPos.copy(voyagerGroup.position);
-    const dir = vc.startPos.clone().sub(vc.vPos).normalize();
-    vc.closePos.copy(vc.vPos).addScaledVector(dir, 40);
-    vc.holdPos.copy(vc.vPos).addScaledVector(dir, 55);
-  }
+  // Targets are FROZEN from focusVoyager() — no live tracking during zoom
   if (vc.phase === 'zoomIn') {
     const raw  = Math.min(vc.t / vc.zoomFrames, 1);
     const ease = 1 - Math.pow(1 - raw, 3);
@@ -4884,32 +4878,18 @@ function updateVoyagerCam() {
     lookTarget.lerp(vc.vPos, 0.08);
     camera.lookAt(lookTarget);
     if (vc.t >= vc.zoomFrames) {
-      vc.phase = 'pullBack';
-      vc.t = 0;
-      vc.pullStart = camera.position.clone();
-    }
-  } else if (vc.phase === 'pullBack') {
-    const raw  = Math.min(vc.t / vc.pullFrames, 1);
-    const ease = 0.5 - 0.5 * Math.cos(raw * Math.PI);
-    camera.position.lerpVectors(vc.pullStart, vc.holdPos, ease);
-    lookTarget.lerp(vc.vPos, 0.06);
-    camera.lookAt(lookTarget);
-    if (vc.t >= vc.pullFrames) {
       vc.phase = 'hold';
-      const p = camera.position;
-      camRadius = p.length();
-      camPhi = Math.acos(Math.max(-1, Math.min(1, p.y / camRadius)));
-      camTheta = Math.atan2(p.x, p.z);
+      lookTarget.copy(vc.vPos);
+      vc._holdDir = camera.position.clone().sub(vc.vPos).normalize();
     }
   } else {
-    // Hold — keep looking at Voyager's live position
-    lookTarget.lerp(voyagerGroup.position, 0.05);
+    // Hold — use locked direction and frozen position
+    const ideal = vc.vPos.clone().addScaledVector(vc._holdDir || vc.startPos.clone().sub(vc.vPos).normalize(), 55);
+    camera.position.lerp(ideal, 0.05);
+    lookTarget.lerp(vc.vPos, 0.05);
     camera.lookAt(lookTarget);
-    camera.position.lerpVectors(camera.position, voyagerGroup.position.clone().add(
-      camera.position.clone().sub(voyagerGroup.position).normalize().multiplyScalar(55)
-    ), 0.03);
-    // Show the info card positioned below Voyager with space
-    const sp = toScreen(voyagerGroup.position);
+    // Show the info card
+    const sp = toScreen(vc.vPos);
     const card = document.getElementById('voyager-card');
     card.style.left = (sp.x - 100) + 'px';
     card.style.top = Math.min(sp.y + 100, window.innerHeight - 140) + 'px';
@@ -4919,8 +4899,8 @@ function updateVoyagerCam() {
 
 function updateVoyager() {
   if (!voyagerData || !voyagerGroup) return;
-  // Pause movement when focused so user can inspect
-  if (voyagerFocused && voyagerCamAnim && voyagerCamAnim.phase !== 'zoomIn') {
+  // Pause movement entirely when focused (including during zoomIn)
+  if (voyagerFocused) {
     // Still update label and trail but don't advance position
     const sp = toScreen(voyagerGroup.position);
     const vis = sp.x > 0 && sp.x < window.innerWidth && sp.y > 0 && sp.y < window.innerHeight;
@@ -5084,13 +5064,15 @@ function simTick() {
   if (focusedNode && focusedNode._restX !== undefined) {
     const n = focusedNode;
     const t   = performance.now() * 0.001;
-    const amp = n.size * 1.4;
+    const amp = 15; // constant amplitude — predictable drift regardless of planet size
 
     // Ease-in blend: 0→1 over first ~1.5s so the float starts invisibly slow
     if (n._floatStart === undefined) n._floatStart = t;
     const elapsed = t - n._floatStart;
-    const blend   = Math.min(elapsed / 1.5, 1);
-    const ease    = blend * blend * (3 - 2 * blend); // smoothstep
+    const blendIn  = Math.min(elapsed / 1.5, 1);
+    const blendOut = Math.max(0, 1 - Math.max(0, elapsed - 6) / 4); // decay after 6s, gone by 10s
+    const blend    = blendIn * blendOut;
+    const ease     = blend * blend * (3 - 2 * blend); // smoothstep
 
     const floatX = n._restX + Math.sin(t * 0.7)  * amp * ease;
     const floatY = n._restY + Math.sin(t * 0.53) * amp * ease * 0.8;
@@ -5447,7 +5429,7 @@ canvas.addEventListener('pointermove', e => {
         const q = new THREE.Quaternion().setFromAxisAngle(axis, ang);
         voyagerGroup.quaternion.premultiply(q);
       }
-    } else {
+    } else if (!focusedNode && !satFocused && !voyagerFocused && !focusCamAnim) {
       camTheta -= dx * 0.006;
       camPhi = Math.max(0.08, Math.min(Math.PI - 0.08, camPhi - dy * 0.006));
       setCamFromSpherical();
@@ -5466,7 +5448,7 @@ canvas.addEventListener('wheel', e => {
       // Scrolled far enough out — exit satellite view
       unfocusSatellite();
     }
-  } else {
+  } else if (!focusedNode && !voyagerFocused) {
     camRadius *= 1 + e.deltaY * 0.0018;
     camRadius = Math.max(180, Math.min(5000, camRadius));
     setCamFromSpherical();
@@ -7524,6 +7506,8 @@ function animate() {
           focusedNode._restY = focusedNode.y;
           focusedNode._restZ = focusedNode.z;
           focusedNode._floatStart = undefined;
+          // Lock lookTarget for hold phase — immune to float drift
+          fc._holdLookTarget = new THREE.Vector3(focusedNode.x, focusedNode.y, focusedNode.z);
         }
       }
 
@@ -7542,7 +7526,7 @@ function animate() {
         const driftZ = Math.sin(ht * 0.15 + 1.0) * driftR * 0.4;
         const targetPos = fc._holdBasePos.clone().add(new THREE.Vector3(driftX, driftY, driftZ));
         camera.position.lerp(targetPos, 0.02);
-        lookTarget.lerp(new THREE.Vector3(focusedNode.x, focusedNode.y, focusedNode.z), 0.03);
+        lookTarget.lerp(fc._holdLookTarget || new THREE.Vector3(focusedNode.x, focusedNode.y, focusedNode.z), 0.03);
         camera.lookAt(lookTarget);
       }
     }
