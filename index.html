@@ -1670,9 +1670,9 @@ const composer = new THREE.EffectComposer(renderer);
 composer.addPass(new THREE.RenderPass(scene, camera));
 const bloomPass = new THREE.UnrealBloomPass(
   new THREE.Vector2(window.innerWidth, window.innerHeight),
-  isMobileDevice ? 0.25 : 0.45,   // strength — subtle overall, black hole emissives will pop
-  0.6,    // radius — how far the bloom spreads
-  0.75    // threshold — only bright things bloom
+  isMobileDevice ? 0.3 : 0.65,    // strength — boosted for soft overall glow
+  0.8,    // radius — wider bloom spread
+  0.6     // threshold — more elements bloom
 );
 // ─── GRAVITATIONAL LENSING POST-PROCESSING ───────────────────────────────────
 const lensingShader = {
@@ -2727,10 +2727,10 @@ glowCanvas.width = glowCanvas.height = 128;
 const glowCtx = glowCanvas.getContext('2d');
 // Gaussian radial gradient: bright center, smooth falloff
 const glowGrad = glowCtx.createRadialGradient(64, 64, 0, 64, 64, 64);
-glowGrad.addColorStop(0,    'rgba(255,255,255,0.5)');
-glowGrad.addColorStop(0.15, 'rgba(255,255,255,0.25)');
-glowGrad.addColorStop(0.35, 'rgba(255,255,255,0.08)');
-glowGrad.addColorStop(0.6,  'rgba(255,255,255,0.02)');
+glowGrad.addColorStop(0,    'rgba(255,255,255,0.7)');
+glowGrad.addColorStop(0.12, 'rgba(255,255,255,0.35)');
+glowGrad.addColorStop(0.3,  'rgba(255,255,255,0.12)');
+glowGrad.addColorStop(0.55, 'rgba(255,255,255,0.03)');
 glowGrad.addColorStop(1,    'rgba(255,255,255,0)');
 glowCtx.fillStyle = glowGrad;
 glowCtx.fillRect(0, 0, 128, 128);
@@ -2914,7 +2914,7 @@ nodes.forEach(n => {
   const mat = new THREE.MeshStandardMaterial({
     color: domColor,
     emissive: domColor,
-    emissiveIntensity: 0.08,
+    emissiveIntensity: 0.12,
     roughness: 0.75,
     metalness: 0.1,
     transparent: false,
@@ -2959,7 +2959,7 @@ nodes.forEach(n => {
     map: glowTexture,
     color: domColor,
     transparent: true,
-    opacity: 0.12,
+    opacity: 0.18,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
@@ -2977,17 +2977,17 @@ nodes.forEach(n => {
     const ac = ATM_COLORS[pType] || [0.4, 0.5, 0.7];
     // 4 concentric shells: each larger and softer for a fuzzy real-atmosphere look
     const atmShells = [];
-    // 9 heavily overlapping shells — maximum blur, no banding
+    // 9 heavily overlapping shells — boosted glow
     const shellLayers = [
-      { scale: 1.02, intensity: 0.22, power: 3.0 },
-      { scale: 1.05, intensity: 0.19, power: 2.6 },
-      { scale: 1.09, intensity: 0.16, power: 2.2 },
-      { scale: 1.14, intensity: 0.13, power: 1.9 },
-      { scale: 1.20, intensity: 0.10, power: 1.6 },
-      { scale: 1.28, intensity: 0.07, power: 1.3 },
-      { scale: 1.38, intensity: 0.04, power: 1.0 },
-      { scale: 1.52, intensity: 0.02, power: 0.8 },
-      { scale: 1.70, intensity: 0.008, power: 0.6 },
+      { scale: 1.02, intensity: 0.30, power: 2.8 },
+      { scale: 1.05, intensity: 0.25, power: 2.4 },
+      { scale: 1.09, intensity: 0.20, power: 2.0 },
+      { scale: 1.14, intensity: 0.16, power: 1.7 },
+      { scale: 1.20, intensity: 0.12, power: 1.4 },
+      { scale: 1.28, intensity: 0.08, power: 1.1 },
+      { scale: 1.38, intensity: 0.05, power: 0.9 },
+      { scale: 1.52, intensity: 0.025, power: 0.7 },
+      { scale: 1.70, intensity: 0.012, power: 0.5 },
     ];
     shellLayers.forEach(layer => {
       const shellMat = new THREE.ShaderMaterial({
@@ -6068,7 +6068,7 @@ function tickDim() {
     if (n.atmShells && n._targetShellDim !== undefined) {
       if (n._shellDim === undefined) n._shellDim = 1.0;
       n._shellDim += (n._targetShellDim - n._shellDim) * 0.08;
-      const baseIntensities = [0.22, 0.19, 0.16, 0.13, 0.10, 0.07, 0.04, 0.02, 0.008];
+      const baseIntensities = [0.30, 0.25, 0.20, 0.16, 0.12, 0.08, 0.05, 0.025, 0.012];
       n.atmShells.forEach((shell, i) => {
         shell.material.uniforms.uIntensity.value = (baseIntensities[i] || 0.02) * n._shellDim;
       });
@@ -6273,7 +6273,7 @@ function showBlackHoleCard() {
 }
 
 // ─── BLACK HOLE PARTICLE VORTEX ─────────────────────────────────────────────
-const BH_PARTICLE_COUNT = 200;
+const BH_PARTICLE_COUNT = 500;
 let bhParticles = null; // { geo, mat, points, velocities[], lifetimes[] }
 
 function startBHParticles() {
@@ -6363,15 +6363,17 @@ function updateBHParticles() {
     pos[iy] += v.vy;
     pos[iz] += v.vz;
 
-    // Color: cooler far away (orange), hotter close (white-blue)
+    // Color: cooler far away (orange), hotter close (white-blue) + shimmer
     const heat = Math.min(1, 300 / dist);
-    col[ix]   = 1.0;
-    col[iy]   = 0.5 + heat * 0.5;
-    col[iz]   = 0.2 + heat * 0.8;
+    const shimmer = 0.85 + 0.15 * Math.sin(now * 0.008 + i * 2.7);
+    col[ix]   = 1.0 * shimmer;
+    col[iy]   = (0.5 + heat * 0.5) * shimmer;
+    col[iz]   = (0.2 + heat * 0.8) * shimmer;
 
-    // Size: large when far, compress as they spiral in
+    // Size: large when far, compress as they spiral in + pulse
     const farness = Math.min(1, dist / 800);
-    sz[i] = 2.0 + farness * 12;
+    const sizePulse = 0.8 + 0.4 * Math.sin(now * 0.006 + i * 1.3);
+    sz[i] = (2.0 + farness * 14) * sizePulse;
 
     // Respawn if too close to center (swallowed) or too far away (escaped)
     if (dist < 100 || dist > 1500) {
