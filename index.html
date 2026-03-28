@@ -2064,17 +2064,17 @@ if (!isMobileDevice) {
 })();
 
 
-scene.add(new THREE.AmbientLight(0x223344, 1.8));
-// Warm key light — like a distant star
-const light1 = new THREE.PointLight(0xffd4a0, 1.4, 8000);
+scene.add(new THREE.AmbientLight(0x223344, 1.6));
+// Warm key light — like a distant star (reduced to avoid hot spots)
+const light1 = new THREE.PointLight(0xffd4a0, 0.9, 8000);
 light1.position.set(800, 1200, 600);
 scene.add(light1);
 // Cool fill — opposite side for color contrast
-const light2 = new THREE.PointLight(0x4466cc, 0.7, 7000);
+const light2 = new THREE.PointLight(0x4466cc, 0.5, 7000);
 light2.position.set(-900, -500, -500);
 scene.add(light2);
 // Rim from below
-const light3 = new THREE.PointLight(0x886644, 0.5, 6000);
+const light3 = new THREE.PointLight(0x886644, 0.35, 6000);
 light3.position.set(0, -1000, 300);
 scene.add(light3);
 
@@ -5163,10 +5163,15 @@ function updateLensFlare() {
 function updateScene() {
   for (const n of nodes) {
     n.mesh.position.set(n.x, n.y, n.z);
+    // Rotate only on Y axis (left-right spin)
     n.mesh.rotation.y += n.mesh.userData.rotSpeed;
-    // Gently ease x-rotation back to 0 when not being dragged
+    // Earth: maintain natural 23.5° axial tilt
+    if (n.id === 'Human Being') {
+      n.mesh.rotation.z = 23.5 * Math.PI / 180;
+    }
+    // All others: keep X rotation locked to 0 (no wobble)
     if (!planetDragging || focusedNode !== n) {
-      n.mesh.rotation.x *= 0.97;
+      n.mesh.rotation.x *= 0.92; // ease back faster
     }
     if (n.cloudMesh) {
       n.cloudMesh.position.set(n.x, n.y, n.z);
