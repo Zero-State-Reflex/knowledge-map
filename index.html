@@ -4475,18 +4475,24 @@ function updateSatCam() {
       sc.dir.copy(camera.position).sub(shipGroup.position).normalize();
     }
   } else {
-    // Hold — use direction locked at end of zoom, track live satellite
+    // Hold — lock satellite at screen center, camera offset on locked direction
     const ideal = shipGroup.position.clone().addScaledVector(sc.dir, satCamDist);
     camera.position.lerp(ideal, 0.05);
-    lookTarget.lerp(shipGroup.position, 0.05);
+    // Offset lookTarget slightly left of satellite so it renders left-of-center,
+    // leaving room for the card on the right
+    const camRight = new THREE.Vector3();
+    camera.matrixWorld.extractBasis(camRight, new THREE.Vector3(), new THREE.Vector3());
+    const offsetTarget = shipGroup.position.clone().addScaledVector(camRight, satCamDist * 0.15);
+    lookTarget.lerp(offsetTarget, 0.05);
     camera.lookAt(lookTarget);
 
-    // Position card to the right of the satellite with generous buffer
+    // Position card on the right half of screen, vertically centered
     const sp = toScreen(shipGroup.position);
-    const bufferX = 180; // keep this much clear space around the sat horizontally
     const card = document.getElementById('sat-card');
-    card.style.left = Math.min(sp.x + bufferX, window.innerWidth - 270) + 'px';
-    card.style.top = Math.max(20, sp.y - 50) + 'px';
+    const cardW = 300;
+    const cardX = Math.max(sp.x + 100, window.innerWidth * 0.58);
+    card.style.left = Math.min(cardX, window.innerWidth - cardW - 20) + 'px';
+    card.style.top = Math.max(20, sp.y - 80) + 'px';
     if (!card.classList.contains('visible')) card.classList.add('visible');
   }
 }
