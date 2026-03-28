@@ -7328,12 +7328,20 @@ function generateAllTextures(callback) {
     const n = nodes[i++];
     // Special case: "Human Being" gets NASA Blue Marble Earth texture
     if (n.id === 'Human Being') {
-      new THREE.TextureLoader().load(
-        'Assests/earth_no_clouds.jpg',
-        tex => { n.mesh.material.map = tex; n.mesh.material.needsUpdate = true; },
-        undefined,
-        err => console.warn('Earth texture failed:', err)
-      );
+      const _texLoader = new THREE.TextureLoader();
+      // High-res Blue Marble Next Generation (5400×2700)
+      _texLoader.load('Assests/earth_8k.jpg', tex => {
+        n.mesh.material.map = tex;
+        n.mesh.material.needsUpdate = true;
+      }, undefined, err => console.warn('Earth texture failed:', err));
+      // Bump map for surface relief (oceans vs continents)
+      _texLoader.load('Assests/earth_bump.jpg', bump => {
+        n.mesh.material.bumpMap = bump;
+        n.mesh.material.bumpScale = 0.8;
+        // Approximate normal-map-like effect via bump + normalScale
+        n.mesh.material.normalScale = new THREE.Vector2(0.5, 0.5);
+        n.mesh.material.needsUpdate = true;
+      }, undefined, err => console.warn('Earth bump failed:', err));
       setTimeout(next, 0);
       return;
     }
