@@ -2911,12 +2911,12 @@ nodes.forEach(n => {
   const domColor = new THREE.Color(hex);
 
   // Planet surface — starts flat, texture applied deferred after first render
-  const mat = new THREE.MeshPhongMaterial({
+  const mat = new THREE.MeshStandardMaterial({
     color: domColor,
     emissive: domColor,
-    emissiveIntensity: 0.06,
-    shininess: 25,
-    specular: new THREE.Color(0x111111),
+    emissiveIntensity: 0.08,
+    roughness: 0.75,
+    metalness: 0.1,
     transparent: false,
     opacity: 1.0,
   });
@@ -3465,12 +3465,12 @@ function buildMoons(centerNode) {
     const hasRing  = Math.random() < 0.35; // ~1 in 3 moons gets a ring
 
     // ── Core moon sphere — starts flat color, texture loaded deferred ────────
-    const mat = new THREE.MeshPhongMaterial({
+    const mat = new THREE.MeshStandardMaterial({
       color:    col,
       emissive: col,
-      emissiveIntensity: 0.04,
-      shininess: 30,
-      specular: new THREE.Color(0x111111),
+      emissiveIntensity: 0.08,
+      roughness: 0.75,
+      metalness: 0.1,
       transparent: true,
       opacity: 0,
     });
