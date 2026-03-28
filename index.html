@@ -5106,6 +5106,7 @@ function updateLensFlare() {
   // Check all visible planets for proximity to screen center
   for (const n of nodes) {
     if (n._targetOpacity !== undefined && n._targetOpacity < 0.3) continue;
+    if (n.id === 'Human Being') continue; // no lens flare on Earth — too dominant
     const sp = toScreen(new THREE.Vector3(n.x, n.y, n.z));
     const dx = (sp.x - cx) / window.innerWidth;
     const dy = (sp.y - cy) / window.innerHeight;
