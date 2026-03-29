@@ -7369,21 +7369,29 @@ function generateAllTextures(callback) {
     // Special case: "Human Being" gets NASA Blue Marble Earth texture
     if (n.id === 'Human Being') {
       const _texLoader = new THREE.TextureLoader();
-      // High-res Blue Marble Next Generation (5400×2700)
+      let _earthLoaded = 0;
+      const _earthCheck = () => { _earthLoaded++; if (_earthLoaded >= 2) setTimeout(next, 0); };
+      // High-res Blue Marble Next Generation (5400×2700) — wait for load
       _texLoader.load('Assests/earth_8k.jpg', tex => {
         n.mesh.material.map = tex;
         n.mesh.material.needsUpdate = true;
-      }, undefined, err => console.warn('Earth texture failed:', err));
-      // Bump map for surface relief (oceans vs continents)
+        _earthCheck();
+      }, undefined, err => { console.warn('Earth texture failed:', err); _earthCheck(); });
+      // Bump map for surface relief — wait for load
       _texLoader.load('Assests/earth_bump.jpg', bump => {
         n.mesh.material.bumpMap = bump;
         n.mesh.material.bumpScale = 0.8;
-        // Approximate normal-map-like effect via bump + normalScale
         n.mesh.material.normalScale = new THREE.Vector2(0.5, 0.5);
         n.mesh.material.needsUpdate = true;
-      }, undefined, err => console.warn('Earth bump failed:', err));
-      setTimeout(next, 0);
-      return;
+        _earthCheck();
+      }, undefined, err => { console.warn('Earth bump failed:', err); _earthCheck(); });
+      // Update progress label while waiting
+      const pct = Math.round((i / nodes.length) * 100);
+      const label = document.getElementById('loading-label');
+      const bar = document.getElementById('progress-bar');
+      if (label) label.textContent = `Loading Earth textures...`;
+      if (bar) bar.style.width = pct + '%';
+      return; // don't call next() until both textures loaded
     }
     const tex = makePlanetTexture(n.domain, n.id);
     n.mesh.material.map = tex;
