@@ -1424,32 +1424,26 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
 
 // ─── WebXR for Meta Quest 3 ─────────────────────────────────────────────────
-renderer.xr.enabled = true;
-document.body.appendChild(VRButton.createButton(renderer));
-
-// XR helpers
+// XR is NOT enabled yet — we defer until the scene is fully loaded so the
+// Quest browser doesn't auto-enter immersive mode on a blank scene.
 const XR_SCALE = 0.002; // 5000 scene-units → 10 m in VR
 function isInXR() { return renderer.xr.isPresenting; }
 
-// On-screen debug for Quest (no dev console available)
-const _xrDbg = document.createElement('div');
-_xrDbg.style.cssText = 'position:fixed;bottom:60px;left:10px;right:10px;z-index:99999;color:#0f0;font:11px monospace;background:rgba(0,0,0,0.7);padding:6px;max-height:30vh;overflow-y:auto;pointer-events:none;';
-document.body.appendChild(_xrDbg);
-function xrLog(msg) { _xrDbg.innerHTML += msg + '<br>'; _xrDbg.scrollTop = _xrDbg.scrollHeight; }
-window.addEventListener('error', e => xrLog('ERR: ' + e.message));
-window.addEventListener('unhandledrejection', e => xrLog('REJECT: ' + e.reason));
-xrLog('XR init OK, xr.enabled=' + renderer.xr.enabled);
-
-renderer.xr.addEventListener('sessionstart', () => {
-  xrLog('XR session started');
-  scene.scale.setScalar(XR_SCALE);
-  scene.position.set(0, 1.4, -2);
-});
-renderer.xr.addEventListener('sessionend', () => {
-  xrLog('XR session ended');
-  scene.scale.setScalar(1);
-  scene.position.set(0, 0, 0);
-});
+function enableXR() {
+  renderer.xr.enabled = true;
+  document.body.appendChild(VRButton.createButton(renderer));
+  renderer.xr.addEventListener('sessionstart', () => {
+    scene.scale.setScalar(XR_SCALE);
+    scene.position.set(0, 1.4, -2);
+  });
+  renderer.xr.addEventListener('sessionend', () => {
+    scene.scale.setScalar(1);
+    scene.position.set(0, 0, 0);
+  });
+  // Switch to XR-compatible animation loop (replaces rAF)
+  _xrLoopActive = true;
+  renderer.setAnimationLoop(animate);
+}
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 12000);
@@ -4515,25 +4509,20 @@ let _animFrame = 0;
 let _introZoom = null;
 
 function generateAllTextures(callback) {
-  if (window.xrLog) xrLog('genTex start, nodes=' + nodes.length);
   let i = 0;
   const BATCH = 4;
   function next() {
-    try {
-      const end = Math.min(i + BATCH, nodes.length);
-      while (i < end) {
-        const n = nodes[i++];
-        const tex = makePlanetTexture(n.domain, n.id);
-        n.mesh.material.map = tex;
-        n.mesh.material.needsUpdate = true;
-      }
-    } catch(e) { if (window.xrLog) xrLog('TEX ERR @' + i + ': ' + e.message); }
+    const end = Math.min(i + BATCH, nodes.length);
+    while (i < end) {
+      const n = nodes[i++];
+      const tex = makePlanetTexture(n.domain, n.id);
+      n.mesh.material.map = tex;
+      n.mesh.material.needsUpdate = true;
+    }
     const pct = Math.round((i / nodes.length) * 100);
     const label = document.querySelector('.loading-label');
     if (label) label.textContent = `Initializing ${pct}%`;
-    if (i % 40 === 0 && window.xrLog) xrLog('tex ' + pct + '%');
     if (i >= nodes.length) {
-      if (window.xrLog) xrLog('ALL TEXTURES DONE');
       _allTexturesReady = true;
       callback();
     } else {
@@ -4549,6 +4538,9 @@ function onTexturesReady() {
 
   // Fade out loading screen
   if (ls) { ls.classList.add('hidden'); setTimeout(() => ls.remove(), 900); }
+
+  // Now that the scene is ready, enable WebXR so the user can enter VR
+  enableXR();
 
   // Show welcome text after loading screen fades + emit a pulse wave from center
   setTimeout(() => {
@@ -4574,7 +4566,9 @@ function onTexturesReady() {
 // Start generating textures immediately (behind loading screen)
 generateAllTextures(onTexturesReady);
 
+let _xrLoopActive = false; // true once setAnimationLoop takes over
 function animate() {
+  if (!_xrLoopActive) requestAnimationFrame(animate);
   try {
   const _inXR = isInXR();
 
@@ -4744,10 +4738,10 @@ function animate() {
     leaderLine.setAttribute('x1', sp.x);
     leaderLine.setAttribute('y1', sp.y);
   }
-  } catch(e) { if(window.xrLog) xrLog('ANIM: ' + e.message); }
+  } catch(e) { console.error('animate:', e); }
 }
-// Single animation driver — setAnimationLoop handles both desktop and XR frames
-renderer.setAnimationLoop(animate);
+// Start with rAF loop; enableXR() switches to setAnimationLoop after textures load
+animate();
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
