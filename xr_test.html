@@ -3,80 +3,131 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WebXR Test — Quest 3</title>
+<title>WebXR Test</title>
 <style>
-  body { margin: 0; background: #000; }
+  body { margin: 0; background: #000; color: #0f0; font: 14px monospace; }
   canvas { display: block; }
+  #status { position: fixed; top: 10px; left: 10px; z-index: 999; background: rgba(0,0,0,0.8); padding: 10px; }
+  #enter-vr { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 999;
+    padding: 15px 30px; font-size: 18px; background: #222; color: #e8d89a; border: 2px solid #e8d89a;
+    border-radius: 8px; cursor: pointer; }
 </style>
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
-  }
-}
-</script>
 </head>
 <body>
-<script type="module">
-import * as THREE from 'three';
-import { VRButton } from 'three/addons/webxr/VRButton.js';
+<div id="status">Loading Three.js...</div>
+<button id="enter-vr" style="display:none">ENTER VR</button>
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+<script>
+const status = document.getElementById('status');
+const vrBtn = document.getElementById('enter-vr');
 
-// Renderer
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(window.devicePixelRatio);
-renderer.xr.enabled = true;
-document.body.appendChild(renderer.domElement);
-document.body.appendChild(VRButton.createButton(renderer));
+try {
+  status.textContent = 'Three.js loaded: ' + THREE.REVISION;
 
-// Scene
-const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x111122);
-
-// Camera
-const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 100);
-camera.position.set(0, 1.6, 3);
-
-// Lights
-scene.add(new THREE.AmbientLight(0x404040, 2));
-const light = new THREE.DirectionalLight(0xffffff, 3);
-light.position.set(1, 2, 1);
-scene.add(light);
-
-// Red cube
-const cube = new THREE.Mesh(
-  new THREE.BoxGeometry(0.3, 0.3, 0.3),
-  new THREE.MeshStandardMaterial({ color: 0xff0000 })
-);
-cube.position.set(0, 1.4, -1);
-scene.add(cube);
-
-// Gold sphere
-const sphere = new THREE.Mesh(
-  new THREE.SphereGeometry(0.15, 32, 16),
-  new THREE.MeshStandardMaterial({ color: 0xe8d89a, metalness: 0.6, roughness: 0.3 })
-);
-sphere.position.set(0.5, 1.4, -1);
-scene.add(sphere);
-
-// Floor grid
-const grid = new THREE.GridHelper(10, 10, 0x444444, 0x222222);
-scene.add(grid);
-
-// Animate
-renderer.setAnimationLoop((time) => {
-  cube.rotation.x = time * 0.001;
-  cube.rotation.y = time * 0.0015;
-  renderer.render(scene, camera);
-});
-
-// Resize
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
+  // Renderer
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
-});
+  renderer.xr.enabled = true;
+  renderer.xr.setReferenceSpaceType('local-floor');
+  document.body.appendChild(renderer.domElement);
+  status.textContent += ' | Renderer OK | XR enabled';
+
+  // Scene + Camera
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x111122);
+  const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 100);
+  camera.position.set(0, 1.6, 3);
+
+  // Lights
+  scene.add(new THREE.AmbientLight(0xffffff, 1));
+  const dl = new THREE.DirectionalLight(0xffffff, 2);
+  dl.position.set(1, 2, 1);
+  scene.add(dl);
+
+  // Red cube at eye height
+  const cube = new THREE.Mesh(
+    new THREE.BoxGeometry(0.4, 0.4, 0.4),
+    new THREE.MeshBasicMaterial({ color: 0xff0000 })
+  );
+  cube.position.set(0, 1.5, -1.5);
+  scene.add(cube);
+
+  // Gold sphere
+  const sphere = new THREE.Mesh(
+    new THREE.SphereGeometry(0.2, 16, 12),
+    new THREE.MeshBasicMaterial({ color: 0xffe8a0 })
+  );
+  sphere.position.set(0.6, 1.5, -1.5);
+  scene.add(sphere);
+
+  // Floor
+  scene.add(new THREE.GridHelper(6, 6, 0x444444, 0x222222));
+
+  status.textContent += ' | Scene built';
+
+  // Frame counter
+  let frameCount = 0;
+
+  // Animation loop
+  function render(time) {
+    frameCount++;
+    cube.rotation.x = time * 0.001;
+    cube.rotation.y = time * 0.0015;
+    renderer.render(scene, camera);
+    if (frameCount % 60 === 0) {
+      status.textContent = 'Frames: ' + frameCount + ' | XR presenting: ' + renderer.xr.isPresenting;
+    }
+  }
+
+  renderer.setAnimationLoop(render);
+  status.textContent += ' | Animation loop started';
+
+  // VR Button — manual implementation
+  if (navigator.xr) {
+    navigator.xr.isSessionSupported('immersive-vr').then(function(supported) {
+      status.textContent += ' | VR supported: ' + supported;
+      if (supported) {
+        vrBtn.style.display = 'block';
+        let xrSession = null;
+
+        vrBtn.addEventListener('click', function() {
+          if (xrSession) {
+            xrSession.end();
+            return;
+          }
+          navigator.xr.requestSession('immersive-vr', {
+            optionalFeatures: ['local-floor']
+          }).then(function(session) {
+            xrSession = session;
+            vrBtn.textContent = 'EXIT VR';
+            status.textContent = 'XR session started!';
+            renderer.xr.setSession(session);
+            session.addEventListener('end', function() {
+              xrSession = null;
+              vrBtn.textContent = 'ENTER VR';
+              status.textContent = 'XR session ended';
+            });
+          }).catch(function(err) {
+            status.textContent = 'XR session error: ' + err.message;
+          });
+        });
+      }
+    }).catch(function(err) {
+      status.textContent += ' | XR check error: ' + err.message;
+    });
+  } else {
+    status.textContent += ' | No WebXR';
+  }
+
+  window.addEventListener('resize', function() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+} catch(e) {
+  status.textContent = 'ERROR: ' + e.message + ' @ ' + e.stack;
+}
 </script>
 </body>
 </html>
