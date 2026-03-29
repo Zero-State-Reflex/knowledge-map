@@ -1351,6 +1351,7 @@ renderer.xr.setReferenceSpaceType('local-floor');
 const XR_SCALE = 0.002; // 5000 scene-units → 10m in VR
 function isInXR() { return renderer.xr.isPresenting; }
 let _xrSession = null;
+let _galaxyGroup = null; // holds all galaxy content during XR, scaled down
 
 // XR controller setup
 const xrController0 = renderer.xr.getController(0);
@@ -1436,12 +1437,13 @@ function toggleVRMenu() {
   }
 }
 
+const _xrMenuRaycaster = new THREE.Raycaster();
 function handleVRMenuSelect(controller) {
   if (!_vrMenuVisible) return false;
   _xrTempMatrix.identity().extractRotation(controller.matrixWorld);
-  _xrRaycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-  _xrRaycaster.ray.direction.set(0, 0, -1).applyMatrix4(_xrTempMatrix);
-  const hits = _xrRaycaster.intersectObjects([_exitBtn, _restartBtn], false);
+  _xrMenuRaycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+  _xrMenuRaycaster.ray.direction.set(0, 0, -1).applyMatrix4(_xrTempMatrix);
+  const hits = _xrMenuRaycaster.intersectObjects([_exitBtn, _restartBtn], false);
   if (hits.length > 0) {
     const name = hits[0].object.name;
     if (name === 'xr-exit-btn') {
@@ -1486,31 +1488,39 @@ function pollMenuButton() {
 }
 
 renderer.xr.addEventListener('sessionstart', () => {
-  scene.scale.setScalar(XR_SCALE);
-  scene.position.set(0, 1.4, -2);
-  // Add controllers and menu to the scene
-  xrCamRig.add(xrController0);
-  xrCamRig.add(xrController1);
-  scene.add(xrCamRig);
+  // Move all galaxy content into a scaled group, keep scene at 1:1 for controllers
+  _galaxyGroup = new THREE.Group();
+  const children = [...scene.children];
+  children.forEach(child => _galaxyGroup.add(child)); // reparents
+  _galaxyGroup.scale.setScalar(XR_SCALE);
+  _galaxyGroup.position.set(0, 1.4, -2);
+  scene.add(_galaxyGroup);
+  // Controllers stay on unscaled scene — proper world-space tracking
+  scene.add(xrController0);
+  scene.add(xrController1);
   scene.add(_vrMenu);
-  // Show menu immediately on VR enter so user knows it exists
   toggleVRMenu();
-  // Auto-hide after 8 seconds
   setTimeout(() => { if (_vrMenuVisible) toggleVRMenu(); }, 8000);
 });
 renderer.xr.addEventListener('sessionend', () => {
   _vrMenuVisible = false;
   _vrMenu.visible = false;
   scene.remove(_vrMenu);
-  scene.scale.setScalar(1);
-  scene.position.set(0, 0, 0);
-  scene.remove(xrCamRig);
+  scene.remove(xrController0);
+  scene.remove(xrController1);
+  // Move galaxy content back to scene
+  if (_galaxyGroup) {
+    const children = [..._galaxyGroup.children];
+    children.forEach(child => scene.add(child));
+    scene.remove(_galaxyGroup);
+    _galaxyGroup = null;
+  }
 });
 
 // Controller visuals — ray line from each controller
 const _rayGeo = new THREE.BufferGeometry().setFromPoints([
   new THREE.Vector3(0, 0, 0),
-  new THREE.Vector3(0, 0, -2500)
+  new THREE.Vector3(0, 0, -5)
 ]);
 const _rayMat = new THREE.LineBasicMaterial({ color: 0xe8d89a, transparent: true, opacity: 0.5 });
 const _rayLine0 = new THREE.Line(_rayGeo, _rayMat);
@@ -1518,24 +1528,33 @@ const _rayLine1 = new THREE.Line(_rayGeo.clone(), _rayMat.clone());
 xrController0.add(_rayLine0);
 xrController1.add(_rayLine1);
 
-// Controller select — raycast to find nearest planet node
-const _xrRaycaster = new THREE.Raycaster();
+// Controller select — angle-based proximity (raycasting misses tiny scaled meshes)
 const _xrTempMatrix = new THREE.Matrix4();
+const _xrNodeWorld = new THREE.Vector3();
+const _xrRayOrigin = new THREE.Vector3();
+const _xrRayDir = new THREE.Vector3();
 
 function xrSelectNode(controller) {
   _xrTempMatrix.identity().extractRotation(controller.matrixWorld);
-  _xrRaycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-  _xrRaycaster.ray.direction.set(0, 0, -1).applyMatrix4(_xrTempMatrix);
+  _xrRayOrigin.setFromMatrixPosition(controller.matrixWorld);
+  _xrRayDir.set(0, 0, -1).applyMatrix4(_xrTempMatrix);
 
-  // Collect all node meshes
-  const meshes = nodes.filter(n => n.mesh).map(n => n.mesh);
-  const hits = _xrRaycaster.intersectObjects(meshes, false);
-  if (hits.length > 0) {
-    const hitMesh = hits[0].object;
-    const node = nodes.find(n => n.mesh === hitMesh);
-    if (node) focusNode(node);
+  // Find closest node to the ray within a cone
+  let bestNode = null;
+  let bestAngle = 0.12; // ~7 degree cone
+  for (const n of nodes) {
+    if (!n.mesh) continue;
+    n.mesh.getWorldPosition(_xrNodeWorld);
+    const toNode = _xrNodeWorld.clone().sub(_xrRayOrigin).normalize();
+    const angle = Math.acos(Math.max(-1, Math.min(1, toNode.dot(_xrRayDir))));
+    if (angle < bestAngle) {
+      bestAngle = angle;
+      bestNode = n;
+    }
   }
+  if (bestNode) focusNode(bestNode);
 }
+
 
 xrController0.addEventListener('select', () => { if (!handleVRMenuSelect(xrController0)) xrSelectNode(xrController0); });
 xrController1.addEventListener('select', () => { if (!handleVRMenuSelect(xrController1)) xrSelectNode(xrController1); });
@@ -1556,14 +1575,15 @@ function updateXRControls() {
     const dy = axes.length >= 4 ? axes[3] : 0;
     if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) continue;
 
+    const moveTarget = _galaxyGroup || scene;
     if (src.handedness === 'left') {
-      // Left stick: move scene (strafe + forward/back)
-      scene.position.x += dx * _xrMoveSpeed;
-      scene.position.z += dy * _xrMoveSpeed;
+      // Left stick: move galaxy (strafe + forward/back)
+      moveTarget.position.x += dx * _xrMoveSpeed;
+      moveTarget.position.z += dy * _xrMoveSpeed;
     } else if (src.handedness === 'right') {
-      // Right stick: rotate scene around Y + move up/down
-      scene.rotation.y -= dx * _xrRotSpeed;
-      scene.position.y -= dy * _xrMoveSpeed;
+      // Right stick: rotate galaxy around Y + move up/down
+      moveTarget.rotation.y -= dx * _xrRotSpeed;
+      moveTarget.position.y -= dy * _xrMoveSpeed;
     }
   }
 }
