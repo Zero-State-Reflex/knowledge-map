@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebXR Test — Quest 3</title>
+<style>
+  body { margin: 0; background: #000; }
+  canvas { display: block; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { VRButton } from 'three/addons/webxr/VRButton.js';
+
+// Renderer
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.xr.enabled = true;
+document.body.appendChild(renderer.domElement);
+document.body.appendChild(VRButton.createButton(renderer));
+
+// Scene
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x111122);
+
+// Camera
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 100);
+camera.position.set(0, 1.6, 3);
+
+// Lights
+scene.add(new THREE.AmbientLight(0x404040, 2));
+const light = new THREE.DirectionalLight(0xffffff, 3);
+light.position.set(1, 2, 1);
+scene.add(light);
+
+// Red cube
+const cube = new THREE.Mesh(
+  new THREE.BoxGeometry(0.3, 0.3, 0.3),
+  new THREE.MeshStandardMaterial({ color: 0xff0000 })
+);
+cube.position.set(0, 1.4, -1);
+scene.add(cube);
+
+// Gold sphere
+const sphere = new THREE.Mesh(
+  new THREE.SphereGeometry(0.15, 32, 16),
+  new THREE.MeshStandardMaterial({ color: 0xe8d89a, metalness: 0.6, roughness: 0.3 })
+);
+sphere.position.set(0.5, 1.4, -1);
+scene.add(sphere);
+
+// Floor grid
+const grid = new THREE.GridHelper(10, 10, 0x444444, 0x222222);
+scene.add(grid);
+
+// Animate
+renderer.setAnimationLoop((time) => {
+  cube.rotation.x = time * 0.001;
+  cube.rotation.y = time * 0.0015;
+  renderer.render(scene, camera);
+});
+
+// Resize
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
