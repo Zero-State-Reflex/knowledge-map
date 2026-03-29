@@ -1682,6 +1682,26 @@ const BH_POS = new THREE.Vector3(3200, -800, -5500);
   scene.add(horizon);
   blackHoleMesh = horizon;
 
+  // Black hole 3D label
+  (function() {
+    const cv = document.createElement('canvas');
+    cv.width = 512; cv.height = 80;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, 512, 80);
+    ctx.fillStyle = '#e8d89a';
+    ctx.font = 'bold 48px Helvetica, Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('SINGULARITY', 256, 40);
+    const tex = new THREE.CanvasTexture(cv);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+    const label = new THREE.Sprite(mat);
+    label.scale.set(400, 60, 1);
+    label.position.copy(BH_POS).add(new THREE.Vector3(0, 400, 0));
+    scene.add(label);
+  })();
+
   // ── Photon sphere — faint blue-white ring right at edge ───────────────────
   const photonGeo = new THREE.SphereGeometry(1, 48, 36);
   const photonMat = new THREE.MeshBasicMaterial({
@@ -2138,6 +2158,32 @@ nodes.forEach(n => {
   scene.add(mesh);
   nodeMeshes.push(mesh);
   n.mesh = mesh;
+
+  // 3D floating label (sprite) — visible in VR
+  (function() {
+    const cv = document.createElement('canvas');
+    const fontSize = 48;
+    const ctx = cv.getContext('2d');
+    ctx.font = 'bold ' + fontSize + 'px Helvetica, Arial, sans-serif';
+    const tw = ctx.measureText(n.id).width;
+    cv.width = Math.ceil(tw) + 20;
+    cv.height = fontSize + 16;
+    ctx.font = 'bold ' + fontSize + 'px Helvetica, Arial, sans-serif';
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = '#' + domColor.getHexString();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(n.id, cv.width / 2, cv.height / 2);
+    const tex = new THREE.CanvasTexture(cv);
+    const labelMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+    const label = new THREE.Sprite(labelMat);
+    const labelScale = n.size * 0.25;
+    label.scale.set(labelScale * (cv.width / cv.height), labelScale, 1);
+    label.position.set(n.x, n.y + n.size * 2.8, n.z);
+    scene.add(label);
+    n._vrLabel = label;
+  })();
 
   // Atmosphere glow — gaussian sprite billboard (cheaper than sphere mesh)
   const atmMat = new THREE.SpriteMaterial({
@@ -2957,6 +3003,7 @@ function updateScene() {
     n.mesh.position.set(n.x, n.y, n.z);
     n.mesh.rotation.y += n.mesh.userData.rotSpeed;
     if (n.atm) n.atm.position.set(n.x, n.y, n.z);
+    if (n._vrLabel) n._vrLabel.position.set(n.x, n.y + n.size * 2.8, n.z);
     if (n.outerAtm) n.outerAtm.position.set(n.x, n.y, n.z);
     if (n.ring) {
       n.ring.position.set(n.x, n.y, n.z);
