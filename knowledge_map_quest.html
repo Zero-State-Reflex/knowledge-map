@@ -1352,242 +1352,10 @@ let _xrSession = null;
 // XR controller setup
 const xrController0 = renderer.xr.getController(0);
 const xrController1 = renderer.xr.getController(1);
-const xrHand0 = renderer.xr.getHand(0);
-const xrHand1 = renderer.xr.getHand(1);
 const xrCamRig = new THREE.Group();
 
-// Hand joint visuals — small spheres at each tracked joint
-function buildHandJointVisuals(hand) {
-  const jointGroup = new THREE.Group();
-  const geo = new THREE.SphereGeometry(0.008, 6, 4);
-  const mat = new THREE.MeshBasicMaterial({ color: 0xe8d89a, transparent: true, opacity: 0.6 });
-  for (let i = 0; i < 25; i++) {
-    const sphere = new THREE.Mesh(geo, mat);
-    sphere.visible = false;
-    jointGroup.add(sphere);
-  }
-  hand.add(jointGroup);
-  hand._jointVisuals = jointGroup;
-}
-buildHandJointVisuals(xrHand0);
-buildHandJointVisuals(xrHand1);
 
-// Update hand joint positions each frame
-function updateHandVisuals(hand) {
-  const joints = hand.joints;
-  if (!joints || !hand._jointVisuals) return;
-  const spheres = hand._jointVisuals.children;
-  let idx = 0;
-  for (const jointName in joints) {
-    const joint = joints[jointName];
-    if (idx < spheres.length) {
-      spheres[idx].visible = joint.visible !== false;
-      spheres[idx].position.copy(joint.position);
-      spheres[idx].quaternion.copy(joint.quaternion);
-      idx++;
-    }
-  }
-}
 
-// Pinch detection for hand tracking — pinch index finger to thumb to select
-const _pinchThreshold = 0.03; // 3cm between thumb tip and index tip
-let _wasPinching0 = false, _wasPinching1 = false;
-
-function getJointPosition(hand, jointName) {
-  if (!hand.joints || !hand.joints[jointName]) return null;
-  const j = hand.joints[jointName];
-  if (!j.visible) return null;
-  return j.position;
-}
-
-function checkPinchSelect(hand, wasPinching) {
-  const thumbTip = getJointPosition(hand, 'thumb-tip');
-  const indexTip = getJointPosition(hand, 'index-finger-tip');
-  if (!thumbTip || !indexTip) return { pinching: false, wasPinching };
-
-  const dist = thumbTip.distanceTo(indexTip);
-  const pinching = dist < _pinchThreshold;
-
-  if (pinching && !wasPinching) {
-    // Pinch just started — raycast from between thumb and index finger
-    const origin = new THREE.Vector3().addVectors(thumbTip, indexTip).multiplyScalar(0.5);
-    // Direction: forward from the hand (wrist to middle finger direction)
-    const wrist = getJointPosition(hand, 'wrist');
-    const middleTip = getJointPosition(hand, 'middle-finger-tip');
-    if (wrist && middleTip) {
-      const dir = new THREE.Vector3().subVectors(middleTip, wrist).normalize();
-      _xrRaycaster.ray.origin.copy(origin);
-      _xrRaycaster.ray.direction.copy(dir);
-      const meshes = nodes.filter(n => n.mesh).map(n => n.mesh);
-      const hits = _xrRaycaster.intersectObjects(meshes, false);
-      if (hits.length > 0) {
-        const node = nodes.find(n => n.mesh === hits[0].object);
-        if (node) focusNode(node);
-      }
-    }
-  }
-
-  return { pinching, wasPinching: pinching };
-}
-
-// ─── Hand-based Navigation ──────────────────────────────────────────────────
-// Closed fist (grab) + move hand = drag the scene. Track each hand separately.
-const _handNav = { left: { grabbing: false, lastPos: null }, right: { grabbing: false, lastPos: null } };
-const _grabThreshold = 0.04; // all fingers curled within 4cm of palm = grab
-
-function isHandGrabbing(hand) {
-  const wrist = getJointPosition(hand, 'wrist');
-  const indexTip = getJointPosition(hand, 'index-finger-tip');
-  const middleTip = getJointPosition(hand, 'middle-finger-tip');
-  const ringTip = getJointPosition(hand, 'ring-finger-tip');
-  const pinkyTip = getJointPosition(hand, 'pinky-finger-tip');
-  const thumbTip = getJointPosition(hand, 'thumb-tip');
-  if (!wrist || !indexTip || !middleTip || !ringTip || !pinkyTip) return false;
-  // Check if fingertips are close to palm center (between wrist and middle knuckle)
-  const palmCenter = getJointPosition(hand, 'middle-finger-metacarpal');
-  if (!palmCenter) return false;
-  const d1 = indexTip.distanceTo(palmCenter);
-  const d2 = middleTip.distanceTo(palmCenter);
-  const d3 = ringTip.distanceTo(palmCenter);
-  const d4 = pinkyTip.distanceTo(palmCenter);
-  return d1 < _grabThreshold && d2 < _grabThreshold && d3 < _grabThreshold && d4 < _grabThreshold;
-}
-
-function updateHandNav(hand, state) {
-  const wrist = getJointPosition(hand, 'wrist');
-  if (!wrist) { state.grabbing = false; state.lastPos = null; return; }
-  const grabbing = isHandGrabbing(hand);
-  if (grabbing) {
-    if (state.grabbing && state.lastPos) {
-      // Move scene by the delta of hand movement
-      const dx = wrist.x - state.lastPos.x;
-      const dy = wrist.y - state.lastPos.y;
-      const dz = wrist.z - state.lastPos.z;
-      scene.position.x += dx * 3;
-      scene.position.y += dy * 3;
-      scene.position.z += dz * 3;
-    }
-    state.lastPos = wrist.clone();
-    state.grabbing = true;
-  } else {
-    state.grabbing = false;
-    state.lastPos = null;
-  }
-}
-
-// ─── 3D VR Info Card ────────────────────────────────────────────────────────
-// Floating panel that shows node info when selected in VR
-const _vrInfoCard = new THREE.Group();
-_vrInfoCard.visible = false;
-scene.add(_vrInfoCard); // will be positioned when shown
-
-function showVRInfoCard(n) {
-  // Clear previous
-  while (_vrInfoCard.children.length) _vrInfoCard.remove(_vrInfoCard.children[0]);
-
-  const domColor = DOMAINS[n.domain]?.color || '#c8b89a';
-  const desc = NODE_DESCRIPTIONS[n.id] || '';
-
-  // Card background
-  const bgMat = new THREE.MeshBasicMaterial({ color: 0x04060f, transparent: true, opacity: 0.92, side: THREE.DoubleSide });
-  const bg = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.8), bgMat);
-  _vrInfoCard.add(bg);
-
-  // Border
-  const borderMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(domColor), transparent: true, opacity: 0.5, side: THREE.DoubleSide });
-  const border = new THREE.Mesh(new THREE.PlaneGeometry(1.24, 0.84), borderMat);
-  border.position.z = -0.001;
-  _vrInfoCard.add(border);
-
-  // Title
-  const titleCv = document.createElement('canvas');
-  titleCv.width = 512; titleCv.height = 64;
-  const titleCtx = titleCv.getContext('2d');
-  titleCtx.fillStyle = domColor;
-  titleCtx.font = 'bold 40px Helvetica, Arial, sans-serif';
-  titleCtx.textAlign = 'center';
-  titleCtx.textBaseline = 'middle';
-  titleCtx.fillText(n.id, 256, 32);
-  const titleTex = new THREE.CanvasTexture(titleCv);
-  const titleSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: titleTex, transparent: true }));
-  titleSprite.scale.set(1.0, 0.125, 1);
-  titleSprite.position.set(0, 0.3, 0.002);
-  _vrInfoCard.add(titleSprite);
-
-  // Domain label
-  const domCv = document.createElement('canvas');
-  domCv.width = 512; domCv.height = 40;
-  const domCtx = domCv.getContext('2d');
-  domCtx.fillStyle = domColor;
-  domCtx.globalAlpha = 0.7;
-  domCtx.font = '22px Helvetica, Arial, sans-serif';
-  domCtx.textAlign = 'center';
-  domCtx.textBaseline = 'middle';
-  domCtx.fillText(n.domain, 256, 20);
-  const domTex = new THREE.CanvasTexture(domCv);
-  const domSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: domTex, transparent: true }));
-  domSprite.scale.set(0.8, 0.06, 1);
-  domSprite.position.set(0, 0.2, 0.002);
-  _vrInfoCard.add(domSprite);
-
-  // Description — word wrap into multiple lines
-  const descCv = document.createElement('canvas');
-  descCv.width = 1024; descCv.height = 256;
-  const descCtx = descCv.getContext('2d');
-  descCtx.fillStyle = '#e0d8c8';
-  descCtx.font = '24px Helvetica, Arial, sans-serif';
-  const maxW = 960;
-  const lineH = 32;
-  const words = desc.split(' ');
-  let line = '';
-  let y = 30;
-  for (const word of words) {
-    const test = line + word + ' ';
-    if (descCtx.measureText(test).width > maxW && line) {
-      descCtx.fillText(line.trim(), 20, y);
-      line = word + ' ';
-      y += lineH;
-      if (y > 240) break;
-    } else {
-      line = test;
-    }
-  }
-  if (line && y <= 240) descCtx.fillText(line.trim(), 20, y);
-  const descTex = new THREE.CanvasTexture(descCv);
-  const descSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: descTex, transparent: true }));
-  descSprite.scale.set(1.1, 0.28, 1);
-  descSprite.position.set(0, -0.02, 0.002);
-  _vrInfoCard.add(descSprite);
-
-  // Related nodes
-  const neighbors = (neighborMap.get(n.id) || []).slice(0, 6);
-  if (neighbors.length > 0) {
-    const relCv = document.createElement('canvas');
-    relCv.width = 1024; relCv.height = 48;
-    const relCtx = relCv.getContext('2d');
-    relCtx.fillStyle = 'rgba(200,180,120,0.5)';
-    relCtx.font = '20px Helvetica, Arial, sans-serif';
-    relCtx.textAlign = 'center';
-    relCtx.fillText('Related: ' + neighbors.map(nb => nb.id).join(' · '), 512, 28);
-    const relTex = new THREE.CanvasTexture(relCv);
-    const relSprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: relTex, transparent: true }));
-    relSprite.scale.set(1.1, 0.06, 1);
-    relSprite.position.set(0, -0.25, 0.002);
-    _vrInfoCard.add(relSprite);
-  }
-
-  // Position card near the planet
-  _vrInfoCard.position.set(n.x, n.y + n.size * 6, n.z);
-  _vrInfoCard.visible = true;
-
-  // Scale for scene — card is in scene coordinates
-  const cardScale = n.size * 3;
-  _vrInfoCard.scale.setScalar(cardScale);
-}
-
-function hideVRInfoCard() {
-  _vrInfoCard.visible = false;
-}
 
 // ─── In-VR Menu Panel ────────────────────────────────────────────────────────
 const _vrMenu = new THREE.Group();
@@ -1723,8 +1491,6 @@ renderer.xr.addEventListener('sessionstart', () => {
   // Add controllers and menu to the scene
   xrCamRig.add(xrController0);
   xrCamRig.add(xrController1);
-  xrCamRig.add(xrHand0);
-  xrCamRig.add(xrHand1);
   scene.add(xrCamRig);
   scene.add(_vrMenu);
   // Show menu immediately on VR enter so user knows it exists
@@ -1814,7 +1580,7 @@ function setupVRButton() {
     btn.addEventListener('click', function() {
       if (_xrSession) { _xrSession.end(); return; }
       navigator.xr.requestSession('immersive-vr', {
-        optionalFeatures: ['local-floor', 'hand-tracking']
+        optionalFeatures: ['local-floor']
       }).then(function(session) {
         _xrSession = session;
         btn.textContent = 'EXIT VR';
@@ -4070,7 +3836,6 @@ function focusNode(n) {
     clearMoons();
     clearShip();
     resetDim();
-    hideVRInfoCard();
   }
   focusCamAnim = null;
   focusedNode  = n;
@@ -4093,12 +3858,8 @@ function focusNode(n) {
   }, 100);
   setTimeout(() => {
     if (focusedNode === n) {
-      if (isInXR()) {
-        showVRInfoCard(n);
-      } else {
-        const sp = getNodeScreenPos(n);
-        showInfo(n, sp.x, sp.y);
-      }
+      const sp = getNodeScreenPos(n);
+      showInfo(n, sp.x, sp.y);
     }
   }, 700);
 }
@@ -5270,16 +5031,6 @@ function animate() {
   if (_inXR) {
     updateXRControls();
     pollMenuButton();
-    // Hand tracking
-    updateHandVisuals(xrHand0);
-    updateHandVisuals(xrHand1);
-    const p0 = checkPinchSelect(xrHand0, _wasPinching0);
-    _wasPinching0 = p0.wasPinching;
-    const p1 = checkPinchSelect(xrHand1, _wasPinching1);
-    _wasPinching1 = p1.wasPinching;
-    // Hand navigation — grab to drag
-    updateHandNav(xrHand0, _handNav.left);
-    updateHandNav(xrHand1, _handNav.right);
   }
 
   renderer.render(scene, camera);
