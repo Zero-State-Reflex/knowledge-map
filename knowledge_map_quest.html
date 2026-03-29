@@ -4505,20 +4505,24 @@ let _introZoom = null;
 
 function generateAllTextures(callback) {
   let i = 0;
+  const BATCH = 4; // process multiple textures per tick for Quest performance
   function next() {
-    if (i >= nodes.length) {
-      _allTexturesReady = true;
-      callback();
-      return;
+    const end = Math.min(i + BATCH, nodes.length);
+    while (i < end) {
+      const n = nodes[i++];
+      const tex = makePlanetTexture(n.domain, n.id);
+      n.mesh.material.map = tex;
+      n.mesh.material.needsUpdate = true;
     }
-    const n = nodes[i++];
-    const tex = makePlanetTexture(n.domain, n.id);
-    n.mesh.material.map = tex;
-    n.mesh.material.needsUpdate = true;
     const pct = Math.round((i / nodes.length) * 100);
     const label = document.querySelector('.loading-label');
     if (label) label.textContent = `Initializing ${pct}%`;
-    setTimeout(next, 0);
+    if (i >= nodes.length) {
+      _allTexturesReady = true;
+      callback();
+    } else {
+      setTimeout(next, 0);
+    }
   }
   setTimeout(next, 0);
 }
@@ -4555,9 +4559,13 @@ function onTexturesReady() {
 generateAllTextures(onTexturesReady);
 
 function animate() {
-  requestAnimationFrame(animate);
-
   const _inXR = isInXR();
+
+  // While textures are loading, only do a minimal render to keep XR alive
+  if (!_allTexturesReady && _inXR) {
+    renderer.render(scene, camera);
+    return;
+  }
 
   // In XR: skip intro zoom, camera anims, and auto-rotation — headset owns the camera
   if (!_inXR && _introZoom) {
@@ -4720,8 +4728,7 @@ function animate() {
     leaderLine.setAttribute('y1', sp.y);
   }
 }
-animate();
-// setAnimationLoop takes over from rAF when an XR session is active
+// Single animation driver — setAnimationLoop handles both desktop and XR frames
 renderer.setAnimationLoop(animate);
 
 window.addEventListener('resize', () => {
