@@ -167,7 +167,7 @@
     position:fixed; top:28px; left:50%; transform:translateX(-50%);
     font-family:'Helvetica Neue',Helvetica,Arial,sans-serif; font-size:38px; font-weight:700;
     letter-spacing:0.04em; color:rgba(232,216,154,0.82);
-    text-transform:uppercase; z-index:100; pointer-events:none; white-space:nowrap;
+    text-transform:uppercase; z-index:100; pointer-events:auto; cursor:pointer; white-space:nowrap;
     text-shadow:
       0 3px 8px rgba(0,0,0,0.6),
       0 1px 3px rgba(0,0,0,0.4),
@@ -6241,6 +6241,24 @@ function exitInspectAndUnfocus() {
   );
   animateCamTo(endPos, new THREE.Vector3(0,0,0), 70);
 }
+
+// ─── TITLE CLICK — return to overview ─────────────────────────────────────────
+document.getElementById('title').addEventListener('click', () => {
+  // Exit any focused state
+  if (focusedNode) exitInspectAndUnfocus();
+  if (voyagerFocused) unfocusVoyager();
+  if (blackHoleFocused) hideBlackHoleCard();
+  // Fly camera back to home position
+  const endPos = new THREE.Vector3(
+    CAM_HOME_RADIUS * Math.sin(1.25) * Math.sin(0.5),
+    CAM_HOME_RADIUS * Math.cos(1.25),
+    CAM_HOME_RADIUS * Math.sin(1.25) * Math.cos(0.5)
+  );
+  animateCamTo(endPos, new THREE.Vector3(0, 0, 0), 90);
+  camRadius = CAM_HOME_RADIUS;
+  camTheta = 0.5;
+  camPhi = 1.25;
+});
 
 // ─── BLACK HOLE INFO CARD ────────────────────────────────────────────────────
 let blackHoleFocused = false;
