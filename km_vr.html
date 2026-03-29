@@ -1486,34 +1486,33 @@ function pollMenuButton() {
   }
 }
 
+// Separate group for controllers — NOT scaled with the galaxy
+const _xrUIGroup = new THREE.Group();
+_xrUIGroup.add(xrController0);
+_xrUIGroup.add(xrController1);
+
 renderer.xr.addEventListener('sessionstart', () => {
   scene.scale.setScalar(XR_SCALE);
   scene.position.set(0, 1.4, -2);
-  // Add controllers and menu to the scene
-  xrCamRig.add(xrController0);
-  xrCamRig.add(xrController1);
-  scene.add(xrCamRig);
-  scene.add(_vrMenu);
-  // Show menu immediately on VR enter so user knows it exists
+  // Controllers and menu stay at world scale (not inside scaled scene)
+  scene.parent.add(_xrUIGroup);
+  scene.parent.add(_vrMenu);
   toggleVRMenu();
-  // Auto-hide after 8 seconds
   setTimeout(() => { if (_vrMenuVisible) toggleVRMenu(); }, 8000);
 });
 renderer.xr.addEventListener('sessionend', () => {
   _vrMenuVisible = false;
   _vrMenu.visible = false;
-  scene.remove(_vrMenu);
+  if (_xrUIGroup.parent) _xrUIGroup.parent.remove(_xrUIGroup);
+  if (_vrMenu.parent) _vrMenu.parent.remove(_vrMenu);
   scene.scale.setScalar(1);
   scene.position.set(0, 0, 0);
-  scene.remove(xrCamRig);
 });
 
-// Controller visuals — ray line from each controller
-// Scale up to compensate for scene.scale(0.002) so rays are visible in VR
-const _rayLen = 5 / XR_SCALE; // 5 meters in VR = 2500 scene units
+// Controller visuals — ray line from each controller (world scale, not in scene)
 const _rayGeo = new THREE.BufferGeometry().setFromPoints([
   new THREE.Vector3(0, 0, 0),
-  new THREE.Vector3(0, 0, -_rayLen)
+  new THREE.Vector3(0, 0, -5)
 ]);
 const _rayMat = new THREE.LineBasicMaterial({ color: 0xe8d89a, transparent: true, opacity: 0.6 });
 const _rayLine0 = new THREE.Line(_rayGeo, _rayMat);
