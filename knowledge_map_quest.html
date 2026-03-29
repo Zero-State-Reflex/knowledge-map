@@ -459,7 +459,7 @@
     <div class="atom-orbit"><div class="atom-electron"></div></div>
     <div class="atom-orbit"><div class="atom-electron"></div></div>
   </div>
-  <div class="loading-label">Initializing (Quest XR)</div>
+  <div class="loading-label">Initializing</div>
 </div>
 <div id="welcome-overlay"><div id="welcome-text">Welcome to the Map of Human Knowledge</div></div>
 <canvas id="c"></canvas>
@@ -505,7 +505,7 @@
 <div id="constellation-toast"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-// ─── VRButton (from Three.js r128 examples) ──────────────────────────────────
+// ─── VRButton (Three.js r128) ─────────────────────────────────────────────────
 class VRButton {
   static createButton(renderer) {
     const button = document.createElement('button');
@@ -544,23 +544,20 @@ class VRButton {
       button.style.left = 'calc(50% - 75px)';
       button.style.width = '150px';
       button.textContent = 'VR NOT SUPPORTED';
-      button.onmouseenter = null;
-      button.onmouseleave = null;
-      button.onclick = null;
     }
-    function stylizeElement(element) {
-      element.style.position = 'absolute';
-      element.style.bottom = '20px';
-      element.style.padding = '12px 6px';
-      element.style.border = '1px solid rgba(200,180,120,0.4)';
-      element.style.borderRadius = '4px';
-      element.style.background = 'rgba(4,6,15,0.8)';
-      element.style.color = 'rgba(232,216,154,0.9)';
-      element.style.font = 'normal 13px "Helvetica Neue",sans-serif';
-      element.style.textAlign = 'center';
-      element.style.opacity = '0.5';
-      element.style.outline = 'none';
-      element.style.zIndex = '999';
+    function stylizeElement(el) {
+      el.style.position = 'absolute';
+      el.style.bottom = '20px';
+      el.style.padding = '12px 6px';
+      el.style.border = '1px solid rgba(200,180,120,0.4)';
+      el.style.borderRadius = '4px';
+      el.style.background = 'rgba(4,6,15,0.8)';
+      el.style.color = 'rgba(232,216,154,0.9)';
+      el.style.font = 'normal 13px "Helvetica Neue",sans-serif';
+      el.style.textAlign = 'center';
+      el.style.opacity = '0.5';
+      el.style.outline = 'none';
+      el.style.zIndex = '999';
     }
     if ('xr' in navigator) {
       button.id = 'VRButton';
@@ -1428,7 +1425,7 @@ renderer.toneMappingExposure = 1.2;
 
 // ─── WebXR for Meta Quest 3 ─────────────────────────────────────────────────
 renderer.xr.enabled = true;
-try { document.body.appendChild(VRButton.createButton(renderer)); } catch(e) { console.warn('VRButton init skipped:', e); }
+document.body.appendChild(VRButton.createButton(renderer));
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 12000);
@@ -4546,6 +4543,7 @@ function onTexturesReady() {
 generateAllTextures(onTexturesReady);
 
 function animate() {
+  requestAnimationFrame(animate);
 
   // Intro zoom animation
   if (_introZoom) {
@@ -4708,6 +4706,8 @@ function animate() {
     leaderLine.setAttribute('y1', sp.y);
   }
 }
+animate();
+// setAnimationLoop takes over from rAF when an XR session is active
 renderer.setAnimationLoop(animate);
 
 window.addEventListener('resize', () => {
