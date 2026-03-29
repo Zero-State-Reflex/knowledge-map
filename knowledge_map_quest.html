@@ -496,7 +496,7 @@
 <button id="journey-btn">✦ Take a Journey</button>
 <button id="path-btn">Show Path</button>
 <div id="constellation-toast"></div>
-<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
 <script>
 // ─── VRButton (Three.js r128) ─────────────────────────────────────────────────
 class VRButton {
@@ -1418,35 +1418,29 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
 
 // ─── WebXR for Meta Quest 3 ─────────────────────────────────────────────────
-// XR is NOT enabled yet — we defer until the scene is fully loaded so the
-// Quest browser doesn't auto-enter immersive mode on a blank scene.
-const XR_SCALE = 0.002; // 5000 scene-units → 10 m in VR
+// Enable XR immediately so the WebGL context is created XR-compatible
+renderer.xr.enabled = true;
+renderer.xr.setReferenceSpaceType('local-floor');
+
+const XR_SCALE = 0.002;
 function isInXR() { return renderer.xr.isPresenting; }
 
+// Debug test cube — proves XR rendering pipeline works
+const _testGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+const _testMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+const _testCube = new THREE.Mesh(_testGeo, _testMat);
+_testCube.position.set(0, 1.4, -1.5);
+
+renderer.xr.addEventListener('sessionstart', () => {
+  scene.add(_testCube);
+});
+renderer.xr.addEventListener('sessionend', () => {
+  scene.remove(_testCube);
+});
+
 function enableXR() {
-  renderer.xr.enabled = true;
-  renderer.xr.setReferenceSpaceType('local-floor');
+  // XR already enabled at init — just add the VR button now that scene is ready
   document.body.appendChild(VRButton.createButton(renderer));
-
-  // Debug: add a bright test cube so we can tell if XR renders anything at all
-  const testGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
-  const testMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-  const testCube = new THREE.Mesh(testGeo, testMat);
-  testCube.position.set(0, 1.4, -1.5); // right in front of user at eye height
-
-  renderer.xr.addEventListener('sessionstart', () => {
-    // Temporarily add test cube to verify VR rendering works
-    scene.add(testCube);
-    // Scale the knowledge map scene for VR
-    // Don't scale scene itself — scale a wrapper group instead
-    scene.scale.setScalar(1); // keep scene at 1:1 for the test cube
-  });
-  renderer.xr.addEventListener('sessionend', () => {
-    scene.remove(testCube);
-    scene.scale.setScalar(1);
-    scene.position.set(0, 0, 0);
-  });
-  // Switch to XR-compatible animation loop (replaces rAF)
   _xrLoopActive = true;
   renderer.setAnimationLoop(animate);
 }
