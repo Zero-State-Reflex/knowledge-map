@@ -1352,7 +1352,83 @@ let _xrSession = null;
 // XR controller setup
 const xrController0 = renderer.xr.getController(0);
 const xrController1 = renderer.xr.getController(1);
-const xrCamRig = new THREE.Group(); // user moves this group to fly through scene
+const xrHand0 = renderer.xr.getHand(0);
+const xrHand1 = renderer.xr.getHand(1);
+const xrCamRig = new THREE.Group();
+
+// Hand joint visuals — small spheres at each tracked joint
+function buildHandJointVisuals(hand) {
+  const jointGroup = new THREE.Group();
+  const geo = new THREE.SphereGeometry(0.008, 6, 4);
+  const mat = new THREE.MeshBasicMaterial({ color: 0xe8d89a, transparent: true, opacity: 0.6 });
+  for (let i = 0; i < 25; i++) {
+    const sphere = new THREE.Mesh(geo, mat);
+    sphere.visible = false;
+    jointGroup.add(sphere);
+  }
+  hand.add(jointGroup);
+  hand._jointVisuals = jointGroup;
+}
+buildHandJointVisuals(xrHand0);
+buildHandJointVisuals(xrHand1);
+
+// Update hand joint positions each frame
+function updateHandVisuals(hand) {
+  const joints = hand.joints;
+  if (!joints || !hand._jointVisuals) return;
+  const spheres = hand._jointVisuals.children;
+  let idx = 0;
+  for (const jointName in joints) {
+    const joint = joints[jointName];
+    if (idx < spheres.length) {
+      spheres[idx].visible = joint.visible !== false;
+      spheres[idx].position.copy(joint.position);
+      spheres[idx].quaternion.copy(joint.quaternion);
+      idx++;
+    }
+  }
+}
+
+// Pinch detection for hand tracking — pinch index finger to thumb to select
+const _pinchThreshold = 0.03; // 3cm between thumb tip and index tip
+let _wasPinching0 = false, _wasPinching1 = false;
+
+function getJointPosition(hand, jointName) {
+  if (!hand.joints || !hand.joints[jointName]) return null;
+  const j = hand.joints[jointName];
+  if (!j.visible) return null;
+  return j.position;
+}
+
+function checkPinchSelect(hand, wasPinching) {
+  const thumbTip = getJointPosition(hand, 'thumb-tip');
+  const indexTip = getJointPosition(hand, 'index-finger-tip');
+  if (!thumbTip || !indexTip) return { pinching: false, wasPinching };
+
+  const dist = thumbTip.distanceTo(indexTip);
+  const pinching = dist < _pinchThreshold;
+
+  if (pinching && !wasPinching) {
+    // Pinch just started — raycast from between thumb and index finger
+    const origin = new THREE.Vector3().addVectors(thumbTip, indexTip).multiplyScalar(0.5);
+    // Direction: forward from the hand (wrist to middle finger direction)
+    const wrist = getJointPosition(hand, 'wrist');
+    const middleTip = getJointPosition(hand, 'middle-finger-tip');
+    if (wrist && middleTip) {
+      const dir = new THREE.Vector3().subVectors(middleTip, wrist).normalize();
+      _xrRaycaster.ray.origin.copy(origin);
+      _xrRaycaster.ray.direction.copy(dir);
+      const meshes = nodes.filter(n => n.mesh).map(n => n.mesh);
+      const hits = _xrRaycaster.intersectObjects(meshes, false);
+      if (hits.length > 0) {
+        const node = nodes.find(n => n.mesh === hits[0].object);
+        if (node) focusNode(node);
+      }
+    }
+  }
+
+  return { pinching, wasPinching: pinching };
+}
 
 // ─── In-VR Menu Panel ────────────────────────────────────────────────────────
 const _vrMenu = new THREE.Group();
@@ -1488,6 +1564,8 @@ renderer.xr.addEventListener('sessionstart', () => {
   // Add controllers and menu to the scene
   xrCamRig.add(xrController0);
   xrCamRig.add(xrController1);
+  xrCamRig.add(xrHand0);
+  xrCamRig.add(xrHand1);
   scene.add(xrCamRig);
   scene.add(_vrMenu);
   // Show menu immediately on VR enter so user knows it exists
@@ -1577,7 +1655,7 @@ function setupVRButton() {
     btn.addEventListener('click', function() {
       if (_xrSession) { _xrSession.end(); return; }
       navigator.xr.requestSession('immersive-vr', {
-        optionalFeatures: ['local-floor']
+        optionalFeatures: ['local-floor', 'hand-tracking']
       }).then(function(session) {
         _xrSession = session;
         btn.textContent = 'EXIT VR';
@@ -2178,9 +2256,9 @@ nodes.forEach(n => {
     const tex = new THREE.CanvasTexture(cv);
     const labelMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
     const label = new THREE.Sprite(labelMat);
-    const labelScale = n.size * 0.25;
+    const labelScale = n.size * 1.2;
     label.scale.set(labelScale * (cv.width / cv.height), labelScale, 1);
-    label.position.set(n.x, n.y + n.size * 2.8, n.z);
+    label.position.set(n.x, n.y + n.size * 4, n.z);
     scene.add(label);
     n._vrLabel = label;
   })();
@@ -3003,7 +3081,7 @@ function updateScene() {
     n.mesh.position.set(n.x, n.y, n.z);
     n.mesh.rotation.y += n.mesh.userData.rotSpeed;
     if (n.atm) n.atm.position.set(n.x, n.y, n.z);
-    if (n._vrLabel) n._vrLabel.position.set(n.x, n.y + n.size * 2.8, n.z);
+    if (n._vrLabel) n._vrLabel.position.set(n.x, n.y + n.size * 4, n.z);
     if (n.outerAtm) n.outerAtm.position.set(n.x, n.y, n.z);
     if (n.ring) {
       n.ring.position.set(n.x, n.y, n.z);
@@ -4917,10 +4995,17 @@ function animate() {
     }
   }
 
-  // XR controller navigation + menu button polling
+  // XR controller navigation + hand tracking + menu
   if (_inXR) {
     updateXRControls();
     pollMenuButton();
+    // Hand tracking
+    updateHandVisuals(xrHand0);
+    updateHandVisuals(xrHand1);
+    const p0 = checkPinchSelect(xrHand0, _wasPinching0);
+    _wasPinching0 = p0.wasPinching;
+    const p1 = checkPinchSelect(xrHand1, _wasPinching1);
+    _wasPinching1 = p1.wasPinching;
   }
 
   renderer.render(scene, camera);
