@@ -1438,10 +1438,11 @@ function toggleVRMenu() {
 
 function handleVRMenuSelect(controller) {
   if (!_vrMenuVisible) return false;
+  const _menuRaycaster = new THREE.Raycaster();
   _xrTempMatrix.identity().extractRotation(controller.matrixWorld);
-  _xrRaycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-  _xrRaycaster.ray.direction.set(0, 0, -1).applyMatrix4(_xrTempMatrix);
-  const hits = _xrRaycaster.intersectObjects([_exitBtn, _restartBtn], false);
+  _menuRaycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+  _menuRaycaster.ray.direction.set(0, 0, -1).applyMatrix4(_xrTempMatrix);
+  const hits = _menuRaycaster.intersectObjects([_exitBtn, _restartBtn], false);
   if (hits.length > 0) {
     const name = hits[0].object.name;
     if (name === 'xr-exit-btn') {
@@ -1510,7 +1511,7 @@ renderer.xr.addEventListener('sessionend', () => {
 // Controller visuals — ray line from each controller
 const _rayGeo = new THREE.BufferGeometry().setFromPoints([
   new THREE.Vector3(0, 0, 0),
-  new THREE.Vector3(0, 0, -3)
+  new THREE.Vector3(0, 0, -10)
 ]);
 const _rayMat = new THREE.LineBasicMaterial({ color: 0xe8d89a, transparent: true, opacity: 0.5 });
 const _rayLine0 = new THREE.Line(_rayGeo, _rayMat);
@@ -1518,23 +1519,33 @@ const _rayLine1 = new THREE.Line(_rayGeo.clone(), _rayMat.clone());
 xrController0.add(_rayLine0);
 xrController1.add(_rayLine1);
 
-// Controller select — raycast to find nearest planet node
-const _xrRaycaster = new THREE.Raycaster();
+// Controller select — find closest planet to the ray direction
 const _xrTempMatrix = new THREE.Matrix4();
+const _xrRayOrigin = new THREE.Vector3();
+const _xrRayDir = new THREE.Vector3();
+const _xrNodeWorld = new THREE.Vector3();
 
 function xrSelectNode(controller) {
   _xrTempMatrix.identity().extractRotation(controller.matrixWorld);
-  _xrRaycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
-  _xrRaycaster.ray.direction.set(0, 0, -1).applyMatrix4(_xrTempMatrix);
+  _xrRayOrigin.setFromMatrixPosition(controller.matrixWorld);
+  _xrRayDir.set(0, 0, -1).applyMatrix4(_xrTempMatrix);
 
-  // Collect all node meshes
-  const meshes = nodes.filter(n => n.mesh).map(n => n.mesh);
-  const hits = _xrRaycaster.intersectObjects(meshes, false);
-  if (hits.length > 0) {
-    const hitMesh = hits[0].object;
-    const node = nodes.find(n => n.mesh === hitMesh);
-    if (node) focusNode(node);
+  // Find the node whose world position is closest to the ray
+  let bestNode = null;
+  let bestAngle = 0.15; // max angle in radians (~8.5 degrees cone)
+
+  for (const n of nodes) {
+    if (!n.mesh) continue;
+    // Get mesh world position (accounts for scene scale + position)
+    n.mesh.getWorldPosition(_xrNodeWorld);
+    const toNode = _xrNodeWorld.clone().sub(_xrRayOrigin).normalize();
+    const angle = Math.acos(Math.max(-1, Math.min(1, toNode.dot(_xrRayDir))));
+    if (angle < bestAngle) {
+      bestAngle = angle;
+      bestNode = n;
+    }
   }
+  if (bestNode) focusNode(bestNode);
 }
 
 xrController0.addEventListener('select', () => { if (!handleVRMenuSelect(xrController0)) xrSelectNode(xrController0); });
@@ -2184,6 +2195,52 @@ nodes.forEach(n => {
     n.ring = ring;
   }
 });
+
+// ─── 3D LABELS (top 30 largest nodes only — GPU-friendly) ───────────────────
+const _labelNodes = nodes.slice().sort((a, b) => b.size - a.size).slice(0, 30);
+const _labelCv = document.createElement('canvas');
+const _labelCtx = _labelCv.getContext('2d');
+_labelNodes.forEach(n => {
+  const hex = DOMAINS[n.domain]?.color || '#aaaaaa';
+  const fontSize = 32;
+  _labelCtx.font = 'bold ' + fontSize + 'px Helvetica,Arial,sans-serif';
+  const tw = _labelCtx.measureText(n.id).width;
+  _labelCv.width = Math.ceil(tw) + 16;
+  _labelCv.height = fontSize + 12;
+  _labelCtx.font = 'bold ' + fontSize + 'px Helvetica,Arial,sans-serif';
+  _labelCtx.fillStyle = 'rgba(0,0,0,0.4)';
+  _labelCtx.fillRect(0, 0, _labelCv.width, _labelCv.height);
+  _labelCtx.fillStyle = hex;
+  _labelCtx.textAlign = 'center';
+  _labelCtx.textBaseline = 'middle';
+  _labelCtx.fillText(n.id, _labelCv.width / 2, _labelCv.height / 2);
+  const tex = new THREE.CanvasTexture(_labelCv);
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+  const label = new THREE.Sprite(mat);
+  const s = n.size * 0.6;
+  label.scale.set(s * (_labelCv.width / _labelCv.height), s, 1);
+  label.position.set(n.x, n.y + n.size * 3.5, n.z);
+  scene.add(label);
+  n._vrLabel = label;
+});
+
+// Black hole label
+(function() {
+  _labelCv.width = 256; _labelCv.height = 44;
+  _labelCtx.fillStyle = 'rgba(0,0,0,0.4)';
+  _labelCtx.fillRect(0, 0, 256, 44);
+  _labelCtx.fillStyle = '#e8d89a';
+  _labelCtx.font = 'bold 28px Helvetica,Arial,sans-serif';
+  _labelCtx.textAlign = 'center';
+  _labelCtx.textBaseline = 'middle';
+  _labelCtx.fillText('SINGULARITY', 128, 22);
+  const tex = new THREE.CanvasTexture(_labelCv);
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
+  const label = new THREE.Sprite(mat);
+  label.scale.set(300, 50, 1);
+  label.position.copy(BH_POS).add(new THREE.Vector3(0, 350, 0));
+  scene.add(label);
+})();
 
 // ─── EDGE LINES ─────────────────────────────────────────────────────────────
 const edgePosArr = new Float32Array(links.length * 6);
@@ -2960,6 +3017,7 @@ function updateScene() {
     n.mesh.position.set(n.x, n.y, n.z);
     n.mesh.rotation.y += n.mesh.userData.rotSpeed;
     if (n.atm) n.atm.position.set(n.x, n.y, n.z);
+    if (n._vrLabel) n._vrLabel.position.set(n.x, n.y + n.size * 3.5, n.z);
     if (n.outerAtm) n.outerAtm.position.set(n.x, n.y, n.z);
     if (n.ring) {
       n.ring.position.set(n.x, n.y, n.z);
