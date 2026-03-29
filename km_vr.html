@@ -1509,11 +1509,13 @@ renderer.xr.addEventListener('sessionend', () => {
 });
 
 // Controller visuals — ray line from each controller
+// Scale up to compensate for scene.scale(0.002) so rays are visible in VR
+const _rayLen = 5 / XR_SCALE; // 5 meters in VR = 2500 scene units
 const _rayGeo = new THREE.BufferGeometry().setFromPoints([
   new THREE.Vector3(0, 0, 0),
-  new THREE.Vector3(0, 0, -10)
+  new THREE.Vector3(0, 0, -_rayLen)
 ]);
-const _rayMat = new THREE.LineBasicMaterial({ color: 0xe8d89a, transparent: true, opacity: 0.5 });
+const _rayMat = new THREE.LineBasicMaterial({ color: 0xe8d89a, transparent: true, opacity: 0.6 });
 const _rayLine0 = new THREE.Line(_rayGeo, _rayMat);
 const _rayLine1 = new THREE.Line(_rayGeo.clone(), _rayMat.clone());
 xrController0.add(_rayLine0);
