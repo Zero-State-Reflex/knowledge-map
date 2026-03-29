@@ -5264,15 +5264,7 @@ function animate() {
     ap.geo.attributes.position.needsUpdate = true;
   }
 
-  // Slow universe rotation (always, subtle)
-  if (_inXR) {
-    scene.rotation.y += 0.0003;
-    // Keep VR info card facing the user
-    if (_vrInfoCard.visible) {
-      const cam = renderer.xr.getCamera();
-      _vrInfoCard.lookAt(cam.position);
-    }
-  }
+  // VR info card — no scene rotation (breaks XR tracking)
 
   // XR controller navigation + hand tracking + menu
   if (_inXR) {
