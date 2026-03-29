@@ -1883,77 +1883,7 @@ const light3 = new THREE.PointLight(0x886644, 1.0, 6000);
 light3.position.set(0, -1000, 300);
 scene.add(light3);
 
-// ─── AMBIENT FLOATING PARTICLES ─────────────────────────────────────────────
-// Dense cloud of tiny glowing particles throughout the galaxy
-(function buildAmbientParticles() {
-  const COUNT = 15000;
-  const positions = new Float32Array(COUNT * 3);
-  const colors = new Float32Array(COUNT * 3);
-  const sizes = new Float32Array(COUNT);
 
-  const palette = [
-    [1.0, 0.9, 0.6],   // warm gold
-    [0.7, 0.85, 1.0],   // cool blue
-    [1.0, 0.75, 0.9],   // pink
-    [0.75, 1.0, 0.85],  // mint
-    [0.9, 0.8, 1.0],    // lavender
-  ];
-
-  for (let i = 0; i < COUNT; i++) {
-    const r = 100 + Math.random() * 2500;
-    const theta = Math.random() * Math.PI * 2;
-    const phi = Math.acos(2 * Math.random() - 1);
-    positions[i * 3]     = r * Math.sin(phi) * Math.cos(theta);
-    positions[i * 3 + 1] = r * Math.cos(phi);
-    positions[i * 3 + 2] = r * Math.sin(phi) * Math.sin(theta);
-
-    const c = palette[Math.floor(Math.random() * palette.length)];
-    colors[i * 3]     = c[0];
-    colors[i * 3 + 1] = c[1];
-    colors[i * 3 + 2] = c[2];
-
-    sizes[i] = 1.5 + Math.random() * 4;
-  }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
-
-  const mat = new THREE.PointsMaterial({
-    size: 3,
-    vertexColors: true,
-    transparent: true,
-    opacity: 0.4,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    sizeAttenuation: true,
-  });
-
-  const points = new THREE.Points(geo, mat);
-  scene.add(points);
-
-  // Slow drift animation
-  window._ambientParticles = { geo, positions, COUNT };
-})();
-
-// ─── EXTRA GLOW HALOS ON PLANETS ────────────────────────────────────────────
-// Large soft glow sprites around each node for more atmosphere
-const _extraGlowTex = (function() {
-  const cv = document.createElement('canvas');
-  cv.width = 128; cv.height = 128;
-  const ctx = cv.getContext('2d');
-  const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
-  grad.addColorStop(0, 'rgba(255,255,255,0.3)');
-  grad.addColorStop(0.3, 'rgba(255,255,255,0.08)');
-  grad.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 128, 128);
-  return new THREE.CanvasTexture(cv);
-})();
-
-// We'll add extra glow after nodes are built — store ref for later
-let _extraGlows = [];
 
 // ─── PROCEDURAL PLANET TEXTURES ─────────────────────────────────────────────
 // Simple seeded pseudo-random
@@ -2303,25 +2233,6 @@ nodes.forEach(n => {
   }
 });
 
-// Add extra large glow halos to every planet
-nodes.forEach(n => {
-  const hex = DOMAINS[n.domain]?.color || '#aaaaaa';
-  const glowMat = new THREE.SpriteMaterial({
-    map: _extraGlowTex,
-    color: new THREE.Color(hex),
-    transparent: true,
-    opacity: 0.25,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
-  const glow = new THREE.Sprite(glowMat);
-  const glowSize = n.size * 8;
-  glow.scale.set(glowSize, glowSize, 1);
-  glow.position.set(n.x, n.y, n.z);
-  scene.add(glow);
-  n._extraGlow = glow;
-  _extraGlows.push(glow);
-});
 
 // ─── EDGE LINES ─────────────────────────────────────────────────────────────
 const edgePosArr = new Float32Array(links.length * 6);
@@ -3099,7 +3010,6 @@ function updateScene() {
     n.mesh.rotation.y += n.mesh.userData.rotSpeed;
     if (n.atm) n.atm.position.set(n.x, n.y, n.z);
     if (n._vrLabel) n._vrLabel.position.set(n.x, n.y + n.size * 4, n.z);
-    if (n._extraGlow) n._extraGlow.position.set(n.x, n.y, n.z);
     if (n.outerAtm) n.outerAtm.position.set(n.x, n.y, n.z);
     if (n.ring) {
       n.ring.position.set(n.x, n.y, n.z);
@@ -5013,19 +4923,6 @@ function animate() {
     }
   }
 
-  // Drift ambient particles
-  if (window._ambientParticles) {
-    const ap = window._ambientParticles;
-    const t = performance.now() * 0.00003;
-    for (let i = 0; i < ap.COUNT; i++) {
-      ap.positions[i * 3]     += Math.sin(t + i * 0.1) * 0.15;
-      ap.positions[i * 3 + 1] += Math.cos(t + i * 0.07) * 0.1;
-      ap.positions[i * 3 + 2] += Math.sin(t + i * 0.13) * 0.12;
-    }
-    ap.geo.attributes.position.needsUpdate = true;
-  }
-
-  // VR info card — no scene rotation (breaks XR tracking)
 
   // XR controller navigation + hand tracking + menu
   if (_inXR) {
