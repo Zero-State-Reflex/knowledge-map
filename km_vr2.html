@@ -1352,6 +1352,7 @@ const XR_SCALE = 0.002; // 5000 scene-units → 10m in VR
 function isInXR() { return renderer.xr.isPresenting; }
 let _xrSession = null;
 let _galaxyGroup = null; // holds all galaxy content during XR, scaled down
+let _vrZoomAnim = null;  // smooth zoom to selected planet
 
 // XR controller setup
 const xrController0 = renderer.xr.getController(0);
@@ -1517,16 +1518,17 @@ renderer.xr.addEventListener('sessionend', () => {
   }
 });
 
-// Controller visuals — ray line from each controller
-const _rayGeo = new THREE.BufferGeometry().setFromPoints([
-  new THREE.Vector3(0, 0, 0),
-  new THREE.Vector3(0, 0, -5)
-]);
-const _rayMat = new THREE.LineBasicMaterial({ color: 0xe8d89a, transparent: true, opacity: 0.5 });
-const _rayLine0 = new THREE.Line(_rayGeo, _rayMat);
-const _rayLine1 = new THREE.Line(_rayGeo.clone(), _rayMat.clone());
-xrController0.add(_rayLine0);
-xrController1.add(_rayLine1);
+// Controller visuals — thick glowing beam cylinders
+const _beamLen = 5;
+const _beamGeo = new THREE.CylinderGeometry(0.004, 0.001, _beamLen, 6, 1, true);
+_beamGeo.rotateX(Math.PI / 2); // align along Z
+_beamGeo.translate(0, 0, -_beamLen / 2); // origin at controller
+const _beamMat0 = new THREE.MeshBasicMaterial({ color: 0xe8d89a, transparent: true, opacity: 0.7 });
+const _beamMat1 = new THREE.MeshBasicMaterial({ color: 0xe8d89a, transparent: true, opacity: 0.7 });
+const _beam0 = new THREE.Mesh(_beamGeo, _beamMat0);
+const _beam1 = new THREE.Mesh(_beamGeo.clone(), _beamMat1);
+xrController0.add(_beam0);
+xrController1.add(_beam1);
 
 // Controller select — angle-based proximity (raycasting misses tiny scaled meshes)
 const _xrTempMatrix = new THREE.Matrix4();
@@ -1552,7 +1554,23 @@ function xrSelectNode(controller) {
       bestNode = n;
     }
   }
-  if (bestNode) focusNode(bestNode);
+  if (bestNode) {
+    focusNode(bestNode);
+    // Zoom galaxy so selected planet is in front of user
+    if (_galaxyGroup) {
+      const worldPos = new THREE.Vector3();
+      bestNode.mesh.getWorldPosition(worldPos);
+      // Target: move galaxy so this planet ends up at (0, 1.4, -0.8) — arm's reach
+      const targetX = 0 - bestNode.x * XR_SCALE;
+      const targetY = 1.4 - bestNode.y * XR_SCALE;
+      const targetZ = -0.8 - bestNode.z * XR_SCALE;
+      _vrZoomAnim = {
+        startPos: _galaxyGroup.position.clone(),
+        endPos: new THREE.Vector3(targetX, targetY, targetZ),
+        t: 0, frames: 60
+      };
+    }
+  }
 }
 
 
@@ -4897,6 +4915,14 @@ function animate() {
   if (_inXR) {
     updateXRControls();
     pollMenuButton();
+    // Smooth zoom to selected planet
+    if (_vrZoomAnim && _galaxyGroup) {
+      _vrZoomAnim.t++;
+      const raw = Math.min(_vrZoomAnim.t / _vrZoomAnim.frames, 1);
+      const ease = raw < 0.5 ? 2 * raw * raw : -1 + (4 - 2 * raw) * raw;
+      _galaxyGroup.position.lerpVectors(_vrZoomAnim.startPos, _vrZoomAnim.endPos, ease);
+      if (raw >= 1) _vrZoomAnim = null;
+    }
   }
 
   renderer.render(scene, camera);
