@@ -2558,7 +2558,7 @@ nodes.forEach(n => {
     });
     setTimeout(() => {
       const bh = new TText();
-      bh.text = 'SINGULARITY';
+      bh.text = 'BLACK HOLE';
       bh.fontSize = 80;
       bh.color = '#e8d89a';
       bh.anchorX = 'center';
@@ -2578,7 +2578,7 @@ nodes.forEach(n => {
       n._vrLabel = label;
     });
     // BH label
-    const bhLabel = makeCanvasLabel('SINGULARITY', '#e8d89a', 20);
+    const bhLabel = makeCanvasLabel('BLACK HOLE', '#e8d89a', 20);
     bhLabel.scale.set(400, 60, 1);
     bhLabel.position.copy(BH_POS).add(new THREE.Vector3(0, 500, 0));
     scene.add(bhLabel);
