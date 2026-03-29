@@ -461,17 +461,6 @@
   </div>
   <div class="loading-label">Initializing</div>
 </div>
-<div id="debug-log" style="position:fixed;top:0;left:0;right:0;z-index:99999;background:rgba(0,0,0,0.85);color:#0f0;font:12px monospace;padding:8px;max-height:40vh;overflow-y:auto;pointer-events:auto;"></div>
-<script>
-(function(){
-  const log = document.getElementById('debug-log');
-  function dbg(msg) { const d = document.createElement('div'); d.textContent = msg; log.appendChild(d); log.scrollTop = log.scrollHeight; }
-  window._dbg = dbg;
-  window.addEventListener('error', function(e) { dbg('ERR: ' + e.message + ' @ ' + e.filename + ':' + e.lineno); });
-  window.addEventListener('unhandledrejection', function(e) { dbg('PROMISE ERR: ' + e.reason); });
-  dbg('Debug overlay active');
-})();
-</script>
 <div id="welcome-overlay"><div id="welcome-text">Welcome to the Map of Human Knowledge</div></div>
 <canvas id="c"></canvas>
 <svg id="leader-svg">
@@ -1435,11 +1424,21 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
 
 // ─── WebXR for Meta Quest 3 ─────────────────────────────────────────────────
-if (window._dbg) window._dbg('Renderer created OK');
 renderer.xr.enabled = true;
-if (window._dbg) window._dbg('XR enabled OK');
 document.body.appendChild(VRButton.createButton(renderer));
-if (window._dbg) window._dbg('VRButton added OK');
+
+// XR helpers
+const XR_SCALE = 0.002; // 5000 scene-units → 10 m in VR
+function isInXR() { return renderer.xr.isPresenting; }
+renderer.xr.addEventListener('sessionstart', () => {
+  scene.scale.setScalar(XR_SCALE);
+  // Offset so the galaxy center is at eye height, 2m in front of the user
+  scene.position.set(0, 1.4, -2);
+});
+renderer.xr.addEventListener('sessionend', () => {
+  scene.scale.setScalar(1);
+  scene.position.set(0, 0, 0);
+});
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 12000);
@@ -4505,27 +4504,20 @@ let _animFrame = 0;
 let _introZoom = null;
 
 function generateAllTextures(callback) {
-  if (window._dbg) window._dbg('generateAllTextures started, nodes: ' + nodes.length);
   let i = 0;
   function next() {
     if (i >= nodes.length) {
       _allTexturesReady = true;
-      if (window._dbg) window._dbg('All textures done, calling callback');
       callback();
       return;
     }
-    try {
-      const n = nodes[i++];
-      const tex = makePlanetTexture(n.domain, n.id);
-      n.mesh.material.map = tex;
-      n.mesh.material.needsUpdate = true;
-      const pct = Math.round((i / nodes.length) * 100);
-      const label = document.querySelector('.loading-label');
-      if (label) label.textContent = `Initializing ${pct}%`;
-      if (i % 50 === 0 && window._dbg) window._dbg('Textures: ' + pct + '%');
-    } catch(e) {
-      if (window._dbg) window._dbg('TEX ERR at node ' + i + ': ' + e.message);
-    }
+    const n = nodes[i++];
+    const tex = makePlanetTexture(n.domain, n.id);
+    n.mesh.material.map = tex;
+    n.mesh.material.needsUpdate = true;
+    const pct = Math.round((i / nodes.length) * 100);
+    const label = document.querySelector('.loading-label');
+    if (label) label.textContent = `Initializing ${pct}%`;
     setTimeout(next, 0);
   }
   setTimeout(next, 0);
@@ -4560,26 +4552,27 @@ function onTexturesReady() {
 }
 
 // Start generating textures immediately (behind loading screen)
-if (window._dbg) window._dbg('About to generate textures');
 generateAllTextures(onTexturesReady);
 
 function animate() {
   requestAnimationFrame(animate);
 
-  // Intro zoom animation
-  if (_introZoom) {
+  const _inXR = isInXR();
+
+  // In XR: skip intro zoom, camera anims, and auto-rotation — headset owns the camera
+  if (!_inXR && _introZoom) {
     _introZoom.t++;
     const raw = Math.min(_introZoom.t / _introZoom.frames, 1);
-    // Cubic ease-out for dramatic deceleration
     const ease = 1 - Math.pow(1 - raw, 3);
     camRadius = _introZoom.startRadius + (_introZoom.endRadius - _introZoom.startRadius) * ease;
     setCamFromSpherical();
     if (raw >= 1) _introZoom = null;
   }
+  if (_inXR) _introZoom = null; // cancel intro zoom when entering VR
 
   _animFrame++;
-  const isIntroZooming = !!_introZoom;
-  const isFocusAnimating = !!(focusCamAnim || camAnim);
+  const isIntroZooming = !_inXR && !!_introZoom;
+  const isFocusAnimating = !_inXR && !!(focusCamAnim || camAnim);
 
   // During intro zoom: only render, skip all physics and heavy updates
   if (isIntroZooming) {
@@ -4615,8 +4608,8 @@ function animate() {
   // FIX 2: suppress auto-rotation entirely while a node is focused
   const canAutoRotate = !focusedNode && !focusCamAnim;
 
-  // General camera animation (unfocus)
-  if (camAnim) {
+  // General camera animation (unfocus) — skip in XR
+  if (camAnim && !_inXR) {
     camAnim.t++;
     const t    = Math.min(camAnim.t / camAnim.frames, 1);
     const ease = t < 0.5 ? 2*t*t : -1 + (4-2*t)*t;
@@ -4633,8 +4626,8 @@ function animate() {
     }
   }
 
-  // Two-phase focus camera: zoom in → pull back 25%
-  if (focusCamAnim) {
+  // Two-phase focus camera: zoom in → pull back 25% — skip in XR
+  if (focusCamAnim && !_inXR) {
     const fc = focusCamAnim;
     fc.t++;
 
@@ -4703,8 +4696,8 @@ function animate() {
     }
   }
 
-  // Auto-rotation — suppressed while focused (FIX 2)
-  if (canAutoRotate) {
+  // Auto-rotation — suppressed while focused (FIX 2) and in XR
+  if (canAutoRotate && !_inXR) {
     const idle = !isDragging && (performance.now() - lastInteraction > RESUME_DELAY);
     const rotBlend = idle ? Math.min(1, (performance.now() - lastInteraction - RESUME_DELAY) / 1200) : 0;
     if (rotBlend > 0) {
