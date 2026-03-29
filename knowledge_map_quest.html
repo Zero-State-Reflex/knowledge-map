@@ -1349,14 +1349,85 @@ const XR_SCALE = 0.002; // 5000 scene-units → 10m in VR
 function isInXR() { return renderer.xr.isPresenting; }
 let _xrSession = null;
 
+// XR controller setup
+const xrController0 = renderer.xr.getController(0);
+const xrController1 = renderer.xr.getController(1);
+const xrCamRig = new THREE.Group(); // user moves this group to fly through scene
+
 renderer.xr.addEventListener('sessionstart', () => {
   scene.scale.setScalar(XR_SCALE);
   scene.position.set(0, 1.4, -2);
+  // Add controllers to the scene
+  xrCamRig.add(xrController0);
+  xrCamRig.add(xrController1);
+  scene.add(xrCamRig);
 });
 renderer.xr.addEventListener('sessionend', () => {
   scene.scale.setScalar(1);
   scene.position.set(0, 0, 0);
+  scene.remove(xrCamRig);
 });
+
+// Controller visuals — ray line from each controller
+const _rayGeo = new THREE.BufferGeometry().setFromPoints([
+  new THREE.Vector3(0, 0, 0),
+  new THREE.Vector3(0, 0, -3)
+]);
+const _rayMat = new THREE.LineBasicMaterial({ color: 0xe8d89a, transparent: true, opacity: 0.5 });
+const _rayLine0 = new THREE.Line(_rayGeo, _rayMat);
+const _rayLine1 = new THREE.Line(_rayGeo.clone(), _rayMat.clone());
+xrController0.add(_rayLine0);
+xrController1.add(_rayLine1);
+
+// Controller select — raycast to find nearest planet node
+const _xrRaycaster = new THREE.Raycaster();
+const _xrTempMatrix = new THREE.Matrix4();
+
+function xrSelectNode(controller) {
+  _xrTempMatrix.identity().extractRotation(controller.matrixWorld);
+  _xrRaycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+  _xrRaycaster.ray.direction.set(0, 0, -1).applyMatrix4(_xrTempMatrix);
+
+  // Collect all node meshes
+  const meshes = nodes.filter(n => n.mesh).map(n => n.mesh);
+  const hits = _xrRaycaster.intersectObjects(meshes, false);
+  if (hits.length > 0) {
+    const hitMesh = hits[0].object;
+    const node = nodes.find(n => n.mesh === hitMesh);
+    if (node) focusNode(node);
+  }
+}
+
+xrController0.addEventListener('select', () => xrSelectNode(xrController0));
+xrController1.addEventListener('select', () => xrSelectNode(xrController1));
+
+// Joystick navigation: left stick = move, right stick = rotate
+const _xrMoveSpeed = 0.03;
+const _xrRotSpeed = 0.02;
+function updateXRControls() {
+  const session = renderer.xr.getSession();
+  if (!session) return;
+  const sources = session.inputSources;
+  for (let i = 0; i < sources.length; i++) {
+    const src = sources[i];
+    if (!src.gamepad) continue;
+    const axes = src.gamepad.axes;
+    // axes[2] = thumbstick X, axes[3] = thumbstick Y
+    const dx = axes.length >= 4 ? axes[2] : 0;
+    const dy = axes.length >= 4 ? axes[3] : 0;
+    if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) continue;
+
+    if (src.handedness === 'left') {
+      // Left stick: move scene (strafe + forward/back)
+      scene.position.x += dx * _xrMoveSpeed;
+      scene.position.z += dy * _xrMoveSpeed;
+    } else if (src.handedness === 'right') {
+      // Right stick: rotate scene around Y + move up/down
+      scene.rotation.y -= dx * _xrRotSpeed;
+      scene.position.y -= dy * _xrMoveSpeed;
+    }
+  }
+}
 
 // VR button — uses exact same pattern as working xr_test.html
 function setupVRButton() {
@@ -4662,6 +4733,9 @@ function animate() {
       setCamFromSpherical();
     }
   }
+
+  // XR controller navigation
+  if (_inXR) updateXRControls();
 
   renderer.render(scene, camera);
   updateFocusLabelPos();
