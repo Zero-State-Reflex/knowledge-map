@@ -3134,29 +3134,6 @@ const edgeHaloLines = new THREE.LineSegments(edgeHaloGeo, edgeHaloMat);
 scene.add(edgeHaloLines); // halo behind
 scene.add(edgeLines);     // core in front
 
-// Pre-compute shared neighbor count per link for brightness
-const _edgeMeta = links.map((l, i) => {
-  const sNeighbors = new Set((neighborMap.get(l.source.id) || []).map(n => n.id));
-  const tNeighbors = new Set((neighborMap.get(l.target.id) || []).map(n => n.id));
-  let shared = 0;
-  sNeighbors.forEach(id => { if (tNeighbors.has(id)) shared++; });
-  // Brightness: more shared neighbors = brighter filament
-  const brightness = Math.min(1, 0.3 + shared * 0.15);
-  let _s = i * 7919 + 31;
-  const r = () => { _s = (_s * 16807 + 1) & 0x7fffffff; return _s / 0x7fffffff; };
-  return {
-    brightness,
-    // Gentle curve — subtle, not wild
-    ox1: (r() - 0.5), oy1: (r() - 0.5), oz1: (r() - 0.5),
-    mag1: 8 + r() * 15,
-    ox2: (r() - 0.5), oy2: (r() - 0.5), oz2: (r() - 0.5),
-    mag2: 8 + r() * 15,
-    // Shimmer
-    phase: r() * Math.PI * 2,
-    shimmerSpeed: 0.5 + r() * 1.0,
-  };
-});
-
 // ─── TRAVELING PULSE SYSTEM ──────────────────────────────────────────────────
 // A bright line segment slides along each connector edge — no floating orbs.
 
@@ -3175,12 +3152,32 @@ const PULSE_COLORS = [
   new THREE.Color(0xa0eeff),
 ];
 
-// Neighbor lookup for chain-traveling
+// Neighbor lookup for chain-traveling (must be before _edgeMeta)
 const neighborMap = new Map();
 nodes.forEach(n => neighborMap.set(n.id, []));
 links.forEach(l => {
   neighborMap.get(l.source.id).push(l.target);
   neighborMap.get(l.target.id).push(l.source);
+});
+
+// Pre-compute shared neighbor count per link for brightness
+const _edgeMeta = links.map((l, i) => {
+  const sNeighbors = new Set((neighborMap.get(l.source.id) || []).map(n => n.id));
+  const tNeighbors = new Set((neighborMap.get(l.target.id) || []).map(n => n.id));
+  let shared = 0;
+  sNeighbors.forEach(id => { if (tNeighbors.has(id)) shared++; });
+  const brightness = Math.min(1, 0.3 + shared * 0.15);
+  let _s = i * 7919 + 31;
+  const r = () => { _s = (_s * 16807 + 1) & 0x7fffffff; return _s / 0x7fffffff; };
+  return {
+    brightness,
+    ox1: (r() - 0.5), oy1: (r() - 0.5), oz1: (r() - 0.5),
+    mag1: 8 + r() * 15,
+    ox2: (r() - 0.5), oy2: (r() - 0.5), oz2: (r() - 0.5),
+    mag2: 8 + r() * 15,
+    phase: r() * Math.PI * 2,
+    shimmerSpeed: 0.5 + r() * 1.0,
+  };
 });
 
 const activePulses = [];
