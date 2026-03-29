@@ -295,18 +295,6 @@
     transition: background 0.2s, border-color 0.2s;
   }
   #voyager-card a:hover { background:rgba(80,140,220,0.4); border-color:rgba(136,187,238,0.7); }
-  #more-info-btn {
-    position:fixed; z-index:130; pointer-events:auto; cursor:pointer;
-    font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;
-    font-size:13px; letter-spacing:0.08em; font-weight:600;
-    color:rgba(232,216,154,0.9); background:rgba(4,6,15,0.85);
-    border:1px solid rgba(200,180,120,0.35); border-radius:20px;
-    padding:10px 22px; backdrop-filter:blur(8px);
-    opacity:0; transition:opacity 0.4s ease;
-    display:none; text-transform:uppercase;
-  }
-  #more-info-btn.visible { opacity:1; }
-  #more-info-btn:hover { background:rgba(200,180,120,0.2); color:#e8d89a; }
   #sat-card {
     position:fixed; z-index:200; pointer-events:auto;
     background:rgba(4,6,15,0.92); border:1px solid rgba(200,180,120,0.22);
@@ -732,7 +720,7 @@
     <div id="factoid-text"></div>
   </div>
 </div>
-<div id="more-info-btn">More Info ↗</div>
+<!-- more-info-btn removed — info card shows directly on focus -->
 <div id="topic-gallery"></div>
 <div id="hover-label"></div>
 <div id="legend"></div>
@@ -6059,31 +6047,9 @@ function hideInfo() {
 }
 
 // ─── MORE INFO BUTTON ──────────────────────────────────────────────────────
-const moreInfoBtn = document.getElementById('more-info-btn');
-let moreInfoNode = null;
-
-function showMoreInfoBtn(n) {
-  moreInfoNode = n;
-  const sp = getNodeScreenPos(n);
-  moreInfoBtn.style.display = 'block';
-  moreInfoBtn.style.left = (sp.x - 60) + 'px';
-  moreInfoBtn.style.top  = (sp.y + 40) + 'px';
-  requestAnimationFrame(() => moreInfoBtn.classList.add('visible'));
-}
-
-function hideMoreInfoBtn() {
-  moreInfoBtn.classList.remove('visible');
-  setTimeout(() => { moreInfoBtn.style.display = 'none'; }, 400);
-  moreInfoNode = null;
-}
-
-moreInfoBtn.addEventListener('click', e => {
-  e.stopPropagation();
-  if (!focusedNode) return;
-  hideMoreInfoBtn();
-  const sp = getNodeScreenPos(focusedNode);
-  showInfo(focusedNode, sp.x, sp.y);
-});
+// More Info button removed — info card shows directly on focus
+function showMoreInfoBtn() {}
+function hideMoreInfoBtn() {}
 
 // Hide leader initially
 leaderLine.style.display = 'none';
