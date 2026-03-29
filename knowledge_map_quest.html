@@ -496,83 +496,7 @@
 <button id="journey-btn">✦ Take a Journey</button>
 <button id="path-btn">Show Path</button>
 <div id="constellation-toast"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script>
-// ─── VRButton (Three.js r128) ─────────────────────────────────────────────────
-class VRButton {
-  static createButton(renderer) {
-    const button = document.createElement('button');
-    function showEnterVR() {
-      let currentSession = null;
-      async function onSessionStarted(session) {
-        session.addEventListener('end', onSessionEnded);
-        await renderer.xr.setSession(session);
-        button.textContent = 'EXIT VR';
-        currentSession = session;
-      }
-      function onSessionEnded() {
-        currentSession.removeEventListener('end', onSessionEnded);
-        button.textContent = 'ENTER VR';
-        currentSession = null;
-      }
-      button.style.display = '';
-      button.style.cursor = 'pointer';
-      button.style.left = 'calc(50% - 50px)';
-      button.style.width = '100px';
-      button.textContent = 'ENTER VR';
-      button.onmouseenter = function () { button.style.opacity = '1.0'; };
-      button.onmouseleave = function () { button.style.opacity = '0.5'; };
-      button.onclick = function () {
-        if (currentSession === null) {
-          const sessionInit = { optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'layers'] };
-          navigator.xr.requestSession('immersive-vr', sessionInit).then(onSessionStarted);
-        } else {
-          currentSession.end();
-        }
-      };
-    }
-    function showWebXRNotFound() {
-      button.style.display = '';
-      button.style.cursor = 'auto';
-      button.style.left = 'calc(50% - 75px)';
-      button.style.width = '150px';
-      button.textContent = 'VR NOT SUPPORTED';
-    }
-    function stylizeElement(el) {
-      el.style.position = 'absolute';
-      el.style.bottom = '20px';
-      el.style.padding = '12px 6px';
-      el.style.border = '1px solid rgba(200,180,120,0.4)';
-      el.style.borderRadius = '4px';
-      el.style.background = 'rgba(4,6,15,0.8)';
-      el.style.color = 'rgba(232,216,154,0.9)';
-      el.style.font = 'normal 13px "Helvetica Neue",sans-serif';
-      el.style.textAlign = 'center';
-      el.style.opacity = '0.5';
-      el.style.outline = 'none';
-      el.style.zIndex = '999';
-    }
-    if ('xr' in navigator) {
-      button.id = 'VRButton';
-      button.style.display = 'none';
-      stylizeElement(button);
-      navigator.xr.isSessionSupported('immersive-vr').then(function (supported) {
-        supported ? showEnterVR() : showWebXRNotFound();
-      }).catch(showWebXRNotFound);
-      return button;
-    } else {
-      const message = document.createElement('a');
-      message.href = 'https://immersiveweb.dev/';
-      message.innerHTML = 'WEBXR NOT AVAILABLE';
-      message.style.left = 'calc(50% - 90px)';
-      message.style.width = '180px';
-      message.style.textDecoration = 'none';
-      stylizeElement(message);
-      return message;
-    }
-  }
-}
-</script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
 <script>
 // ─── QUALITY TIER — auto-detect mobile/Quest for performance ────────────────
 const isMobileDevice = /Android|iPhone|iPad|iPod|webOS|BlackBerry|Opera Mini|IEMobile/i.test(navigator.userAgent)
@@ -1418,31 +1342,46 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
 
 // ─── WebXR for Meta Quest 3 ─────────────────────────────────────────────────
-// Enable XR immediately so the WebGL context is created XR-compatible
 renderer.xr.enabled = true;
 renderer.xr.setReferenceSpaceType('local-floor');
 
-const XR_SCALE = 0.002;
+const XR_SCALE = 0.002; // 5000 scene-units → 10m in VR
 function isInXR() { return renderer.xr.isPresenting; }
-
-// Debug test cube — proves XR rendering pipeline works
-const _testGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
-const _testMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
-const _testCube = new THREE.Mesh(_testGeo, _testMat);
-_testCube.position.set(0, 1.4, -1.5);
+let _xrSession = null;
 
 renderer.xr.addEventListener('sessionstart', () => {
-  scene.add(_testCube);
+  scene.scale.setScalar(XR_SCALE);
+  scene.position.set(0, 1.4, -2);
 });
 renderer.xr.addEventListener('sessionend', () => {
-  scene.remove(_testCube);
+  scene.scale.setScalar(1);
+  scene.position.set(0, 0, 0);
 });
 
-function enableXR() {
-  // XR already enabled at init — just add the VR button now that scene is ready
-  document.body.appendChild(VRButton.createButton(renderer));
-  _xrLoopActive = true;
-  renderer.setAnimationLoop(animate);
+// VR button — uses exact same pattern as working xr_test.html
+function setupVRButton() {
+  if (!navigator.xr) return;
+  navigator.xr.isSessionSupported('immersive-vr').then(function(supported) {
+    if (!supported) return;
+    const btn = document.createElement('button');
+    btn.textContent = 'ENTER VR';
+    btn.style.cssText = 'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);z-index:9999;padding:15px 30px;font-size:18px;background:rgba(4,6,15,0.9);color:rgba(232,216,154,0.9);border:2px solid rgba(200,180,120,0.5);border-radius:8px;cursor:pointer;';
+    document.body.appendChild(btn);
+    btn.addEventListener('click', function() {
+      if (_xrSession) { _xrSession.end(); return; }
+      navigator.xr.requestSession('immersive-vr', {
+        optionalFeatures: ['local-floor']
+      }).then(function(session) {
+        _xrSession = session;
+        btn.textContent = 'EXIT VR';
+        renderer.xr.setSession(session);
+        session.addEventListener('end', function() {
+          _xrSession = null;
+          btn.textContent = 'ENTER VR';
+        });
+      });
+    });
+  });
 }
 
 const scene = new THREE.Scene();
@@ -4544,7 +4483,7 @@ function onTexturesReady() {
   if (ls) { ls.classList.add('hidden'); setTimeout(() => ls.remove(), 900); }
 
   // Now that the scene is ready, enable WebXR so the user can enter VR
-  enableXR();
+  setupVRButton();
 
   // Show welcome text after loading screen fades + emit a pulse wave from center
   setTimeout(() => {
@@ -4570,17 +4509,9 @@ function onTexturesReady() {
 // Start generating textures immediately (behind loading screen)
 generateAllTextures(onTexturesReady);
 
-let _xrLoopActive = false; // true once setAnimationLoop takes over
 function animate() {
-  if (!_xrLoopActive) requestAnimationFrame(animate);
   try {
   const _inXR = isInXR();
-
-  // While textures are loading, only do a minimal render to keep XR alive
-  if (!_allTexturesReady && _inXR) {
-    renderer.render(scene, camera);
-    return;
-  }
 
   // In XR: skip intro zoom, camera anims, and auto-rotation — headset owns the camera
   if (!_inXR && _introZoom) {
@@ -4744,8 +4675,8 @@ function animate() {
   }
   } catch(e) { console.error('animate:', e); }
 }
-// Start with rAF loop; enableXR() switches to setAnimationLoop after textures load
-animate();
+// Use setAnimationLoop from the start — required for WebXR frame submission
+renderer.setAnimationLoop(animate);
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
