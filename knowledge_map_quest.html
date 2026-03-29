@@ -452,16 +452,9 @@
 </style>
 </head>
 <body>
-<div id="loading-screen">
-  <div class="atom">
-    <div class="atom-nucleus"></div>
-    <div class="atom-orbit"><div class="atom-electron"></div></div>
-    <div class="atom-orbit"><div class="atom-electron"></div></div>
-    <div class="atom-orbit"><div class="atom-electron"></div></div>
-  </div>
-  <div class="loading-label">Initializing</div>
-</div>
-<div id="welcome-overlay"><div id="welcome-text">Welcome to the Map of Human Knowledge</div></div>
+<!-- Loading screen removed for Quest — scene renders immediately -->
+<div id="loading-screen" style="display:none"></div>
+<div id="welcome-overlay" style="display:none"><div id="welcome-text"></div></div>
 <canvas id="c"></canvas>
 <svg id="leader-svg">
   <line id="leader-line" x1="0" y1="0" x2="0" y2="0"/>
@@ -4510,13 +4503,10 @@ let _animFrame = 0;
 let _introZoom = null;
 
 function generateAllTextures(callback) {
-  // On Quest, skip procedural textures entirely — too heavy for mobile GPU.
-  // Planets keep their base colored materials which still look great in VR.
-  if (isQuest) {
-    _allTexturesReady = true;
-    callback();
-    return;
-  }
+  // Skip procedural textures — too heavy for Quest. Planets use base colors.
+  _allTexturesReady = true;
+  callback();
+  return;
   let i = 0;
   const BATCH = 4;
   function next() {
