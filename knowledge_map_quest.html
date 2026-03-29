@@ -459,7 +459,7 @@
     <div class="atom-orbit"><div class="atom-electron"></div></div>
     <div class="atom-orbit"><div class="atom-electron"></div></div>
   </div>
-  <div class="loading-label">Initializing</div>
+  <div class="loading-label">Initializing (Quest XR)</div>
 </div>
 <div id="welcome-overlay"><div id="welcome-text">Welcome to the Map of Human Knowledge</div></div>
 <canvas id="c"></canvas>
@@ -1428,7 +1428,7 @@ renderer.toneMappingExposure = 1.2;
 
 // ─── WebXR for Meta Quest 3 ─────────────────────────────────────────────────
 renderer.xr.enabled = true;
-document.body.appendChild(VRButton.createButton(renderer));
+try { document.body.appendChild(VRButton.createButton(renderer)); } catch(e) { console.warn('VRButton init skipped:', e); }
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 12000);
@@ -4708,9 +4708,7 @@ function animate() {
     leaderLine.setAttribute('y1', sp.y);
   }
 }
-renderer.setAnimationLoop(function xrAnimateWrapper(timestamp, frame) {
-  try { animate(); } catch (e) { console.error('animate error:', e); }
-});
+renderer.setAnimationLoop(animate);
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
