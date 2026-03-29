@@ -1354,15 +1354,127 @@ const xrController0 = renderer.xr.getController(0);
 const xrController1 = renderer.xr.getController(1);
 const xrCamRig = new THREE.Group(); // user moves this group to fly through scene
 
+// ─── In-VR Menu Panel ────────────────────────────────────────────────────────
+const _vrMenu = new THREE.Group();
+_vrMenu.visible = false;
+
+// Panel background
+const _menuBg = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.6, 0.35),
+  new THREE.MeshBasicMaterial({ color: 0x04060f, transparent: true, opacity: 0.9, side: THREE.DoubleSide })
+);
+_vrMenu.add(_menuBg);
+
+// Border
+const _menuBorder = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.64, 0.39),
+  new THREE.MeshBasicMaterial({ color: 0xc8b478, transparent: true, opacity: 0.4, side: THREE.DoubleSide })
+);
+_menuBorder.position.z = -0.001;
+_vrMenu.add(_menuBorder);
+
+// "EXIT VR" button
+const _exitBtnGeo = new THREE.PlaneGeometry(0.4, 0.1);
+const _exitBtnMat = new THREE.MeshBasicMaterial({ color: 0x331111, side: THREE.DoubleSide });
+const _exitBtn = new THREE.Mesh(_exitBtnGeo, _exitBtnMat);
+_exitBtn.position.set(0, 0.05, 0.001);
+_exitBtn.name = 'xr-exit-btn';
+_vrMenu.add(_exitBtn);
+
+// "EXIT VR" label (canvas texture)
+(function() {
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 64;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#331111';
+  ctx.fillRect(0, 0, 256, 64);
+  ctx.fillStyle = '#e8d89a';
+  ctx.font = 'bold 28px Helvetica, Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('EXIT VR', 128, 32);
+  _exitBtn.material = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide });
+})();
+
+// "RESTART" button
+const _restartBtn = new THREE.Mesh(
+  new THREE.PlaneGeometry(0.4, 0.1),
+  new THREE.MeshBasicMaterial({ color: 0x112233, side: THREE.DoubleSide })
+);
+_restartBtn.position.set(0, -0.07, 0.001);
+_restartBtn.name = 'xr-restart-btn';
+_vrMenu.add(_restartBtn);
+
+(function() {
+  const cv = document.createElement('canvas');
+  cv.width = 256; cv.height = 64;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = '#112233';
+  ctx.fillRect(0, 0, 256, 64);
+  ctx.fillStyle = '#e8d89a';
+  ctx.font = 'bold 28px Helvetica, Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('RESTART', 128, 32);
+  _restartBtn.material = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), side: THREE.DoubleSide });
+})();
+
+let _vrMenuVisible = false;
+
+function toggleVRMenu() {
+  _vrMenuVisible = !_vrMenuVisible;
+  _vrMenu.visible = _vrMenuVisible;
+  if (_vrMenuVisible) {
+    // Position menu in front of the camera
+    const cam = renderer.xr.getCamera();
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    _vrMenu.position.copy(cam.position).add(dir.multiplyScalar(0.8));
+    _vrMenu.quaternion.copy(cam.quaternion);
+  }
+}
+
+function handleVRMenuSelect(controller) {
+  if (!_vrMenuVisible) return false;
+  _xrTempMatrix.identity().extractRotation(controller.matrixWorld);
+  _xrRaycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+  _xrRaycaster.ray.direction.set(0, 0, -1).applyMatrix4(_xrTempMatrix);
+  const hits = _xrRaycaster.intersectObjects([_exitBtn, _restartBtn], false);
+  if (hits.length > 0) {
+    const name = hits[0].object.name;
+    if (name === 'xr-exit-btn') {
+      _vrMenuVisible = false;
+      _vrMenu.visible = false;
+      if (_xrSession) _xrSession.end();
+    } else if (name === 'xr-restart-btn') {
+      if (_xrSession) {
+        _xrSession.end();
+        setTimeout(() => window.location.reload(), 500);
+      } else {
+        window.location.reload();
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+// Both grips (squeeze) toggle the menu
+xrController0.addEventListener('squeeze', toggleVRMenu);
+xrController1.addEventListener('squeeze', toggleVRMenu);
+
 renderer.xr.addEventListener('sessionstart', () => {
   scene.scale.setScalar(XR_SCALE);
   scene.position.set(0, 1.4, -2);
-  // Add controllers to the scene
+  // Add controllers and menu to the scene
   xrCamRig.add(xrController0);
   xrCamRig.add(xrController1);
   scene.add(xrCamRig);
+  scene.add(_vrMenu);
 });
 renderer.xr.addEventListener('sessionend', () => {
+  _vrMenuVisible = false;
+  _vrMenu.visible = false;
+  scene.remove(_vrMenu);
   scene.scale.setScalar(1);
   scene.position.set(0, 0, 0);
   scene.remove(xrCamRig);
@@ -1398,8 +1510,8 @@ function xrSelectNode(controller) {
   }
 }
 
-xrController0.addEventListener('select', () => xrSelectNode(xrController0));
-xrController1.addEventListener('select', () => xrSelectNode(xrController1));
+xrController0.addEventListener('select', () => { if (!handleVRMenuSelect(xrController0)) xrSelectNode(xrController0); });
+xrController1.addEventListener('select', () => { if (!handleVRMenuSelect(xrController1)) xrSelectNode(xrController1); });
 
 // Joystick navigation: left stick = move, right stick = rotate
 const _xrMoveSpeed = 0.03;
