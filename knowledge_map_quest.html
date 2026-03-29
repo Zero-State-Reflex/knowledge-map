@@ -581,9 +581,10 @@ class VRButton {
 }
 </script>
 <script>
-// ─── QUALITY TIER — auto-detect mobile for performance ──────────────────────
+// ─── QUALITY TIER — auto-detect mobile/Quest for performance ────────────────
 const isMobileDevice = /Android|iPhone|iPad|iPod|webOS|BlackBerry|Opera Mini|IEMobile/i.test(navigator.userAgent)
   || (navigator.maxTouchPoints > 1 && window.innerWidth < 1024);
+const isQuest = /Quest/i.test(navigator.userAgent);
 
 const Q = isMobileDevice ? {
   // Mobile — aggressive optimization
@@ -4509,6 +4510,13 @@ let _animFrame = 0;
 let _introZoom = null;
 
 function generateAllTextures(callback) {
+  // On Quest, skip procedural textures entirely — too heavy for mobile GPU.
+  // Planets keep their base colored materials which still look great in VR.
+  if (isQuest) {
+    _allTexturesReady = true;
+    callback();
+    return;
+  }
   let i = 0;
   const BATCH = 4;
   function next() {
