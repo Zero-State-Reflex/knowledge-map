@@ -1430,12 +1430,23 @@ document.body.appendChild(VRButton.createButton(renderer));
 // XR helpers
 const XR_SCALE = 0.002; // 5000 scene-units → 10 m in VR
 function isInXR() { return renderer.xr.isPresenting; }
+
+// On-screen debug for Quest (no dev console available)
+const _xrDbg = document.createElement('div');
+_xrDbg.style.cssText = 'position:fixed;bottom:60px;left:10px;right:10px;z-index:99999;color:#0f0;font:11px monospace;background:rgba(0,0,0,0.7);padding:6px;max-height:30vh;overflow-y:auto;pointer-events:none;';
+document.body.appendChild(_xrDbg);
+function xrLog(msg) { _xrDbg.innerHTML += msg + '<br>'; _xrDbg.scrollTop = _xrDbg.scrollHeight; }
+window.addEventListener('error', e => xrLog('ERR: ' + e.message));
+window.addEventListener('unhandledrejection', e => xrLog('REJECT: ' + e.reason));
+xrLog('XR init OK, xr.enabled=' + renderer.xr.enabled);
+
 renderer.xr.addEventListener('sessionstart', () => {
+  xrLog('XR session started');
   scene.scale.setScalar(XR_SCALE);
-  // Offset so the galaxy center is at eye height, 2m in front of the user
   scene.position.set(0, 1.4, -2);
 });
 renderer.xr.addEventListener('sessionend', () => {
+  xrLog('XR session ended');
   scene.scale.setScalar(1);
   scene.position.set(0, 0, 0);
 });
@@ -4504,20 +4515,25 @@ let _animFrame = 0;
 let _introZoom = null;
 
 function generateAllTextures(callback) {
+  if (window.xrLog) xrLog('genTex start, nodes=' + nodes.length);
   let i = 0;
-  const BATCH = 4; // process multiple textures per tick for Quest performance
+  const BATCH = 4;
   function next() {
-    const end = Math.min(i + BATCH, nodes.length);
-    while (i < end) {
-      const n = nodes[i++];
-      const tex = makePlanetTexture(n.domain, n.id);
-      n.mesh.material.map = tex;
-      n.mesh.material.needsUpdate = true;
-    }
+    try {
+      const end = Math.min(i + BATCH, nodes.length);
+      while (i < end) {
+        const n = nodes[i++];
+        const tex = makePlanetTexture(n.domain, n.id);
+        n.mesh.material.map = tex;
+        n.mesh.material.needsUpdate = true;
+      }
+    } catch(e) { if (window.xrLog) xrLog('TEX ERR @' + i + ': ' + e.message); }
     const pct = Math.round((i / nodes.length) * 100);
     const label = document.querySelector('.loading-label');
     if (label) label.textContent = `Initializing ${pct}%`;
+    if (i % 40 === 0 && window.xrLog) xrLog('tex ' + pct + '%');
     if (i >= nodes.length) {
+      if (window.xrLog) xrLog('ALL TEXTURES DONE');
       _allTexturesReady = true;
       callback();
     } else {
@@ -4559,6 +4575,7 @@ function onTexturesReady() {
 generateAllTextures(onTexturesReady);
 
 function animate() {
+  try {
   const _inXR = isInXR();
 
   // While textures are loading, only do a minimal render to keep XR alive
@@ -4727,6 +4744,7 @@ function animate() {
     leaderLine.setAttribute('x1', sp.x);
     leaderLine.setAttribute('y1', sp.y);
   }
+  } catch(e) { if(window.xrLog) xrLog('ANIM: ' + e.message); }
 }
 // Single animation driver — setAnimationLoop handles both desktop and XR frames
 renderer.setAnimationLoop(animate);
