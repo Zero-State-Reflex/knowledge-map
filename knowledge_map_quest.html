@@ -461,6 +461,17 @@
   </div>
   <div class="loading-label">Initializing</div>
 </div>
+<div id="debug-log" style="position:fixed;top:0;left:0;right:0;z-index:99999;background:rgba(0,0,0,0.85);color:#0f0;font:12px monospace;padding:8px;max-height:40vh;overflow-y:auto;pointer-events:auto;"></div>
+<script>
+(function(){
+  const log = document.getElementById('debug-log');
+  function dbg(msg) { const d = document.createElement('div'); d.textContent = msg; log.appendChild(d); log.scrollTop = log.scrollHeight; }
+  window._dbg = dbg;
+  window.addEventListener('error', function(e) { dbg('ERR: ' + e.message + ' @ ' + e.filename + ':' + e.lineno); });
+  window.addEventListener('unhandledrejection', function(e) { dbg('PROMISE ERR: ' + e.reason); });
+  dbg('Debug overlay active');
+})();
+</script>
 <div id="welcome-overlay"><div id="welcome-text">Welcome to the Map of Human Knowledge</div></div>
 <canvas id="c"></canvas>
 <svg id="leader-svg">
@@ -1424,8 +1435,11 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
 
 // ─── WebXR for Meta Quest 3 ─────────────────────────────────────────────────
+if (window._dbg) window._dbg('Renderer created OK');
 renderer.xr.enabled = true;
+if (window._dbg) window._dbg('XR enabled OK');
 document.body.appendChild(VRButton.createButton(renderer));
+if (window._dbg) window._dbg('VRButton added OK');
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 12000);
@@ -4491,21 +4505,27 @@ let _animFrame = 0;
 let _introZoom = null;
 
 function generateAllTextures(callback) {
+  if (window._dbg) window._dbg('generateAllTextures started, nodes: ' + nodes.length);
   let i = 0;
   function next() {
     if (i >= nodes.length) {
       _allTexturesReady = true;
+      if (window._dbg) window._dbg('All textures done, calling callback');
       callback();
       return;
     }
-    const n = nodes[i++];
-    const tex = makePlanetTexture(n.domain, n.id);
-    n.mesh.material.map = tex;
-    n.mesh.material.needsUpdate = true;
-    // Update loading label with progress
-    const pct = Math.round((i / nodes.length) * 100);
-    const label = document.querySelector('.loading-label');
-    if (label) label.textContent = `Initializing ${pct}%`;
+    try {
+      const n = nodes[i++];
+      const tex = makePlanetTexture(n.domain, n.id);
+      n.mesh.material.map = tex;
+      n.mesh.material.needsUpdate = true;
+      const pct = Math.round((i / nodes.length) * 100);
+      const label = document.querySelector('.loading-label');
+      if (label) label.textContent = `Initializing ${pct}%`;
+      if (i % 50 === 0 && window._dbg) window._dbg('Textures: ' + pct + '%');
+    } catch(e) {
+      if (window._dbg) window._dbg('TEX ERR at node ' + i + ': ' + e.message);
+    }
     setTimeout(next, 0);
   }
   setTimeout(next, 0);
@@ -4540,6 +4560,7 @@ function onTexturesReady() {
 }
 
 // Start generating textures immediately (behind loading screen)
+if (window._dbg) window._dbg('About to generate textures');
 generateAllTextures(onTexturesReady);
 
 function animate() {
