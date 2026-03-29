@@ -4708,7 +4708,9 @@ function animate() {
     leaderLine.setAttribute('y1', sp.y);
   }
 }
-renderer.setAnimationLoop(animate);
+renderer.setAnimationLoop(function xrAnimateWrapper(timestamp, frame) {
+  try { animate(); } catch (e) { console.error('animate error:', e); }
+});
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
