@@ -1,0 +1,2127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>VFX Library — Knowledge Map Quest 3</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#04060f; overflow:hidden; width:100vw; height:100vh; font-family:monospace; color:#e8e0d0; }
+  #c { display:block; width:100%; height:100%; }
+  #ui { position:fixed; top:10px; left:10px; z-index:100; display:flex; flex-direction:column; gap:6px; }
+  #ui button {
+    background:rgba(200,180,120,0.15); border:1px solid rgba(200,180,120,0.3);
+    color:#e8d89a; padding:6px 12px; cursor:pointer; font-family:monospace; font-size:11px;
+    border-radius:4px; text-align:left;
+  }
+  #ui button:hover { background:rgba(200,180,120,0.3); }
+  #ui button.active { background:rgba(200,180,120,0.4); border-color:#e8d89a; }
+  #label { position:fixed; bottom:20px; left:50%; transform:translateX(-50%); font-size:13px; color:rgba(200,180,120,0.6); z-index:100; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <button onclick="showDemo(0)" class="active">1. Space Skybox</button>
+  <button onclick="showDemo(1)">2. Volumetric Fog</button>
+  <button onclick="showDemo(2)">3. Gravity Lensing</button>
+  <button onclick="showDemo(3)">4. Energy Beams</button>
+  <button onclick="showDemo(4)">5. Hologram</button>
+  <button onclick="showDemo(5)">6. Portal/Wormhole</button>
+  <button onclick="showDemo(6)">7. Constellation Pulse</button>
+  <button onclick="showDemo(7)">8. Planet Rings</button>
+  <button onclick="showDemo(8)">9. Comet Trails</button>
+  <button onclick="showDemo(9)">10. Audio Reactive</button>
+</div>
+<div id="label">VFX Library — All effects work without EffectComposer (Quest 3 safe)</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════════════════════
+// VFX LIBRARY — COMPLETE WORKING CODE FOR QUEST 3 KNOWLEDGE MAP
+// All effects: NO EffectComposer, NO post-processing, VR-safe
+// THREE r152 global build
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 5000);
+camera.position.set(0, 0, 5);
+
+let currentDemo = -1;
+let demoCleanup = null;
+const clock = new THREE.Clock();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Simple orbit on mouse
+let mouseX = 0, mouseY = 0;
+document.addEventListener('mousemove', e => {
+  mouseX = (e.clientX / window.innerWidth - 0.5) * 2;
+  mouseY = (e.clientY / window.innerHeight - 0.5) * 2;
+});
+
+function clearScene() {
+  if (demoCleanup) demoCleanup();
+  demoCleanup = null;
+  while (scene.children.length > 0) {
+    const obj = scene.children[0];
+    scene.remove(obj);
+    if (obj.geometry) obj.geometry.dispose();
+    if (obj.material) {
+      if (obj.material.map) obj.material.map.dispose();
+      obj.material.dispose();
+    }
+  }
+}
+
+function showDemo(idx) {
+  clearScene();
+  currentDemo = idx;
+  document.querySelectorAll('#ui button').forEach((b, i) => b.classList.toggle('active', i === idx));
+  demos[idx]();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 1. PROCEDURAL SPACE SKYBOX — No textures needed
+//    Milky Way band, stars, nebula colors, all in one shader
+// ═══════════════════════════════════════════════════════════════════════════════
+function demoSpaceSkybox() {
+  camera.position.set(0, 0, 0);
+
+  // The skybox is a large inverted sphere with a full procedural space shader
+  const skyGeo = new THREE.SphereGeometry(1000, 64, 32);
+  const skyMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    depthWrite: false,
+    uniforms: {
+      uTime: { value: 0 },
+    },
+    vertexShader: `
+      varying vec3 vWorldPos;
+      varying vec2 vUv;
+      void main() {
+        vWorldPos = position;
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      varying vec3 vWorldPos;
+      varying vec2 vUv;
+
+      // ── Hash functions for procedural noise ──
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+      }
+      float hash(vec3 p) {
+        return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453123);
+      }
+
+      // ── Value noise ──
+      float noise(vec2 p) {
+        vec2 i = floor(p);
+        vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        float a = hash(i);
+        float b = hash(i + vec2(1.0, 0.0));
+        float c = hash(i + vec2(0.0, 1.0));
+        float d = hash(i + vec2(1.0, 1.0));
+        return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+      }
+
+      float noise3D(vec3 p) {
+        vec3 i = floor(p);
+        vec3 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        float n = i.x + i.y * 157.0 + 113.0 * i.z;
+        return mix(
+          mix(mix(hash(vec3(n, 0.0, 0.0)), hash(vec3(n + 1.0, 0.0, 0.0)), f.x),
+              mix(hash(vec3(n + 157.0, 0.0, 0.0)), hash(vec3(n + 158.0, 0.0, 0.0)), f.x), f.y),
+          mix(mix(hash(vec3(n + 113.0, 0.0, 0.0)), hash(vec3(n + 114.0, 0.0, 0.0)), f.x),
+              mix(hash(vec3(n + 270.0, 0.0, 0.0)), hash(vec3(n + 271.0, 0.0, 0.0)), f.x), f.y),
+          f.z
+        );
+      }
+
+      // ── FBM ──
+      float fbm(vec2 p) {
+        float v = 0.0, a = 0.5;
+        mat2 rot = mat2(cos(0.5), sin(0.5), -sin(0.5), cos(0.5));
+        for (int i = 0; i < 5; i++) {
+          v += a * noise(p);
+          p = rot * p * 2.0;
+          a *= 0.5;
+        }
+        return v;
+      }
+
+      float fbm3(vec3 p) {
+        float v = 0.0, a = 0.5;
+        for (int i = 0; i < 4; i++) {
+          v += a * noise3D(p);
+          p = p * 2.03;
+          a *= 0.5;
+        }
+        return v;
+      }
+
+      // ── Procedural stars ──
+      float stars(vec2 uv, float density) {
+        vec2 cell = floor(uv * density);
+        vec2 f = fract(uv * density);
+        float d = 1.0;
+        // Check 3x3 neighborhood
+        for (int y = -1; y <= 1; y++) {
+          for (int x = -1; x <= 1; x++) {
+            vec2 neighbor = vec2(float(x), float(y));
+            vec2 point = vec2(hash(cell + neighbor), hash(cell + neighbor + 100.0));
+            float dist = length(neighbor + point - f);
+            d = min(d, dist);
+          }
+        }
+        float brightness = 1.0 - smoothstep(0.0, 0.03, d);
+        // Twinkle
+        float twinkle = sin(uTime * 2.0 + hash(cell) * 6.28) * 0.3 + 0.7;
+        // Size variation
+        float size = hash(cell + 42.0);
+        brightness *= step(0.93, size) * twinkle;
+        // Color variation: some stars are blue-white, some warm
+        return brightness;
+      }
+
+      void main() {
+        vec3 dir = normalize(vWorldPos);
+
+        // Spherical coordinates
+        float phi = atan(dir.z, dir.x); // -PI to PI
+        float theta = acos(dir.y);       // 0 to PI
+        vec2 skyUv = vec2(phi / 6.2831853 + 0.5, theta / 3.1415926);
+
+        // ── Base deep space color ──
+        vec3 baseColor = vec3(0.01, 0.005, 0.02);
+
+        // ── Milky Way band ──
+        // The band follows a great circle tilted ~60 degrees from the pole
+        vec3 milkyAxis = normalize(vec3(0.3, 1.0, 0.1));
+        float milkyAngle = abs(dot(dir, milkyAxis));
+        float milkyBand = 1.0 - smoothstep(0.0, 0.35, milkyAngle);
+
+        // Noise detail within the band
+        vec2 milkyUv = vec2(phi * 3.0, theta * 2.0);
+        float milkyNoise = fbm(milkyUv * 2.0 + uTime * 0.01);
+        float milkyDust = fbm(milkyUv * 4.0 - uTime * 0.005) * 0.6;
+
+        // Dark dust lanes (rifts in the milky way)
+        float dustLane = smoothstep(0.35, 0.65, fbm(milkyUv * 3.5 + 10.0));
+
+        float milky = milkyBand * (milkyNoise * 0.8 + 0.2) * (1.0 - dustLane * 0.6);
+
+        // Milky Way color: blue-white core with warm edges
+        vec3 milkyColor = mix(
+          vec3(0.15, 0.12, 0.2),   // Warm purple edge
+          vec3(0.25, 0.28, 0.4),   // Cool blue-white core
+          milkyNoise
+        );
+        milkyColor += vec3(0.1, 0.05, 0.02) * milkyDust;
+
+        baseColor += milkyColor * milky * 0.5;
+
+        // ── Large nebula clouds ──
+        vec3 nebulaDir1 = normalize(vec3(1.0, 0.5, 0.3));
+        float neb1 = pow(max(dot(dir, nebulaDir1), 0.0), 8.0);
+        neb1 *= fbm3(dir * 3.0 + uTime * 0.02) * 0.6;
+        baseColor += vec3(0.15, 0.02, 0.08) * neb1; // Reddish nebula
+
+        vec3 nebulaDir2 = normalize(vec3(-0.7, 0.2, 0.8));
+        float neb2 = pow(max(dot(dir, nebulaDir2), 0.0), 10.0);
+        neb2 *= fbm3(dir * 4.0 - uTime * 0.015) * 0.5;
+        baseColor += vec3(0.03, 0.06, 0.18) * neb2; // Blue nebula
+
+        vec3 nebulaDir3 = normalize(vec3(0.2, -0.6, -0.5));
+        float neb3 = pow(max(dot(dir, nebulaDir3), 0.0), 6.0);
+        neb3 *= fbm3(dir * 2.5 + vec3(uTime * 0.01, 0.0, uTime * -0.008)) * 0.4;
+        baseColor += vec3(0.08, 0.02, 0.15) * neb3; // Purple nebula
+
+        // ── Stars — multiple layers at different densities ──
+        float s1 = stars(skyUv, 200.0);
+        float s2 = stars(skyUv + 0.5, 400.0);
+        float s3 = stars(skyUv + 1.0, 800.0);
+
+        // Star colors
+        vec3 starCol1 = mix(vec3(1.0, 0.9, 0.7), vec3(0.7, 0.8, 1.0), hash(floor(skyUv * 200.0)));
+        vec3 starCol2 = mix(vec3(1.0, 0.95, 0.8), vec3(0.8, 0.85, 1.0), hash(floor(skyUv * 400.0 + 50.0)));
+
+        baseColor += starCol1 * s1 * 1.5;
+        baseColor += starCol2 * s2 * 0.8;
+        baseColor += vec3(0.8, 0.85, 1.0) * s3 * 0.4;
+
+        // ── More stars in the milky way band ──
+        float milkyStars = stars(skyUv + 2.0, 1600.0) * milkyBand * 1.2;
+        baseColor += vec3(0.9, 0.92, 1.0) * milkyStars;
+
+        gl_FragColor = vec4(baseColor, 1.0);
+      }
+    `
+  });
+
+  const sky = new THREE.Mesh(skyGeo, skyMat);
+  scene.add(sky);
+
+  // Store update function
+  demoCleanup = null;
+  sky.userData.update = (dt) => {
+    skyMat.uniforms.uTime.value += dt;
+    camera.rotation.y += mouseX * 0.002;
+    camera.rotation.x = THREE.MathUtils.clamp(camera.rotation.x - mouseY * 0.002, -1.5, 1.5);
+  };
+  scene.userData.update = (dt) => sky.userData.update(dt);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 2. VOLUMETRIC FOG / SPACE DUST — Local fog volumes, no global fog
+//    Raymarched fog spheres with noise
+// ═══════════════════════════════════════════════════════════════════════════════
+function demoVolumetricFog() {
+  camera.position.set(0, 0, 8);
+
+  // Ambient light
+  scene.add(new THREE.AmbientLight(0x222244, 0.5));
+
+  // Reference sphere
+  const ref = new THREE.Mesh(
+    new THREE.SphereGeometry(0.5, 32, 16),
+    new THREE.MeshStandardMaterial({ color: 0x4488ff, emissive: 0x112244 })
+  );
+  scene.add(ref);
+
+  // ── Volumetric fog volume — a sphere with raymarched fog shader ──
+  function createFogVolume(position, radius, color, density, noiseScale) {
+    const geo = new THREE.SphereGeometry(radius, 32, 16);
+    const mat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: THREE.BackSide,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uTime:      { value: 0 },
+        uRadius:    { value: radius },
+        uColor:     { value: new THREE.Color(color) },
+        uDensity:   { value: density },
+        uNoiseScale:{ value: noiseScale },
+        uCamPos:    { value: new THREE.Vector3() },
+      },
+      vertexShader: `
+        varying vec3 vWorldPos;
+        varying vec3 vLocalPos;
+        void main() {
+          vLocalPos = position;
+          vec4 worldPos = modelMatrix * vec4(position, 1.0);
+          vWorldPos = worldPos.xyz;
+          gl_Position = projectionMatrix * viewMatrix * worldPos;
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform float uRadius;
+        uniform vec3 uColor;
+        uniform float uDensity;
+        uniform float uNoiseScale;
+        uniform vec3 uCamPos;
+        varying vec3 vWorldPos;
+        varying vec3 vLocalPos;
+
+        // 3D noise
+        float hash(vec3 p) {
+          return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+        }
+        float noise(vec3 p) {
+          vec3 i = floor(p);
+          vec3 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          return mix(
+            mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x),
+                mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+            mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y),
+            f.z
+          );
+        }
+        float fbm(vec3 p) {
+          float v = 0.0, a = 0.5;
+          for (int i = 0; i < 4; i++) {
+            v += a * noise(p);
+            p = p * 2.03 + vec3(0.01);
+            a *= 0.5;
+          }
+          return v;
+        }
+
+        void main() {
+          // Ray from camera to this fragment
+          vec3 rayDir = normalize(vWorldPos - uCamPos);
+          vec3 center = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
+
+          // Ray-sphere intersection for the fog volume
+          vec3 oc = uCamPos - center;
+          float b = dot(oc, rayDir);
+          float c = dot(oc, oc) - uRadius * uRadius;
+          float disc = b * b - c;
+          if (disc < 0.0) discard;
+
+          float sqrtDisc = sqrt(disc);
+          float tNear = max(-b - sqrtDisc, 0.0);
+          float tFar  = -b + sqrtDisc;
+          if (tFar < 0.0) discard;
+
+          // March through the volume
+          float stepSize = (tFar - tNear) / 16.0;
+          float totalDensity = 0.0;
+          vec3 totalColor = vec3(0.0);
+
+          for (int i = 0; i < 16; i++) {
+            float t = tNear + stepSize * (float(i) + 0.5);
+            vec3 samplePos = uCamPos + rayDir * t;
+            vec3 localP = samplePos - center;
+
+            // Distance falloff from center
+            float dist = length(localP) / uRadius;
+            float falloff = 1.0 - smoothstep(0.0, 1.0, dist);
+            falloff = falloff * falloff;
+
+            // Noise-based density
+            float n = fbm(localP * uNoiseScale + uTime * 0.15);
+            float d = falloff * n * uDensity;
+
+            totalDensity += d * stepSize;
+            totalColor += uColor * d * stepSize;
+          }
+
+          totalDensity = min(totalDensity, 0.8);
+          gl_FragColor = vec4(totalColor, totalDensity);
+        }
+      `
+    });
+
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.copy(position);
+    return mesh;
+  }
+
+  // Create several fog volumes
+  const fogs = [
+    createFogVolume(new THREE.Vector3(-2, 0, 0), 3, 0x4422aa, 1.5, 1.2),
+    createFogVolume(new THREE.Vector3(2, 1, -2), 2.5, 0xaa2244, 1.2, 1.5),
+    createFogVolume(new THREE.Vector3(0, -1, -3), 4, 0x2244aa, 0.8, 0.8),
+    createFogVolume(new THREE.Vector3(3, -0.5, 1), 2, 0x22aa66, 1.0, 1.8),
+  ];
+  fogs.forEach(f => scene.add(f));
+
+  scene.userData.update = (dt) => {
+    const t = clock.getElapsedTime();
+    camera.position.x = Math.sin(t * 0.2 + mouseX) * 6;
+    camera.position.y = mouseY * 2;
+    camera.position.z = Math.cos(t * 0.2 + mouseX) * 6;
+    camera.lookAt(0, 0, 0);
+    fogs.forEach(f => {
+      f.material.uniforms.uTime.value = t;
+      f.material.uniforms.uCamPos.value.copy(camera.position);
+    });
+  };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 3. GRAVITY LENSING — Screen-space distortion WITHOUT EffectComposer
+//    Uses a render-to-texture approach: render scene to RT, then distort
+// ═══════════════════════════════════════════════════════════════════════════════
+function demoGravityLensing() {
+  camera.position.set(0, 0, 6);
+
+  // ── The trick: render the scene to a texture, then draw a fullscreen
+  //    quad that samples it with distortion around the black hole ──
+
+  const rt = new THREE.WebGLRenderTarget(
+    window.innerWidth * renderer.getPixelRatio(),
+    window.innerHeight * renderer.getPixelRatio()
+  );
+
+  // Background scene (stars + stuff behind the BH)
+  const bgScene = new THREE.Scene();
+  const bgCam = camera; // share camera
+
+  // Star field for background
+  const starCount = 3000;
+  const starPos = new Float32Array(starCount * 3);
+  const starCol = new Float32Array(starCount * 3);
+  for (let i = 0; i < starCount; i++) {
+    const phi = Math.acos(2 * Math.random() - 1);
+    const theta = Math.random() * Math.PI * 2;
+    const r = 50 + Math.random() * 200;
+    starPos[i*3]   = r * Math.sin(phi) * Math.cos(theta);
+    starPos[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+    starPos[i*3+2] = r * Math.cos(phi);
+    const warmth = Math.random();
+    starCol[i*3]   = 0.8 + warmth * 0.2;
+    starCol[i*3+1] = 0.8 + warmth * 0.1;
+    starCol[i*3+2] = 1.0;
+  }
+  const starGeo = new THREE.BufferGeometry();
+  starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+  starGeo.setAttribute('color', new THREE.BufferAttribute(starCol, 3));
+  const starMat = new THREE.PointsMaterial({ size: 2, sizeAttenuation: false, vertexColors: true });
+  bgScene.add(new THREE.Points(starGeo, starMat));
+
+  // Some colored nebula planes in the background
+  for (let i = 0; i < 5; i++) {
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 128;
+    const ctx = cv.getContext('2d');
+    const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+    const colors = [[0.4,0.1,0.6],[0.1,0.3,0.7],[0.6,0.15,0.2],[0.1,0.5,0.4],[0.5,0.2,0.5]];
+    const c = colors[i];
+    grad.addColorStop(0, `rgba(${c[0]*255|0},${c[1]*255|0},${c[2]*255|0},1)`);
+    grad.addColorStop(1, `rgba(${c[0]*255|0},${c[1]*255|0},${c[2]*255|0},0)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 128, 128);
+    const tex = new THREE.CanvasTexture(cv);
+    const plane = new THREE.Mesh(
+      new THREE.PlaneGeometry(40, 40),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide })
+    );
+    const phi = Math.random() * Math.PI;
+    const theta = Math.random() * Math.PI * 2;
+    plane.position.set(Math.sin(phi)*Math.cos(theta)*30, Math.sin(phi)*Math.sin(theta)*30, Math.cos(phi)*30);
+    plane.lookAt(0,0,0);
+    bgScene.add(plane);
+  }
+
+  // Black hole visual (pure black sphere)
+  const bhPos = new THREE.Vector3(0, 0, 0);
+  const bhSphere = new THREE.Mesh(
+    new THREE.SphereGeometry(0.4, 32, 16),
+    new THREE.MeshBasicMaterial({ color: 0x000000 })
+  );
+  bhSphere.position.copy(bhPos);
+  bgScene.add(bhSphere);
+
+  // Accretion disk
+  const diskGeo = new THREE.RingGeometry(0.5, 1.8, 64, 4);
+  const diskMat = new THREE.ShaderMaterial({
+    side: THREE.DoubleSide,
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    uniforms: { uTime: { value: 0 } },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      varying vec2 vUv;
+      void main() {
+        float r = length(vUv - 0.5) * 2.0;
+        float angle = atan(vUv.y - 0.5, vUv.x - 0.5);
+        float spiral = sin(angle * 4.0 - uTime * 3.0 + r * 8.0) * 0.5 + 0.5;
+        float heat = 1.0 - smoothstep(0.0, 1.0, r);
+        vec3 inner = vec3(1.0, 0.95, 0.9); // white hot
+        vec3 mid   = vec3(1.0, 0.6, 0.2);  // orange
+        vec3 outer = vec3(0.6, 0.1, 0.05); // deep red
+        vec3 col = mix(outer, mid, heat);
+        col = mix(col, inner, heat * heat);
+        float alpha = heat * (0.5 + spiral * 0.5) * 0.6;
+        gl_FragColor = vec4(col, alpha);
+      }
+    `
+  });
+  const disk = new THREE.Mesh(diskGeo, diskMat);
+  disk.rotation.x = Math.PI * 0.35;
+  bgScene.add(disk);
+
+  // ── Fullscreen distortion quad ──
+  const distortScene = new THREE.Scene();
+  const distortCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  const distortMat = new THREE.ShaderMaterial({
+    uniforms: {
+      tScene:   { value: rt.texture },
+      uBHScreen:{ value: new THREE.Vector2(0.5, 0.5) },
+      uStrength:{ value: 0.15 },
+      uRadius:  { value: 0.3 },
+      uTime:    { value: 0 },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = vec4(position.xy, 0.0, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D tScene;
+      uniform vec2 uBHScreen;
+      uniform float uStrength;
+      uniform float uRadius;
+      uniform float uTime;
+      varying vec2 vUv;
+
+      void main() {
+        vec2 toCenter = vUv - uBHScreen;
+        float dist = length(toCenter);
+        vec2 dir = normalize(toCenter);
+
+        // ── Gravitational lensing distortion ──
+        // Einstein ring: light bends around the black hole
+        // The closer to the BH, the more UV is displaced AWAY from center
+        float influence = 1.0 - smoothstep(0.0, uRadius, dist);
+        influence = influence * influence;
+
+        // Bend UV: displace perpendicular to direction (lensing curves light around)
+        vec2 perpDir = vec2(-dir.y, dir.x);
+        float bendAmount = uStrength * influence / max(dist, 0.01);
+
+        // Chromatic aberration near the BH
+        float chromaticOffset = bendAmount * 0.3;
+
+        vec2 uvR = vUv + dir * bendAmount + perpDir * chromaticOffset * 0.5;
+        vec2 uvG = vUv + dir * bendAmount;
+        vec2 uvB = vUv + dir * bendAmount - perpDir * chromaticOffset * 0.5;
+
+        float r = texture2D(tScene, uvR).r;
+        float g = texture2D(tScene, uvG).g;
+        float b = texture2D(tScene, uvB).b;
+
+        vec3 col = vec3(r, g, b);
+
+        // Einstein ring glow
+        float ringDist = abs(dist - uRadius * 0.4);
+        float ring = exp(-ringDist * ringDist * 200.0) * 0.3;
+        ring *= 1.0 + sin(atan(toCenter.y, toCenter.x) * 6.0 + uTime * 2.0) * 0.3;
+        col += vec3(0.3, 0.4, 0.8) * ring;
+
+        // Blackout center
+        float blackout = smoothstep(0.0, 0.06, dist);
+        col *= blackout;
+
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `
+  });
+  const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), distortMat);
+  distortScene.add(quad);
+
+  // Project BH position to screen space each frame
+  const bhScreenPos = new THREE.Vector3();
+
+  scene.userData.update = (dt) => {
+    const t = clock.getElapsedTime();
+    camera.position.x = Math.sin(t * 0.15 + mouseX * 0.5) * 5;
+    camera.position.y = mouseY * 1.5;
+    camera.position.z = Math.cos(t * 0.15 + mouseX * 0.5) * 5;
+    camera.lookAt(bhPos);
+
+    diskMat.uniforms.uTime.value = t;
+    disk.rotation.z = t * 0.3;
+
+    // Render background scene to RT
+    renderer.setRenderTarget(rt);
+    renderer.render(bgScene, camera);
+    renderer.setRenderTarget(null);
+
+    // Project BH to screen coords
+    bhScreenPos.copy(bhPos).project(camera);
+    distortMat.uniforms.uBHScreen.value.set(
+      bhScreenPos.x * 0.5 + 0.5,
+      bhScreenPos.y * 0.5 + 0.5
+    );
+    distortMat.uniforms.uTime.value = t;
+
+    // Render distortion pass
+    renderer.render(distortScene, distortCam);
+    return true; // signal we handle our own render
+  };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 4. ENERGY BEAMS / LIGHTNING BETWEEN OBJECTS
+//    Animated procedural lightning with branching
+// ═══════════════════════════════════════════════════════════════════════════════
+function demoEnergyBeams() {
+  camera.position.set(0, 0, 8);
+  scene.add(new THREE.AmbientLight(0x222244, 0.3));
+
+  // Two spheres to connect
+  const sphereGeo = new THREE.SphereGeometry(0.4, 24, 12);
+  const nodeA = new THREE.Mesh(sphereGeo, new THREE.MeshStandardMaterial({ color: 0x4488ff, emissive: 0x112244, emissiveIntensity: 2 }));
+  const nodeB = new THREE.Mesh(sphereGeo, new THREE.MeshStandardMaterial({ color: 0xff4488, emissive: 0x441122, emissiveIntensity: 2 }));
+  nodeA.position.set(-3, 1, 0);
+  nodeB.position.set(3, -1, 0);
+  scene.add(nodeA, nodeB);
+
+  // ── Lightning bolt mesh — generated each frame with jittered midpoints ──
+  const BOLT_SEGMENTS = 32;
+  const BOLT_BRANCHES = 4;
+
+  function createBoltGeometry(start, end, segments, displacement) {
+    const points = [start.clone()];
+    const dir = end.clone().sub(start);
+    const len = dir.length();
+    const step = dir.clone().divideScalar(segments);
+
+    // Generate jittered midpoints
+    for (let i = 1; i < segments; i++) {
+      const p = start.clone().add(step.clone().multiplyScalar(i));
+      // Perpendicular displacement
+      const perp1 = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+      const perp2 = new THREE.Vector3().crossVectors(dir, perp1).normalize();
+      const scale = displacement * (1 - Math.abs(i / segments - 0.5) * 2); // less at endpoints
+      p.addScaledVector(perp1, (Math.random() - 0.5) * scale);
+      p.addScaledVector(perp2, (Math.random() - 0.5) * scale);
+      points.push(p);
+    }
+    points.push(end.clone());
+    return points;
+  }
+
+  // Main bolt line
+  const boltGeo = new THREE.BufferGeometry();
+  const boltPositions = new Float32Array((BOLT_SEGMENTS + 1) * 3);
+  boltGeo.setAttribute('position', new THREE.BufferAttribute(boltPositions, 3));
+  const boltMat = new THREE.LineBasicMaterial({
+    color: 0x88ccff,
+    transparent: true,
+    opacity: 0.9,
+    blending: THREE.AdditiveBlending,
+    linewidth: 1,
+  });
+  const bolt = new THREE.Line(boltGeo, boltMat);
+  scene.add(bolt);
+
+  // Glow bolt (wider, dimmer) — simulated by a tube/ribbon
+  const glowBoltGeo = new THREE.BufferGeometry();
+  const glowPositions = new Float32Array((BOLT_SEGMENTS + 1) * 3);
+  glowBoltGeo.setAttribute('position', new THREE.BufferAttribute(glowPositions, 3));
+  const glowBoltMat = new THREE.LineBasicMaterial({
+    color: 0x4466ff,
+    transparent: true,
+    opacity: 0.3,
+    blending: THREE.AdditiveBlending,
+  });
+  const glowBolt = new THREE.Line(glowBoltGeo, glowBoltMat);
+  scene.add(glowBolt);
+
+  // Branch bolts
+  const branches = [];
+  for (let b = 0; b < BOLT_BRANCHES; b++) {
+    const brGeo = new THREE.BufferGeometry();
+    const brPos = new Float32Array(12 * 3); // 12 points per branch
+    brGeo.setAttribute('position', new THREE.BufferAttribute(brPos, 3));
+    const brMat = new THREE.LineBasicMaterial({
+      color: 0x6699ff,
+      transparent: true,
+      opacity: 0.5,
+      blending: THREE.AdditiveBlending,
+    });
+    const brLine = new THREE.Line(brGeo, brMat);
+    scene.add(brLine);
+    branches.push({ geo: brGeo, line: brLine });
+  }
+
+  // ── Energy beam (smooth tube with shader glow) ──
+  const beamGeo = new THREE.CylinderGeometry(0.02, 0.02, 1, 8, 1);
+  beamGeo.rotateZ(Math.PI / 2);
+  const beamMat = new THREE.ShaderMaterial({
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    uniforms: {
+      uTime: { value: 0 },
+      uColor1: { value: new THREE.Color(0x4488ff) },
+      uColor2: { value: new THREE.Color(0xff4488) },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec3 vPos;
+      void main() {
+        vUv = uv;
+        vPos = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform vec3 uColor1;
+      uniform vec3 uColor2;
+      varying vec2 vUv;
+      varying vec3 vPos;
+
+      float hash(float n) { return fract(sin(n) * 43758.5453); }
+
+      void main() {
+        // Distance from center axis
+        float edge = 1.0 - smoothstep(0.3, 0.5, abs(vUv.y - 0.5) * 2.0);
+
+        // Traveling energy pulse
+        float pulse = sin(vUv.x * 20.0 - uTime * 8.0) * 0.5 + 0.5;
+        float pulse2 = sin(vUv.x * 12.0 - uTime * 5.0 + 1.0) * 0.5 + 0.5;
+
+        // Color gradient along beam
+        vec3 col = mix(uColor1, uColor2, vUv.x);
+
+        // Flicker
+        float flicker = 0.7 + 0.3 * sin(uTime * 15.0 + vUv.x * 5.0);
+
+        float alpha = edge * (0.3 + pulse * 0.4 + pulse2 * 0.3) * flicker;
+        gl_FragColor = vec4(col * 1.5, alpha);
+      }
+    `
+  });
+  const beam = new THREE.Mesh(beamGeo, beamMat);
+  scene.add(beam);
+
+  // Point light glow at each node
+  const lightA = new THREE.PointLight(0x4488ff, 2, 5);
+  lightA.position.copy(nodeA.position);
+  scene.add(lightA);
+  const lightB = new THREE.PointLight(0xff4488, 2, 5);
+  lightB.position.copy(nodeB.position);
+  scene.add(lightB);
+
+  let lastBoltTime = 0;
+
+  scene.userData.update = (dt) => {
+    const t = clock.getElapsedTime();
+    camera.position.x = Math.sin(t * 0.2) * 7 + mouseX * 2;
+    camera.position.y = mouseY * 3;
+    camera.position.z = Math.cos(t * 0.2) * 7;
+    camera.lookAt(0, 0, 0);
+
+    beamMat.uniforms.uTime.value = t;
+
+    // Position beam between nodes
+    const mid = nodeA.position.clone().add(nodeB.position).multiplyScalar(0.5);
+    const dist = nodeA.position.distanceTo(nodeB.position);
+    beam.position.copy(mid);
+    beam.scale.set(dist, 3, 3); // stretch to span
+    beam.lookAt(nodeB.position);
+    beam.rotateZ(Math.PI / 2);
+
+    // Rebuild lightning bolt every ~60ms
+    if (t - lastBoltTime > 0.06) {
+      lastBoltTime = t;
+      const points = createBoltGeometry(nodeA.position, nodeB.position, BOLT_SEGMENTS, 0.8);
+      const pos = bolt.geometry.attributes.position.array;
+      for (let i = 0; i < points.length && i <= BOLT_SEGMENTS; i++) {
+        pos[i*3] = points[i].x;
+        pos[i*3+1] = points[i].y;
+        pos[i*3+2] = points[i].z;
+      }
+      bolt.geometry.attributes.position.needsUpdate = true;
+
+      // Glow bolt — slightly more displaced
+      const gPoints = createBoltGeometry(nodeA.position, nodeB.position, BOLT_SEGMENTS, 1.2);
+      const gPos = glowBolt.geometry.attributes.position.array;
+      for (let i = 0; i < gPoints.length && i <= BOLT_SEGMENTS; i++) {
+        gPos[i*3] = gPoints[i].x;
+        gPos[i*3+1] = gPoints[i].y;
+        gPos[i*3+2] = gPoints[i].z;
+      }
+      glowBolt.geometry.attributes.position.needsUpdate = true;
+
+      // Branches from random mainline points
+      for (let b = 0; b < BOLT_BRANCHES; b++) {
+        const startIdx = Math.floor(Math.random() * (points.length - 2)) + 1;
+        const brStart = points[startIdx].clone();
+        const brDir = new THREE.Vector3(
+          (Math.random() - 0.5),
+          (Math.random() - 0.5),
+          (Math.random() - 0.5)
+        ).normalize().multiplyScalar(0.5 + Math.random() * 1.0);
+        const brEnd = brStart.clone().add(brDir);
+        const brPoints = createBoltGeometry(brStart, brEnd, 11, 0.3);
+        const brPos = branches[b].geo.attributes.position.array;
+        for (let i = 0; i < brPoints.length && i < 12; i++) {
+          brPos[i*3] = brPoints[i].x;
+          brPos[i*3+1] = brPoints[i].y;
+          brPos[i*3+2] = brPoints[i].z;
+        }
+        branches[b].geo.attributes.position.needsUpdate = true;
+      }
+    }
+
+    // Pulse lights
+    lightA.intensity = 2 + Math.sin(t * 10) * 1;
+    lightB.intensity = 2 + Math.sin(t * 10 + 1) * 1;
+    boltMat.opacity = 0.6 + Math.sin(t * 15) * 0.3;
+  };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 5. HOLOGRAM / SCAN LINE EFFECT
+//    Makes info cards look like holograms
+// ═══════════════════════════════════════════════════════════════════════════════
+function demoHologram() {
+  camera.position.set(0, 0, 4);
+  scene.add(new THREE.AmbientLight(0x111122, 0.2));
+
+  // ── Hologram shader material ──
+  function createHologramMaterial(baseColor) {
+    return new THREE.ShaderMaterial({
+      transparent: true,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uTime:     { value: 0 },
+        uColor:    { value: new THREE.Color(baseColor || 0x44aaff) },
+        uAlpha:    { value: 0.7 },
+        uScanFreq: { value: 80.0 },  // scan line frequency
+        uScanSpeed:{ value: 3.0 },   // scan line scroll speed
+        uFlicker:  { value: 0.15 },   // flicker intensity
+        uFresnel:  { value: 2.0 },    // edge glow power
+        uGlitch:   { value: 0.3 },    // glitch intensity
+      },
+      vertexShader: `
+        varying vec3 vNormal;
+        varying vec3 vWorldPos;
+        varying vec3 vViewDir;
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          vNormal = normalize(normalMatrix * normal);
+          vec4 worldPos = modelMatrix * vec4(position, 1.0);
+          vWorldPos = worldPos.xyz;
+          vViewDir = normalize(cameraPosition - worldPos.xyz);
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uTime;
+        uniform vec3 uColor;
+        uniform float uAlpha;
+        uniform float uScanFreq;
+        uniform float uScanSpeed;
+        uniform float uFlicker;
+        uniform float uFresnel;
+        uniform float uGlitch;
+        varying vec3 vNormal;
+        varying vec3 vWorldPos;
+        varying vec3 vViewDir;
+        varying vec2 vUv;
+
+        float hash(float n) { return fract(sin(n) * 43758.5453); }
+
+        void main() {
+          // ── Fresnel edge glow ──
+          float fresnel = 1.0 - abs(dot(vNormal, vViewDir));
+          fresnel = pow(fresnel, uFresnel);
+
+          // ── Scan lines (horizontal) ──
+          float scanLine = sin(vWorldPos.y * uScanFreq + uTime * uScanSpeed) * 0.5 + 0.5;
+          scanLine = smoothstep(0.3, 0.7, scanLine);
+
+          // ── Vertical scan sweep (single bright line moving up) ──
+          float sweep = fract(uTime * 0.5);
+          float sweepLine = 1.0 - smoothstep(0.0, 0.05, abs(fract(vUv.y) - sweep));
+          sweepLine *= 0.5;
+
+          // ── Random flicker ──
+          float flicker = 1.0 - uFlicker * step(0.98, hash(floor(uTime * 20.0)));
+
+          // ── Glitch offset (horizontal displacement) ──
+          float glitchBlock = step(0.97, hash(floor(uTime * 10.0) + floor(vWorldPos.y * 8.0)));
+          float glitch = glitchBlock * uGlitch;
+
+          // ── Combine ──
+          float alpha = uAlpha;
+          alpha *= (0.5 + scanLine * 0.5);  // darken between scan lines
+          alpha *= flicker;
+          alpha = max(alpha, fresnel * 0.8); // edge always visible
+
+          vec3 col = uColor;
+          col += vec3(0.3, 0.5, 0.8) * fresnel * 0.5; // blue edge tint
+          col += vec3(0.5, 0.7, 1.0) * sweepLine;       // sweep highlight
+          col += uColor * glitch * 2.0;                  // glitch flash
+
+          // ── Fine noise grain ──
+          float grain = hash(vUv.x * 100.0 + vUv.y * 100.0 + uTime * 50.0) * 0.1;
+          col += grain;
+
+          gl_FragColor = vec4(col, alpha);
+        }
+      `
+    });
+  }
+
+  // ── Hologram info card (like a VR panel) ──
+  const cardGeo = new THREE.PlaneGeometry(2.5, 1.5, 1, 1);
+  const cardMat = createHologramMaterial(0x2288ff);
+  const card = new THREE.Mesh(cardGeo, cardMat);
+  card.position.set(0, 0.3, 0);
+  scene.add(card);
+
+  // ── Hologram sphere ──
+  const holoSphere = new THREE.Mesh(
+    new THREE.SphereGeometry(0.6, 32, 16),
+    createHologramMaterial(0x44ffaa)
+  );
+  holoSphere.position.set(-2, 0, -1);
+  scene.add(holoSphere);
+
+  // ── Hologram wireframe icosahedron ──
+  const icoGeo = new THREE.IcosahedronGeometry(0.7, 1);
+  const icoMat = createHologramMaterial(0xff6644);
+  icoMat.wireframe = true;
+  const ico = new THREE.Mesh(icoGeo, icoMat);
+  ico.position.set(2, 0, -1);
+  scene.add(ico);
+
+  // ── Card content: text rendered to canvas texture overlaid ──
+  const cv = document.createElement('canvas');
+  cv.width = 512; cv.height = 300;
+  const ctx = cv.getContext('2d');
+  ctx.fillStyle = 'rgba(0,0,0,0)';
+  ctx.fillRect(0, 0, 512, 300);
+  ctx.fillStyle = '#88ccff';
+  ctx.font = 'bold 28px monospace';
+  ctx.fillText('QUANTUM PHYSICS', 30, 50);
+  ctx.font = '16px monospace';
+  ctx.fillStyle = '#6699cc';
+  ctx.fillText('The study of matter and energy', 30, 90);
+  ctx.fillText('at the smallest scales of', 30, 115);
+  ctx.fillText('energy levels of atoms.', 30, 140);
+  ctx.strokeStyle = 'rgba(100,150,255,0.3)';
+  ctx.lineWidth = 1;
+  for (let y = 0; y < 300; y += 4) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(512, y); ctx.stroke();
+  }
+  const textTex = new THREE.CanvasTexture(cv);
+  const textPlane = new THREE.Mesh(
+    new THREE.PlaneGeometry(2.5, 1.5),
+    new THREE.MeshBasicMaterial({ map: textTex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  textPlane.position.copy(card.position);
+  textPlane.position.z += 0.01;
+  scene.add(textPlane);
+
+  // ── Hologram base glow ring ──
+  const ringGeo = new THREE.RingGeometry(1.1, 1.3, 64);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0x2288ff, transparent: true, opacity: 0.3,
+    blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = -0.8;
+  scene.add(ring);
+
+  scene.userData.update = (dt) => {
+    const t = clock.getElapsedTime();
+    camera.position.x = mouseX * 2;
+    camera.position.y = mouseY + 0.5;
+    camera.lookAt(0, 0, 0);
+
+    cardMat.uniforms.uTime.value = t;
+    holoSphere.material.uniforms.uTime.value = t;
+    icoMat.uniforms.uTime.value = t;
+
+    ico.rotation.y = t * 0.5;
+    ico.rotation.x = t * 0.3;
+    holoSphere.rotation.y = t * 0.2;
+
+    // Pulse the ring
+    ring.material.opacity = 0.2 + Math.sin(t * 2) * 0.1;
+    ring.scale.setScalar(1 + Math.sin(t * 1.5) * 0.05);
+  };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 6. PORTAL / WORMHOLE EFFECT — Swirling tunnel
+// ═══════════════════════════════════════════════════════════════════════════════
+function demoPortal() {
+  camera.position.set(0, 0, 3);
+
+  // ── Tunnel mesh: a cylinder we look through from inside ──
+  const tunnelGeo = new THREE.CylinderGeometry(2, 2, 20, 64, 64, true);
+  const tunnelMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      uTime: { value: 0 },
+      uSpeed: { value: 1.5 },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec3 vPos;
+      void main() {
+        vUv = uv;
+        vPos = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform float uSpeed;
+      varying vec2 vUv;
+      varying vec3 vPos;
+
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float noise(vec2 p) {
+        vec2 i = floor(p); vec2 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hash(i), hash(i+vec2(1,0)), f.x),
+                   mix(hash(i+vec2(0,1)), hash(i+vec2(1,1)), f.x), f.y);
+      }
+      float fbm(vec2 p) {
+        float v = 0.0, a = 0.5;
+        for (int i = 0; i < 5; i++) {
+          v += a * noise(p);
+          p = p * 2.01 + vec2(0.1);
+          a *= 0.5;
+        }
+        return v;
+      }
+
+      void main() {
+        // Convert UV to angle around cylinder + position along it
+        float angle = vUv.x * 6.28318;
+        float along = vUv.y;
+
+        // Swirl: angle rotates as you go deeper
+        float swirl = angle + along * 8.0 + uTime * uSpeed;
+
+        // Noise-based turbulence
+        vec2 noiseUv = vec2(swirl * 0.5, along * 4.0 - uTime * uSpeed * 0.5);
+        float n = fbm(noiseUv);
+        float n2 = fbm(noiseUv * 2.0 + 3.0);
+
+        // Color: blue/purple core, warm edges
+        vec3 colorInner = vec3(0.1, 0.3, 0.9);
+        vec3 colorMid = vec3(0.5, 0.1, 0.8);
+        vec3 colorOuter = vec3(0.8, 0.3, 0.1);
+
+        // Radial: brighter at edges, dark center (like looking down a tunnel)
+        float radial = abs(vUv.y - 0.5) * 2.0;
+
+        vec3 col = mix(colorInner, colorMid, n);
+        col = mix(col, colorOuter, n2 * radial);
+
+        // Swirling energy lines
+        float lines = sin(swirl * 6.0) * 0.5 + 0.5;
+        lines = smoothstep(0.6, 0.8, lines);
+        col += vec3(0.4, 0.6, 1.0) * lines * 0.3;
+
+        // Bright streaks (like warp speed)
+        float streak = pow(n, 3.0) * 2.0;
+        col += vec3(0.8, 0.9, 1.0) * streak;
+
+        // Alpha: fade at tunnel ends
+        float endFade = smoothstep(0.0, 0.1, along) * smoothstep(1.0, 0.9, along);
+        float alpha = (0.4 + n * 0.4 + lines * 0.2) * endFade;
+
+        gl_FragColor = vec4(col, alpha);
+      }
+    `
+  });
+
+  const tunnel = new THREE.Mesh(tunnelGeo, tunnelMat);
+  tunnel.rotation.x = Math.PI / 2; // Look down the tunnel
+  scene.add(tunnel);
+
+  // ── Portal entrance ring (glowing torus) ──
+  const portalRingGeo = new THREE.TorusGeometry(2, 0.15, 16, 64);
+  const portalRingMat = new THREE.ShaderMaterial({
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    uniforms: { uTime: { value: 0 } },
+    vertexShader: `
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      varying float vAngle;
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vec4 worldPos = modelMatrix * vec4(position, 1.0);
+        vViewDir = normalize(cameraPosition - worldPos.xyz);
+        vAngle = atan(position.y, position.x);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      varying vec3 vNormal;
+      varying vec3 vViewDir;
+      varying float vAngle;
+      void main() {
+        float fresnel = pow(1.0 - abs(dot(vNormal, vViewDir)), 2.0);
+        float pulse = sin(vAngle * 8.0 - uTime * 4.0) * 0.5 + 0.5;
+        vec3 col = mix(vec3(0.2, 0.3, 1.0), vec3(0.8, 0.2, 0.9), pulse);
+        float alpha = (0.4 + fresnel * 0.6) * (0.7 + pulse * 0.3);
+        gl_FragColor = vec4(col * 1.5, alpha);
+      }
+    `
+  });
+  const portalRing = new THREE.Mesh(portalRingGeo, portalRingMat);
+  portalRing.position.z = 10;
+  scene.add(portalRing);
+
+  // Exit ring
+  const exitRing = portalRing.clone();
+  exitRing.position.z = -10;
+  exitRing.material = portalRingMat.clone();
+  scene.add(exitRing);
+
+  // ── Particle stream inside tunnel ──
+  const partCount = 2000;
+  const partPos = new Float32Array(partCount * 3);
+  const partVel = new Float32Array(partCount);
+  const partPhase = new Float32Array(partCount);
+  for (let i = 0; i < partCount; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const r = 0.5 + Math.random() * 1.5;
+    partPos[i*3] = Math.cos(angle) * r;
+    partPos[i*3+1] = Math.sin(angle) * r;
+    partPos[i*3+2] = (Math.random() - 0.5) * 20;
+    partVel[i] = 0.5 + Math.random() * 1.5;
+    partPhase[i] = Math.random() * Math.PI * 2;
+  }
+  const partGeo = new THREE.BufferGeometry();
+  partGeo.setAttribute('position', new THREE.BufferAttribute(partPos, 3));
+  partGeo.setAttribute('aVel', new THREE.BufferAttribute(partVel, 1));
+  partGeo.setAttribute('aPhase', new THREE.BufferAttribute(partPhase, 1));
+  const partMat = new THREE.ShaderMaterial({
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    uniforms: { uTime: { value: 0 } },
+    vertexShader: `
+      attribute float aVel;
+      attribute float aPhase;
+      uniform float uTime;
+      varying float vAlpha;
+      void main() {
+        vec3 p = position;
+        p.z = mod(p.z + uTime * aVel * 5.0, 20.0) - 10.0;
+        // Spiral
+        float angle = atan(p.y, p.x) + uTime * 0.5 + aPhase;
+        float r = length(p.xy);
+        p.x = cos(angle) * r;
+        p.y = sin(angle) * r;
+        vAlpha = smoothstep(-10.0, -5.0, p.z) * smoothstep(10.0, 5.0, p.z);
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_PointSize = 2.0;
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: `
+      varying float vAlpha;
+      void main() {
+        float d = length(gl_PointCoord - 0.5);
+        if (d > 0.5) discard;
+        float a = (1.0 - d * 2.0) * vAlpha * 0.6;
+        gl_FragColor = vec4(0.5, 0.6, 1.0, a);
+      }
+    `
+  });
+  scene.add(new THREE.Points(partGeo, partMat));
+
+  scene.userData.update = (dt) => {
+    const t = clock.getElapsedTime();
+    // Camera flies through tunnel
+    camera.position.z = Math.sin(t * 0.3) * 8;
+    camera.position.x = Math.sin(t * 0.5) * 0.3 + mouseX * 0.5;
+    camera.position.y = Math.cos(t * 0.7) * 0.3 + mouseY * 0.5;
+    camera.lookAt(0, 0, camera.position.z - 5);
+
+    tunnelMat.uniforms.uTime.value = t;
+    portalRingMat.uniforms.uTime.value = t;
+    if (exitRing.material.uniforms) exitRing.material.uniforms.uTime.value = t;
+    partMat.uniforms.uTime.value = t;
+  };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 7. CONSTELLATION LINES — Glowing + pulse of light traveling along path
+// ═══════════════════════════════════════════════════════════════════════════════
+function demoConstellationPulse() {
+  camera.position.set(0, 0, 12);
+  scene.add(new THREE.AmbientLight(0x111133, 0.3));
+
+  // Create some "planet" nodes
+  const planetPositions = [
+    new THREE.Vector3(-4, 2, 0),
+    new THREE.Vector3(-2, -1, 1),
+    new THREE.Vector3(0, 3, -1),
+    new THREE.Vector3(2, 0, 0),
+    new THREE.Vector3(4, -2, 1),
+    new THREE.Vector3(1, -3, -1),
+    new THREE.Vector3(-3, -3, 0),
+    new THREE.Vector3(3, 3, 0),
+  ];
+
+  const planetMeshes = planetPositions.map(pos => {
+    const m = new THREE.Mesh(
+      new THREE.SphereGeometry(0.25, 16, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffddaa })
+    );
+    m.position.copy(pos);
+    scene.add(m);
+    // Glow
+    const g = new THREE.Mesh(
+      new THREE.SphereGeometry(0.35, 16, 8),
+      new THREE.MeshBasicMaterial({ color: 0xffddaa, transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending, depthWrite: false })
+    );
+    g.position.copy(pos);
+    scene.add(g);
+    return m;
+  });
+
+  // Connections (edges)
+  const connections = [
+    [0,1], [1,2], [2,3], [3,4], [4,5], [5,6], [6,0],
+    [1,3], [2,7], [7,4], [0,2],
+  ];
+
+  // ── Pulsing constellation line shader ──
+  // Each line is a thin tube (TubeGeometry) with a shader that animates
+  // a bright pulse traveling along it
+
+  const constellationLines = connections.map(([a, b]) => {
+    const pA = planetPositions[a];
+    const pB = planetPositions[b];
+    const dir = pB.clone().sub(pA);
+    const len = dir.length();
+    const mid = pA.clone().add(pB).multiplyScalar(0.5);
+
+    // Use a line with custom shader for the pulse
+    const SEGS = 64;
+    const positions = new Float32Array(SEGS * 3);
+    const progress = new Float32Array(SEGS); // 0..1 along line
+
+    for (let i = 0; i < SEGS; i++) {
+      const t = i / (SEGS - 1);
+      const p = pA.clone().lerp(pB, t);
+      positions[i*3] = p.x;
+      positions[i*3+1] = p.y;
+      positions[i*3+2] = p.z;
+      progress[i] = t;
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('aProgress', new THREE.BufferAttribute(progress, 1));
+
+    const mat = new THREE.ShaderMaterial({
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      uniforms: {
+        uTime: { value: 0 },
+        uColor: { value: new THREE.Color(0x4488cc) },
+        uPulseSpeed: { value: 1.0 + Math.random() * 0.5 },
+        uPulseWidth: { value: 0.08 },
+        uBaseAlpha: { value: 0.15 },
+        uPhase: { value: Math.random() * Math.PI * 2 },
+      },
+      vertexShader: `
+        attribute float aProgress;
+        uniform float uTime;
+        uniform float uPulseSpeed;
+        uniform float uPulseWidth;
+        uniform float uBaseAlpha;
+        uniform float uPhase;
+        varying float vAlpha;
+        varying float vProg;
+
+        void main() {
+          vProg = aProgress;
+
+          // Traveling pulse: a bright spot moves from 0 to 1
+          float pulsePos = fract(uTime * uPulseSpeed + uPhase);
+          float dist = abs(aProgress - pulsePos);
+          // Handle wrapping
+          dist = min(dist, 1.0 - dist);
+          float pulse = exp(-dist * dist / (uPulseWidth * uPulseWidth));
+
+          vAlpha = uBaseAlpha + pulse * 0.85;
+
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        varying float vAlpha;
+        varying float vProg;
+
+        void main() {
+          // Brighten at pulse peak
+          vec3 col = uColor + vec3(0.3, 0.4, 0.5) * (vAlpha - 0.15);
+          gl_FragColor = vec4(col, vAlpha);
+        }
+      `
+    });
+
+    const line = new THREE.Line(geo, mat);
+    scene.add(line);
+    return { line, mat };
+  });
+
+  // ── Pulse particles (bright dot traveling along each connection) ──
+  const pulseParticles = connections.map(([a, b], idx) => {
+    const geo = new THREE.SphereGeometry(0.08, 8, 4);
+    const mat = new THREE.MeshBasicMaterial({
+      color: 0x88ddff,
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    scene.add(mesh);
+
+    // Glow sprite around the particle
+    const glowMat = new THREE.SpriteMaterial({
+      color: 0x4488ff,
+      transparent: true,
+      opacity: 0.4,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const glow = new THREE.Sprite(glowMat);
+    glow.scale.setScalar(0.5);
+    mesh.add(glow);
+
+    return {
+      mesh, mat,
+      from: planetPositions[a],
+      to: planetPositions[b],
+      speed: 0.3 + Math.random() * 0.3,
+      phase: Math.random() * Math.PI * 2,
+    };
+  });
+
+  scene.userData.update = (dt) => {
+    const t = clock.getElapsedTime();
+    camera.position.x = mouseX * 4;
+    camera.position.y = mouseY * 3;
+    camera.lookAt(0, 0, 0);
+
+    // Update constellation lines
+    constellationLines.forEach(cl => {
+      cl.mat.uniforms.uTime.value = t;
+    });
+
+    // Update pulse particles
+    pulseParticles.forEach(pp => {
+      const prog = (t * pp.speed + pp.phase) % 1;
+      pp.mesh.position.lerpVectors(pp.from, pp.to, prog);
+      pp.mat.opacity = 0.8 + Math.sin(t * 5 + pp.phase) * 0.2;
+    });
+  };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 8. PLANET RING SYSTEMS (Saturn-like)
+//    Ring geometry with gap patterns, transparency, proper shading
+// ═══════════════════════════════════════════════════════════════════════════════
+function demoPlanetRings() {
+  camera.position.set(0, 3, 7);
+  scene.add(new THREE.AmbientLight(0x333344, 0.3));
+  scene.add(new THREE.DirectionalLight(0xffeedd, 1.0).position.set(5, 3, 5));
+
+  // Planet body
+  const planetGeo = new THREE.SphereGeometry(1.5, 64, 32);
+  const planetMat = new THREE.MeshPhongMaterial({
+    color: 0xddbb77,
+    emissive: 0x221100,
+    shininess: 10,
+  });
+  const planet = new THREE.Mesh(planetGeo, planetMat);
+  scene.add(planet);
+
+  // Atmosphere (Fresnel glow)
+  const atmosMat = new THREE.ShaderMaterial({
+    vertexShader: `
+      varying vec3 vNormal;
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vNormal;
+      void main() {
+        float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 3.0);
+        gl_FragColor = vec4(0.8, 0.65, 0.4, 1.0) * intensity;
+      }
+    `,
+    side: THREE.BackSide,
+    blending: THREE.AdditiveBlending,
+    transparent: true,
+    depthWrite: false,
+  });
+  const atmos = new THREE.Mesh(new THREE.SphereGeometry(1.65, 32, 16), atmosMat);
+  scene.add(atmos);
+
+  // ── Saturn-like ring with Cassini division and gap patterns ──
+  // Custom ring geometry with radial UV for shader-based gap/opacity control
+  const ringInner = 2.0;
+  const ringOuter = 4.0;
+  const ringGeo = new THREE.RingGeometry(ringInner, ringOuter, 128, 8);
+
+  // Fix UVs: make them go radially (0 = inner edge, 1 = outer edge)
+  const ringUvs = ringGeo.attributes.uv;
+  const ringPositions = ringGeo.attributes.position;
+  for (let i = 0; i < ringUvs.count; i++) {
+    const x = ringPositions.getX(i);
+    const y = ringPositions.getY(i);
+    const r = Math.sqrt(x * x + y * y);
+    const u = (r - ringInner) / (ringOuter - ringInner);
+    const angle = Math.atan2(y, x);
+    ringUvs.setXY(i, u, angle / (Math.PI * 2) + 0.5);
+  }
+
+  const ringMat = new THREE.ShaderMaterial({
+    side: THREE.DoubleSide,
+    transparent: true,
+    depthWrite: false,
+    uniforms: {
+      uTime: { value: 0 },
+      uLightDir: { value: new THREE.Vector3(0.7, 0.4, 0.7).normalize() },
+    },
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec3 vWorldPos;
+      varying vec3 vNormal;
+      void main() {
+        vUv = uv;
+        vNormal = normalize(normalMatrix * normal);
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vWorldPos = wp.xyz;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform vec3 uLightDir;
+      varying vec2 vUv;
+      varying vec3 vWorldPos;
+      varying vec3 vNormal;
+
+      float hash(float n) { return fract(sin(n) * 43758.5453); }
+
+      void main() {
+        float r = vUv.x; // 0 = inner, 1 = outer
+
+        // ── Ring color: warm browns/golds with variation ──
+        vec3 innerColor = vec3(0.85, 0.72, 0.55);
+        vec3 outerColor = vec3(0.55, 0.45, 0.35);
+        vec3 col = mix(innerColor, outerColor, r);
+
+        // Add some radial color noise
+        float noise = hash(floor(r * 200.0)) * 0.15;
+        col += noise;
+
+        // ── Gap pattern (Saturn-style) ──
+        float alpha = 0.85;
+
+        // Cassini Division (major gap at ~60% radius)
+        float cassini = smoothstep(0.57, 0.58, r) - smoothstep(0.63, 0.64, r);
+        alpha *= 1.0 - cassini * 0.9;
+
+        // Encke Gap (thin gap at ~80%)
+        float encke = smoothstep(0.78, 0.785, r) - smoothstep(0.79, 0.795, r);
+        alpha *= 1.0 - encke * 0.7;
+
+        // Multiple thin ringlets
+        float ringlets = sin(r * 120.0) * 0.5 + 0.5;
+        ringlets = smoothstep(0.3, 0.7, ringlets);
+        alpha *= 0.4 + ringlets * 0.6;
+
+        // Outer edge fade
+        alpha *= smoothstep(1.0, 0.9, r);
+        // Inner edge fade
+        alpha *= smoothstep(0.0, 0.05, r);
+
+        // ── Simple shadow from planet ──
+        // Project ring point to check if it's behind the planet relative to light
+        float distFromCenter = length(vWorldPos.xz);
+        float planetRadius = 1.5;
+        float shadow = smoothstep(planetRadius * 0.8, planetRadius * 1.1, distFromCenter);
+
+        // Light direction shadowing
+        float litSide = dot(vNormal, uLightDir) * 0.5 + 0.5;
+        col *= 0.5 + litSide * 0.5;
+        col *= shadow * 0.5 + 0.5;
+
+        // ── Subtle sparkle ──
+        float sparkle = hash(floor(r * 500.0) + floor(vUv.y * 500.0) + uTime * 0.5);
+        sparkle = step(0.995, sparkle) * 0.5;
+        col += sparkle;
+
+        gl_FragColor = vec4(col, alpha);
+      }
+    `
+  });
+
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = -Math.PI * 0.42; // tilt
+  scene.add(ring);
+
+  // Second planet with thinner, bluer rings
+  const planet2 = new THREE.Mesh(
+    new THREE.SphereGeometry(0.8, 32, 16),
+    new THREE.MeshPhongMaterial({ color: 0x6688aa, emissive: 0x112233 })
+  );
+  planet2.position.set(5, 0, -3);
+  scene.add(planet2);
+
+  const ring2Geo = new THREE.RingGeometry(1.2, 2.2, 64, 4);
+  const ring2Uvs = ring2Geo.attributes.uv;
+  const ring2Pos = ring2Geo.attributes.position;
+  for (let i = 0; i < ring2Uvs.count; i++) {
+    const x = ring2Pos.getX(i);
+    const y = ring2Pos.getY(i);
+    const rad = Math.sqrt(x * x + y * y);
+    ring2Uvs.setXY(i, (rad - 1.2) / 1.0, Math.atan2(y, x) / (Math.PI * 2) + 0.5);
+  }
+  const ring2Mat = ringMat.clone();
+  ring2Mat.uniforms = {
+    uTime: { value: 0 },
+    uLightDir: { value: new THREE.Vector3(0.7, 0.4, 0.7).normalize() },
+  };
+  const ring2 = new THREE.Mesh(ring2Geo, ring2Mat);
+  ring2.rotation.x = -Math.PI * 0.35;
+  ring2.position.copy(planet2.position);
+  scene.add(ring2);
+
+  scene.userData.update = (dt) => {
+    const t = clock.getElapsedTime();
+    camera.position.x = Math.sin(t * 0.15) * 6 + mouseX * 3;
+    camera.position.y = 2 + mouseY * 2;
+    camera.position.z = Math.cos(t * 0.15) * 6;
+    camera.lookAt(0, 0, 0);
+
+    planet.rotation.y = t * 0.1;
+    ring.rotation.z = t * 0.02;
+    ringMat.uniforms.uTime.value = t;
+    ring2Mat.uniforms.uTime.value = t;
+  };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 9. COMET / SHOOTING STAR TRAILS
+//    Glowing head + fading trail, no post-processing
+// ═══════════════════════════════════════════════════════════════════════════════
+function demoCometTrails() {
+  camera.position.set(0, 0, 15);
+
+  // Starfield background
+  const starCount = 2000;
+  const sPos = new Float32Array(starCount * 3);
+  for (let i = 0; i < starCount; i++) {
+    sPos[i*3]   = (Math.random() - 0.5) * 100;
+    sPos[i*3+1] = (Math.random() - 0.5) * 100;
+    sPos[i*3+2] = (Math.random() - 0.5) * 100;
+  }
+  const sGeo = new THREE.BufferGeometry();
+  sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+  scene.add(new THREE.Points(sGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 1, sizeAttenuation: false })));
+
+  // ── Comet class: head mesh + trail ribbon ──
+  class Comet {
+    constructor(color, speed) {
+      this.color = new THREE.Color(color);
+      this.speed = speed;
+      this.TRAIL_LENGTH = 80;
+
+      // Head (bright glowing sphere)
+      this.head = new THREE.Mesh(
+        new THREE.SphereGeometry(0.15, 12, 6),
+        new THREE.MeshBasicMaterial({ color: 0xffffff })
+      );
+      scene.add(this.head);
+
+      // Head glow (sprite)
+      const cv = document.createElement('canvas');
+      cv.width = cv.height = 64;
+      const ctx = cv.getContext('2d');
+      const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+      grad.addColorStop(0, `rgba(255,255,255,1)`);
+      grad.addColorStop(0.2, `rgba(${this.color.r*255|0},${this.color.g*255|0},${this.color.b*255|0},0.8)`);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, 64, 64);
+      const tex = new THREE.CanvasTexture(cv);
+      const spriteMat = new THREE.SpriteMaterial({
+        map: tex, transparent: true, blending: THREE.AdditiveBlending, depthWrite: false
+      });
+      this.glow = new THREE.Sprite(spriteMat);
+      this.glow.scale.setScalar(1.5);
+      this.head.add(this.glow);
+
+      // Trail: ribbon mesh (BufferGeometry with per-vertex alpha)
+      this.trailPositions = new Float32Array(this.TRAIL_LENGTH * 2 * 3); // 2 verts per segment (top/bottom of ribbon)
+      this.trailAlphas = new Float32Array(this.TRAIL_LENGTH * 2);
+      this.trailIndices = [];
+
+      for (let i = 0; i < this.TRAIL_LENGTH - 1; i++) {
+        const a = i * 2;
+        const b = i * 2 + 1;
+        const c = (i + 1) * 2;
+        const d = (i + 1) * 2 + 1;
+        this.trailIndices.push(a, c, b, b, c, d);
+      }
+
+      // Set initial alphas (fade along trail)
+      for (let i = 0; i < this.TRAIL_LENGTH; i++) {
+        const alpha = 1.0 - (i / this.TRAIL_LENGTH);
+        this.trailAlphas[i * 2] = alpha;
+        this.trailAlphas[i * 2 + 1] = alpha;
+      }
+
+      const trailGeo = new THREE.BufferGeometry();
+      trailGeo.setAttribute('position', new THREE.BufferAttribute(this.trailPositions, 3));
+      trailGeo.setAttribute('aAlpha', new THREE.BufferAttribute(this.trailAlphas, 1));
+      trailGeo.setIndex(this.trailIndices);
+
+      const trailMat = new THREE.ShaderMaterial({
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+        uniforms: {
+          uColor: { value: this.color },
+          uTime: { value: 0 },
+        },
+        vertexShader: `
+          attribute float aAlpha;
+          varying float vAlpha;
+          void main() {
+            vAlpha = aAlpha;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform vec3 uColor;
+          uniform float uTime;
+          varying float vAlpha;
+          void main() {
+            // Warm->cool color fade along trail
+            vec3 col = mix(uColor, vec3(0.1, 0.05, 0.2), 1.0 - vAlpha);
+            // Add white-hot at head
+            col = mix(col, vec3(1.0, 0.98, 0.9), vAlpha * vAlpha);
+            float alpha = vAlpha * vAlpha * 0.8;
+            gl_FragColor = vec4(col, alpha);
+          }
+        `
+      });
+
+      this.trail = new THREE.Mesh(trailGeo, trailMat);
+      scene.add(this.trail);
+
+      // Trail history (ring buffer of positions)
+      this.history = [];
+      for (let i = 0; i < this.TRAIL_LENGTH; i++) {
+        this.history.push(new THREE.Vector3());
+      }
+
+      // Spawn
+      this.reset();
+    }
+
+    reset() {
+      // Random start position and direction
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * Math.PI - Math.PI / 2;
+      const r = 20;
+      this.pos = new THREE.Vector3(
+        Math.cos(phi) * Math.cos(theta) * r,
+        Math.cos(phi) * Math.sin(theta) * r,
+        Math.sin(phi) * r
+      );
+      this.vel = this.pos.clone().negate().normalize().multiplyScalar(this.speed);
+      // Add some randomness to direction
+      this.vel.x += (Math.random() - 0.5) * 2;
+      this.vel.y += (Math.random() - 0.5) * 2;
+
+      // Reset history
+      for (let i = 0; i < this.TRAIL_LENGTH; i++) {
+        this.history[i].copy(this.pos);
+      }
+    }
+
+    update(dt, camRight, camUp) {
+      // Move
+      this.pos.addScaledVector(this.vel, dt);
+      this.head.position.copy(this.pos);
+
+      // Push new position to front of history
+      for (let i = this.TRAIL_LENGTH - 1; i > 0; i--) {
+        this.history[i].copy(this.history[i - 1]);
+      }
+      this.history[0].copy(this.pos);
+
+      // Build ribbon: for each history point, create two vertices offset by camera-facing width
+      const width = 0.15;
+      for (let i = 0; i < this.TRAIL_LENGTH; i++) {
+        const p = this.history[i];
+        const w = width * (1.0 - i / this.TRAIL_LENGTH); // taper
+        this.trailPositions[i*6]     = p.x + camUp.x * w;
+        this.trailPositions[i*6 + 1] = p.y + camUp.y * w;
+        this.trailPositions[i*6 + 2] = p.z + camUp.z * w;
+        this.trailPositions[i*6 + 3] = p.x - camUp.x * w;
+        this.trailPositions[i*6 + 4] = p.y - camUp.y * w;
+        this.trailPositions[i*6 + 5] = p.z - camUp.z * w;
+      }
+      this.trail.geometry.attributes.position.needsUpdate = true;
+
+      // Reset if too far
+      if (this.pos.length() > 30) this.reset();
+    }
+  }
+
+  const comets = [
+    new Comet(0xff8844, 6),
+    new Comet(0x44aaff, 8),
+    new Comet(0x88ff44, 5),
+    new Comet(0xff44aa, 7),
+    new Comet(0xffff44, 9),
+  ];
+
+  const camRight = new THREE.Vector3();
+  const camUp = new THREE.Vector3();
+
+  scene.userData.update = (dt) => {
+    const t = clock.getElapsedTime();
+    camera.position.x = mouseX * 5;
+    camera.position.y = mouseY * 5;
+    camera.lookAt(0, 0, 0);
+
+    // Get camera-facing vectors for billboard ribbons
+    camera.matrixWorld.extractBasis(camRight, camUp, new THREE.Vector3());
+
+    comets.forEach(c => c.update(dt, camRight, camUp));
+  };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// 10. AUDIO-REACTIVE VISUALS
+//     Web Audio API frequency analysis drives planet scale, glow, colors
+// ═══════════════════════════════════════════════════════════════════════════════
+function demoAudioReactive() {
+  camera.position.set(0, 0, 10);
+  scene.add(new THREE.AmbientLight(0x111122, 0.3));
+
+  // ── Audio setup with Web Audio API ──
+  let analyser, dataArray, audioContext;
+  let audioStarted = false;
+
+  function startAudio() {
+    if (audioStarted) return;
+    audioStarted = true;
+    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    const bufferLength = analyser.frequencyBinCount; // 128
+    dataArray = new Uint8Array(bufferLength);
+
+    // Create a synth tone (deep drone) since we can't load external audio
+    // This generates actual audio you can hear + react to
+    function createDrone(freq, gain) {
+      const osc = audioContext.createOscillator();
+      const g = audioContext.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      g.gain.value = gain;
+      osc.connect(g);
+      g.connect(analyser);
+      g.connect(audioContext.destination);
+      osc.start();
+      return { osc, gain: g };
+    }
+
+    // Deep bass drone
+    createDrone(55, 0.15);   // A1
+    createDrone(82, 0.10);   // E2
+    createDrone(110, 0.08);  // A2
+    createDrone(165, 0.05);  // E3
+
+    // Add slow LFO modulation to make it pulsate
+    const lfo = audioContext.createOscillator();
+    const lfoGain = audioContext.createGain();
+    lfo.type = 'sine';
+    lfo.frequency.value = 0.5; // very slow
+    lfoGain.gain.value = 30;
+    lfo.connect(lfoGain);
+
+    const modOsc = audioContext.createOscillator();
+    const modGain = audioContext.createGain();
+    modOsc.type = 'sawtooth';
+    modOsc.frequency.value = 40;
+    lfoGain.connect(modOsc.frequency);
+    modGain.gain.value = 0.1;
+    modOsc.connect(modGain);
+    modGain.connect(analyser);
+    modGain.connect(audioContext.destination);
+    modOsc.start();
+    lfo.start();
+  }
+
+  // Start on click (browser requires user gesture for audio)
+  const startBtn = document.createElement('button');
+  startBtn.textContent = 'Click to Start Audio';
+  startBtn.style.cssText = 'position:fixed; bottom:60px; left:50%; transform:translateX(-50%); z-index:200; padding:12px 24px; font-size:16px; background:rgba(200,180,120,0.2); border:1px solid rgba(200,180,120,0.4); color:#e8d89a; cursor:pointer; font-family:monospace; border-radius:6px;';
+  startBtn.onclick = () => { startAudio(); startBtn.remove(); };
+  document.body.appendChild(startBtn);
+
+  // ── Visual objects that react to audio ──
+  // Central sphere
+  const centralGeo = new THREE.IcosahedronGeometry(1.5, 4);
+  const centralMat = new THREE.ShaderMaterial({
+    transparent: true,
+    uniforms: {
+      uTime: { value: 0 },
+      uBass: { value: 0 },
+      uMid:  { value: 0 },
+      uHigh: { value: 0 },
+      uOverall: { value: 0 },
+    },
+    vertexShader: `
+      uniform float uTime;
+      uniform float uBass;
+      uniform float uMid;
+      varying vec3 vNormal;
+      varying vec3 vPos;
+      varying float vDisp;
+
+      // Simplex-ish noise
+      float hash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+      float noise(vec3 p) {
+        vec3 i = floor(p); vec3 f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(
+          mix(mix(hash(i), hash(i+vec3(1,0,0)), f.x),
+              mix(hash(i+vec3(0,1,0)), hash(i+vec3(1,1,0)), f.x), f.y),
+          mix(mix(hash(i+vec3(0,0,1)), hash(i+vec3(1,0,1)), f.x),
+              mix(hash(i+vec3(0,1,1)), hash(i+vec3(1,1,1)), f.x), f.y),
+          f.z
+        );
+      }
+
+      void main() {
+        vNormal = normalize(normalMatrix * normal);
+        vPos = position;
+
+        // Displace vertices based on bass frequency
+        float n = noise(position * 2.0 + uTime * 0.5);
+        float displacement = n * uBass * 0.5 + uMid * 0.2;
+        vec3 newPos = position + normal * displacement;
+        vDisp = displacement;
+
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(newPos, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform float uBass;
+      uniform float uMid;
+      uniform float uHigh;
+      uniform float uOverall;
+      varying vec3 vNormal;
+      varying vec3 vPos;
+      varying float vDisp;
+
+      void main() {
+        // Color shifts based on frequency bands
+        vec3 bassColor = vec3(0.8, 0.1, 0.2) * uBass;
+        vec3 midColor  = vec3(0.1, 0.5, 0.8) * uMid;
+        vec3 highColor = vec3(0.2, 0.8, 0.3) * uHigh;
+
+        vec3 col = vec3(0.05, 0.05, 0.1) + bassColor + midColor + highColor;
+
+        // Fresnel edge glow, intensity driven by overall volume
+        float fresnel = pow(1.0 - abs(dot(vNormal, vec3(0.0, 0.0, 1.0))), 2.5);
+        col += vec3(0.3, 0.5, 1.0) * fresnel * (0.5 + uOverall);
+
+        // Displacement-based highlights
+        col += vec3(1.0, 0.9, 0.7) * vDisp * 0.5;
+
+        float alpha = 0.6 + uOverall * 0.4;
+        gl_FragColor = vec4(col, alpha);
+      }
+    `
+  });
+  const centralSphere = new THREE.Mesh(centralGeo, centralMat);
+  scene.add(centralSphere);
+
+  // Orbiting frequency-band spheres
+  const bandSpheres = [];
+  const bandColors = [0xff2244, 0xff8844, 0x44ff88, 0x4488ff, 0x8844ff, 0xff44aa];
+  for (let i = 0; i < 6; i++) {
+    const angle = (i / 6) * Math.PI * 2;
+    const geo = new THREE.SphereGeometry(0.3, 16, 8);
+    const mat = new THREE.MeshBasicMaterial({
+      color: bandColors[i],
+      transparent: true,
+      opacity: 0.8,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(Math.cos(angle) * 4, Math.sin(angle) * 4, 0);
+    scene.add(mesh);
+
+    // Glow
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: bandColors[i],
+      transparent: true,
+      opacity: 0.2,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.BackSide,
+    });
+    const glow = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 8), glowMat);
+    mesh.add(glow);
+
+    bandSpheres.push({ mesh, mat, glowMat, baseAngle: angle, bandIndex: Math.floor(i * 128 / 6) });
+  }
+
+  // Frequency ring visualization (circular bar graph)
+  const BAR_COUNT = 64;
+  const bars = [];
+  for (let i = 0; i < BAR_COUNT; i++) {
+    const angle = (i / BAR_COUNT) * Math.PI * 2;
+    const geo = new THREE.BoxGeometry(0.08, 0.1, 0.08);
+    const mat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color().setHSL(i / BAR_COUNT, 0.8, 0.5),
+      transparent: true,
+      opacity: 0.6,
+    });
+    const mesh = new THREE.Mesh(geo, mat);
+    const r = 3;
+    mesh.position.set(Math.cos(angle) * r, Math.sin(angle) * r, 0);
+    mesh.lookAt(0, 0, 0);
+    scene.add(mesh);
+    bars.push({ mesh, angle, baseR: r });
+  }
+
+  scene.userData.update = (dt) => {
+    const t = clock.getElapsedTime();
+    camera.position.x = mouseX * 5;
+    camera.position.y = mouseY * 3;
+    camera.lookAt(0, 0, 0);
+
+    // Get audio data
+    let bass = 0, mid = 0, high = 0, overall = 0;
+    if (analyser && dataArray) {
+      analyser.getByteFrequencyData(dataArray);
+      // Bass: bins 0-15 (low freq)
+      for (let i = 0; i < 16; i++) bass += dataArray[i];
+      bass = bass / (16 * 255);
+      // Mid: bins 16-63
+      for (let i = 16; i < 64; i++) mid += dataArray[i];
+      mid = mid / (48 * 255);
+      // High: bins 64-127
+      for (let i = 64; i < 128; i++) high += dataArray[i];
+      high = high / (64 * 255);
+      // Overall
+      for (let i = 0; i < 128; i++) overall += dataArray[i];
+      overall = overall / (128 * 255);
+    } else {
+      // Fake data when no audio
+      bass = 0.3 + Math.sin(t * 2) * 0.2;
+      mid = 0.2 + Math.sin(t * 3 + 1) * 0.15;
+      high = 0.1 + Math.sin(t * 5 + 2) * 0.1;
+      overall = 0.2 + Math.sin(t * 1.5) * 0.1;
+    }
+
+    // Update central sphere
+    centralMat.uniforms.uTime.value = t;
+    centralMat.uniforms.uBass.value = bass;
+    centralMat.uniforms.uMid.value = mid;
+    centralMat.uniforms.uHigh.value = high;
+    centralMat.uniforms.uOverall.value = overall;
+    centralSphere.rotation.y = t * 0.2;
+    centralSphere.rotation.x = t * 0.1;
+
+    // Update band spheres
+    bandSpheres.forEach((bs, i) => {
+      const angle = bs.baseAngle + t * 0.3;
+      const bandVal = analyser && dataArray ? dataArray[bs.bandIndex] / 255 : (0.3 + Math.sin(t * (2 + i) + i) * 0.2);
+      const r = 3.5 + bandVal * 2;
+      bs.mesh.position.set(Math.cos(angle) * r, Math.sin(angle) * r, Math.sin(t + i) * 0.5);
+      const s = 0.3 + bandVal * 0.7;
+      bs.mesh.scale.setScalar(s);
+      bs.glowMat.opacity = 0.1 + bandVal * 0.4;
+    });
+
+    // Update frequency bars
+    bars.forEach((bar, i) => {
+      const val = analyser && dataArray ? dataArray[Math.floor(i * 128 / BAR_COUNT)] / 255 : (0.2 + Math.sin(t * 3 + i * 0.3) * 0.2);
+      bar.mesh.scale.y = 1 + val * 15;
+      bar.mesh.material.opacity = 0.3 + val * 0.7;
+    });
+  };
+
+  demoCleanup = () => {
+    if (audioContext) {
+      audioContext.close();
+      audioContext = null;
+    }
+    if (startBtn.parentNode) startBtn.remove();
+  };
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DEMO RUNNER
+// ═══════════════════════════════════════════════════════════════════════════════
+const demos = [
+  demoSpaceSkybox,
+  demoVolumetricFog,
+  demoGravityLensing,
+  demoEnergyBeams,
+  demoHologram,
+  demoPortal,
+  demoConstellationPulse,
+  demoPlanetRings,
+  demoCometTrails,
+  demoAudioReactive,
+];
+
+// Start with skybox
+showDemo(0);
+
+// Main animation loop
+renderer.setAnimationLoop(() => {
+  const dt = clock.getDelta();
+  if (scene.userData.update) {
+    const handled = scene.userData.update(dt);
+    if (!handled) renderer.render(scene, camera);
+  } else {
+    renderer.render(scene, camera);
+  }
+});
+</script>
+</body>
+</html>
