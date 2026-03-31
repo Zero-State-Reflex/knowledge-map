@@ -1360,6 +1360,7 @@ renderer.toneMappingExposure = 1.05; // bright enough to see detail
 // ─── WebXR for Meta Quest 3 ─────────────────────────────────────────────────
 renderer.xr.enabled = true;
 renderer.xr.setReferenceSpaceType('local-floor');
+renderer.xr.setFoveation(1.0); // 26-43% GPU savings — renders edges at lower res
 
 const XR_SCALE = 0.002; // 5000 scene-units → 10m in VR
 function isInXR() { return renderer.xr.isPresenting; }
@@ -1504,12 +1505,80 @@ renderer.xr.addEventListener('sessionstart', () => {
   const children = [...scene.children];
   children.forEach(child => _galaxyGroup.add(child)); // reparents
   _galaxyGroup.scale.setScalar(XR_SCALE);
-  _galaxyGroup.position.set(0, 1.4, -4); // further back for much wider galaxy
+  _galaxyGroup.position.set(0, 1.5, -1.5); // start zoomed in close (for intro text)
   scene.add(_galaxyGroup);
-  // Controllers stay on unscaled scene — proper world-space tracking
   scene.add(xrController0);
+  // skybox removed
   scene.add(xrController1);
   document.body.style.opacity = '0';
+
+  // Ambient space stars — world scale, surround the user
+  (function() {
+    var N = 6000;
+    var pos = new Float32Array(N * 3);
+    var col = new Float32Array(N * 3);
+    for (var i = 0; i < N; i++) {
+      // Spread on a large sphere around origin (8-30m radius)
+      var r = 8 + Math.random() * 22;
+      var t = Math.random() * Math.PI * 2;
+      var p = Math.acos(2 * Math.random() - 1);
+      pos[i*3] = r * Math.sin(p) * Math.cos(t);
+      pos[i*3+1] = r * Math.sin(p) * Math.sin(t);
+      pos[i*3+2] = r * Math.cos(p);
+      // Star color temperature: mostly warm white, some blue, some orange
+      var temp = Math.random();
+      if (temp < 0.6) { col[i*3]=0.9; col[i*3+1]=0.85; col[i*3+2]=0.8; }       // warm white
+      else if (temp < 0.8) { col[i*3]=0.7; col[i*3+1]=0.8; col[i*3+2]=1.0; }    // blue-white
+      else if (temp < 0.9) { col[i*3]=1.0; col[i*3+1]=0.7; col[i*3+2]=0.4; }    // orange
+      else { col[i*3]=1.0; col[i*3+1]=0.95; col[i*3+2]=0.9; }                    // bright white
+    }
+    var geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    var mat = new THREE.PointsMaterial({
+      size: 0.015, vertexColors: true, transparent: true, opacity: 0.8,
+      sizeAttenuation: true, depthWrite: false,
+    });
+    scene.add(new THREE.Points(geo, mat)); // scene level = world scale
+  })();
+
+  // Lock controls during intro
+  window._introLocked = true;
+
+  // Welcome text — big canvas sprite in galaxy space
+  (function() {
+    var cv = document.createElement('canvas');
+    cv.width = 1024; cv.height = 256;
+    var ctx = cv.getContext('2d');
+    ctx.fillStyle = '#e8d89a';
+    ctx.font = 'bold 72px Helvetica,Arial,sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Welcome to the', 512, 80);
+    ctx.fillText('Map of Human Knowledge', 512, 176);
+    var tex = new THREE.CanvasTexture(cv);
+    var mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, opacity: 0, side: THREE.DoubleSide });
+    var mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.25), mat);
+    mesh.scale.set(800, 800, 1);
+    mesh.position.set(0, 100, 200); // slightly in front in galaxy space
+    _galaxyGroup.add(mesh);
+    window._welcomeSprite = mesh;
+    window._welcomeStart = performance.now();
+  })();
+
+  // Intro sequence: hold close → fade text → drift back → unlock
+  // Phase 1 (0-5s): hold position, text fades in and displays
+  // Phase 2 (5-7s): text fades out
+  // Phase 3 (7-10s): drift back to normal view
+  // Phase 4 (10s+): unlock controls
+  setTimeout(function() {
+    // Drift back to normal view
+    if (_galaxyGroup) {
+      _vrZoomAnim = { startPos: _galaxyGroup.position.clone(), endPos: new THREE.Vector3(0, 1.4, -4), t: 0, frames: 180 };
+    }
+  }, 7000);
+  setTimeout(function() {
+    window._introLocked = false;
+  }, 10000);
 });
 renderer.xr.addEventListener('sessionend', () => {
   document.body.style.opacity = '1';
@@ -1527,16 +1596,24 @@ renderer.xr.addEventListener('sessionend', () => {
   }
 });
 
-// Controller visuals — ray line from each controller
-const _rayGeo = new THREE.BufferGeometry().setFromPoints([
-  new THREE.Vector3(0, 0, 0),
-  new THREE.Vector3(0, 0, -5)
-]);
-const _rayMat = new THREE.LineBasicMaterial({ color: 0xe8d89a, transparent: true, opacity: 0.5 });
-const _rayLine0 = new THREE.Line(_rayGeo, _rayMat);
-const _rayLine1 = new THREE.Line(_rayGeo.clone(), _rayMat.clone());
-xrController0.add(_rayLine0);
-xrController1.add(_rayLine1);
+// Controller visuals — thick beam cylinders
+const _beamLen = 5;
+const _beamGeo = new THREE.CylinderGeometry(0.003, 0.001, _beamLen, 6, 1, true);
+_beamGeo.rotateX(Math.PI / 2);
+_beamGeo.translate(0, 0, -_beamLen / 2);
+xrController0.add(new THREE.Mesh(_beamGeo, new THREE.MeshBasicMaterial({ color: 0xe8d89a, transparent: true, opacity: 0.6 })));
+xrController1.add(new THREE.Mesh(_beamGeo.clone(), new THREE.MeshBasicMaterial({ color: 0xe8d89a, transparent: true, opacity: 0.6 })));
+
+// Wrist menu on left controller (added at init time like beams — proven to work)
+// Wrist menu removed — was appearing as black box tracking head
+
+// Squeeze = recenter galaxy
+xrController0.addEventListener('squeeze', () => {
+  if (_galaxyGroup) { _vrZoomAnim = null; _galaxyGroup.position.set(0, 1.4, -4); _galaxyGroup.rotation.set(0, 0, 0); }
+});
+xrController1.addEventListener('squeeze', () => {
+  if (_galaxyGroup) { _vrZoomAnim = null; _galaxyGroup.position.set(0, 1.4, -4); _galaxyGroup.rotation.set(0, 0, 0); }
+});
 
 // Controller select — angle-based proximity (raycasting misses tiny scaled meshes)
 const _xrTempMatrix = new THREE.Matrix4();
@@ -1544,10 +1621,770 @@ const _xrNodeWorld = new THREE.Vector3();
 const _xrRayOrigin = new THREE.Vector3();
 const _xrRayDir = new THREE.Vector3();
 
+// ─── GUIDED TOUR (B button) ─────────────────────────────────────────────────
+var _tourCurve = null, _tourT = 0, _tourActive = false;
+function startGuidedTour() {
+  var names = ['Mathematics','Physics','Computer Science','Biology','Chemistry',
+    'Philosophy','Astronomy','Neuroscience','Economics','Music Theory',
+    'Architecture','Genetics','Psychology','Linguistics','Astrophysics'];
+  var pts = [];
+  names.forEach(function(name) {
+    var nd = nodeMap.get(name);
+    if (nd) pts.push(new THREE.Vector3(0 - nd.x * XR_SCALE, 1.4 - nd.y * XR_SCALE, -2.5 - nd.z * XR_SCALE));
+  });
+  if (pts.length < 3) return;
+  _tourCurve = new THREE.CatmullRomCurve3(pts, true, 'centripetal');
+  _tourT = 0; _tourActive = true;
+  window._vrDriftLoop = null;
+}
+function updateGuidedTour() {
+  if (!_tourActive || !_tourCurve || !_galaxyGroup) return;
+  _tourT += 0.0003;
+  if (_tourT >= 1) _tourT = 0;
+  _galaxyGroup.position.copy(_tourCurve.getPoint(_tourT));
+}
+
+// ─── VR NOTE CARD (canvas plane above selected planet) ──────────────────────
+// ─── VR INFO CARDS — 5 STYLES FOR TESTING ───────────────────────────────────
+var _vrNoteCard = null;
+var _testCardStyles = {
+  'Mathematics': 'minimalist',
+  'Physics': 'cyberpunk',
+  'Philosophy': 'glass',
+  'Biology': 'terminal',
+  'Music Theory': 'hologram',
+};
+
+function drawCardCanvas(style, title, domain, desc, domColor, neighbors) {
+  var W = 512, H = 720;
+  var cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  var ctx = cv.getContext('2d');
+  var pad = 32;
+
+  if (style === 'minimalist') {
+    // ── STYLE 1: Minimalist Dark (Apple-style) ──
+    ctx.fillStyle = '#0a0a0e';
+    ctx.fillRect(0, 0, W, H);
+    // Thin top accent line
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(pad, 24, 40, 2);
+    // Title
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 44px Helvetica, Arial, sans-serif';
+    ctx.fillText(title, pad, 80);
+    // Domain
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    ctx.font = '16px Helvetica, Arial, sans-serif';
+    ctx.fillText(domain.toUpperCase(), pad, 108);
+    // Description
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.font = '24px Helvetica, Arial, sans-serif';
+    wrapText(ctx, desc, pad, 155, W - pad*2, 34, H - 200);
+    // Label
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.font = '12px Helvetica, sans-serif';
+    ctx.fillText('STYLE: MINIMALIST', pad, H - 20);
+
+  } else if (style === 'cyberpunk') {
+    // ── STYLE 2: Cyberpunk Neon ──
+    ctx.fillStyle = '#05050f';
+    ctx.fillRect(0, 0, W, H);
+    // Neon border
+    ctx.strokeStyle = '#00aaff';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(8, 8, W-16, H-16);
+    ctx.strokeStyle = '#00aaff';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(14, 14, W-28, H-28);
+    // Glow corners
+    ctx.fillStyle = 'rgba(0,170,255,0.15)';
+    ctx.fillRect(8, 8, 60, 60);
+    ctx.fillRect(W-68, 8, 60, 60);
+    ctx.fillRect(8, H-68, 60, 60);
+    ctx.fillRect(W-68, H-68, 60, 60);
+    // Title
+    ctx.fillStyle = '#00ddff';
+    ctx.font = 'bold 40px Helvetica, Arial, sans-serif';
+    ctx.fillText(title, pad, 75);
+    // Domain with glitch offset
+    ctx.fillStyle = '#ff0066';
+    ctx.font = 'bold 15px Helvetica, sans-serif';
+    ctx.fillText(domain.toUpperCase(), pad + 2, 100);
+    ctx.fillStyle = '#00ffcc';
+    ctx.fillText(domain.toUpperCase(), pad, 98);
+    // Description
+    ctx.fillStyle = 'rgba(180,220,255,0.85)';
+    ctx.font = '22px Helvetica, Arial, sans-serif';
+    wrapText(ctx, desc, pad, 145, W - pad*2, 32, H - 220);
+    // Related chips
+    drawChips(ctx, neighbors, pad, 520, W, '#00aaff');
+    ctx.fillStyle = 'rgba(0,170,255,0.3)';
+    ctx.font = '12px Helvetica, sans-serif';
+    ctx.fillText('STYLE: CYBERPUNK', pad, H - 20);
+
+  } else if (style === 'glass') {
+    // ── STYLE 3: Glassmorphism (frosted) ──
+    // Soft gradient background
+    var grad = ctx.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, 'rgba(30,30,60,0.85)');
+    grad.addColorStop(1, 'rgba(15,15,35,0.9)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, W, H);
+    // Frosted inner area
+    ctx.fillStyle = 'rgba(255,255,255,0.04)';
+    ctx.fillRect(16, 16, W-32, H-32);
+    // Soft border
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(16, 16, W-32, H-32);
+    // Title
+    ctx.fillStyle = '#e8d89a';
+    ctx.font = 'bold 42px Helvetica, Arial, sans-serif';
+    ctx.fillText(title, pad, 75);
+    // Domain
+    ctx.fillStyle = 'rgba(232,216,154,0.5)';
+    ctx.font = '16px Helvetica, sans-serif';
+    ctx.fillText(domain, pad, 102);
+    // Divider
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+    ctx.beginPath(); ctx.moveTo(pad, 118); ctx.lineTo(W-pad, 118); ctx.stroke();
+    // Description
+    ctx.fillStyle = 'rgba(230,225,215,0.8)';
+    ctx.font = '23px Helvetica, Arial, sans-serif';
+    wrapText(ctx, desc, pad, 155, W - pad*2, 33, H - 220);
+    // Related
+    drawChips(ctx, neighbors, pad, 500, W, 'rgba(232,216,154,0.5)');
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.font = '12px Helvetica, sans-serif';
+    ctx.fillText('STYLE: GLASS', pad, H - 20);
+
+  } else if (style === 'terminal') {
+    // ── STYLE 4: Retro Terminal ──
+    ctx.fillStyle = '#0a120a';
+    ctx.fillRect(0, 0, W, H);
+    // Scan line overlay
+    for (var sl = 0; sl < H; sl += 3) {
+      ctx.fillStyle = 'rgba(0,0,0,0.15)';
+      ctx.fillRect(0, sl, W, 1);
+    }
+    // Border
+    ctx.strokeStyle = '#33ff33';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(6, 6, W-12, H-12);
+    // Header bar
+    ctx.fillStyle = 'rgba(51,255,51,0.1)';
+    ctx.fillRect(6, 6, W-12, 36);
+    ctx.fillStyle = '#33ff33';
+    ctx.font = '14px Courier, monospace';
+    ctx.fillText('> KNOWLEDGE_MAP v3.0 // NODE_INFO', 14, 28);
+    // Title
+    ctx.fillStyle = '#33ff33';
+    ctx.font = 'bold 38px Courier, monospace';
+    ctx.fillText(title, pad, 85);
+    // Domain
+    ctx.fillStyle = '#22aa22';
+    ctx.font = '15px Courier, monospace';
+    ctx.fillText('DOMAIN: ' + domain.toUpperCase(), pad, 112);
+    // Description
+    ctx.fillStyle = 'rgba(51,255,51,0.8)';
+    ctx.font = '20px Courier, monospace';
+    wrapText(ctx, desc, pad, 150, W - pad*2, 28, H - 230);
+    // Related
+    ctx.fillStyle = '#22aa22';
+    ctx.font = '14px Courier, monospace';
+    ctx.fillText('> LINKED_NODES:', pad, 490);
+    if (neighbors) {
+      var relText = neighbors.slice(0,6).map(function(nb) { return nb.id || nb; }).join(' | ');
+      ctx.fillStyle = '#33ff33';
+      ctx.font = '16px Courier, monospace';
+      wrapText(ctx, relText, pad, 515, W - pad*2, 22, 100);
+    }
+    ctx.fillStyle = 'rgba(51,255,51,0.3)';
+    ctx.font = '12px Courier, monospace';
+    ctx.fillText('STYLE: TERMINAL', pad, H - 20);
+
+  } else {
+    // ── STYLE 5: Gold Hologram (default) ──
+    ctx.fillStyle = 'rgba(8,12,24,0.0)';
+    ctx.fillRect(0, 0, W, H);
+    // Top decorative bars
+    ctx.strokeStyle = domColor;
+    ctx.lineWidth = 2;
+    for (var b = 0; b < 3; b++) {
+      ctx.beginPath();
+      ctx.moveTo(W/2-50+b*2, 16+b*5); ctx.lineTo(W/2+50-b*2, 16+b*5);
+      ctx.stroke();
+    }
+    // Corner brackets
+    ctx.globalAlpha = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(8,30); ctx.lineTo(8,8); ctx.lineTo(30,8);
+    ctx.moveTo(W-8,30); ctx.lineTo(W-8,8); ctx.lineTo(W-30,8);
+    ctx.moveTo(8,H-30); ctx.lineTo(8,H-8); ctx.lineTo(30,H-8);
+    ctx.moveTo(W-8,H-30); ctx.lineTo(W-8,H-8); ctx.lineTo(W-30,H-8);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    // Title
+    ctx.fillStyle = '#e8d89a';
+    ctx.font = 'bold 44px Helvetica, Arial, sans-serif';
+    ctx.fillText(title, pad, 80);
+    // Domain
+    ctx.fillStyle = domColor;
+    ctx.font = 'bold 16px Helvetica, sans-serif';
+    ctx.fillText(domain.toUpperCase(), pad, 108);
+    // Description
+    ctx.fillStyle = 'rgba(210,205,190,0.85)';
+    ctx.font = '24px Helvetica, Arial, sans-serif';
+    wrapText(ctx, desc, pad, 150, W - pad*2, 34, H - 230);
+    // Related
+    drawChips(ctx, neighbors, pad, 510, W, domColor);
+    ctx.fillStyle = 'rgba(232,216,154,0.25)';
+    ctx.font = '12px Helvetica, sans-serif';
+    ctx.fillText('STYLE: HOLOGRAM', pad, H - 20);
+  }
+
+  return new THREE.CanvasTexture(cv);
+}
+
+// Helper: word wrap
+function wrapText(ctx, text, x, y, maxW, lineH, maxY) {
+  if (!text) return;
+  var words = text.split(' '), line = '';
+  for (var i = 0; i < words.length; i++) {
+    var test = line + words[i] + ' ';
+    if (ctx.measureText(test).width > maxW && line) {
+      ctx.fillText(line.trim(), x, y);
+      line = words[i] + ' '; y += lineH;
+      if (y > maxY) return;
+    } else { line = test; }
+  }
+  if (line) ctx.fillText(line.trim(), x, y);
+}
+
+// Helper: draw chips
+function drawChips(ctx, neighbors, x, y, W, color) {
+  if (!neighbors || !neighbors.length) return;
+  ctx.fillStyle = 'rgba(150,150,150,0.4)';
+  ctx.font = 'bold 14px Helvetica, sans-serif';
+  ctx.fillText('RELATED DISCIPLINES', x, y - 10);
+  ctx.font = '18px Helvetica, Arial, sans-serif';
+  var cx = x;
+  for (var i = 0; i < Math.min(neighbors.length, 6); i++) {
+    var name = neighbors[i].id || neighbors[i];
+    var tw = ctx.measureText(name).width + 20;
+    if (cx + tw > W - 32) { cx = x; y += 36; }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(cx, y, tw, 28, 5);
+    else { ctx.rect(cx, y, tw, 28); }
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(200,200,200,0.7)';
+    ctx.fillText(name, cx + 10, y + 20);
+    cx += tw + 8;
+  }
+}
+
+function makeHoloCard(title, domain, description, domainColor, neighbors) {
+  var W = 600, H = 900;
+  var cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  var ctx = cv.getContext('2d');
+
+  // Background — dark navy
+  ctx.fillStyle = 'rgba(8, 12, 28, 0.95)';
+  ctx.fillRect(0, 0, W, H);
+
+  // Top decorative lines (3 bars like the screenshot)
+  ctx.strokeStyle = domainColor;
+  ctx.lineWidth = 2;
+  for (var li = 0; li < 3; li++) {
+    ctx.beginPath();
+    ctx.moveTo(W/2 - 60 + li*2, 20 + li*6);
+    ctx.lineTo(W/2 + 60 - li*2, 20 + li*6);
+    ctx.stroke();
+  }
+
+  // Corner brackets
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = domainColor;
+  ctx.globalAlpha = 0.4;
+  ctx.beginPath();
+  ctx.moveTo(10, 40); ctx.lineTo(10, 10); ctx.lineTo(40, 10);
+  ctx.moveTo(W-10, 40); ctx.lineTo(W-10, 10); ctx.lineTo(W-40, 10);
+  ctx.moveTo(10, H-40); ctx.lineTo(10, H-10); ctx.lineTo(40, H-10);
+  ctx.moveTo(W-10, H-40); ctx.lineTo(W-10, H-10); ctx.lineTo(W-40, H-10);
+  ctx.stroke();
+  ctx.globalAlpha = 1.0;
+
+  // Title — large, bold
+  ctx.fillStyle = '#e8d89a';
+  ctx.font = 'bold 48px Helvetica, Arial, sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText(title, 40, 90);
+
+  // Domain subtitle — uppercase, domain colored
+  ctx.fillStyle = domainColor;
+  ctx.font = 'bold 18px Helvetica, Arial, sans-serif';
+  ctx.fillText(domain.toUpperCase(), 40, 120);
+
+  // Description — large readable text
+  ctx.fillStyle = 'rgba(200, 195, 180, 0.9)';
+  ctx.font = '28px Helvetica, Arial, sans-serif';
+  var words = description.split(' '), line = '', y = 175;
+  var maxW = W - 80;
+  for (var w = 0; w < words.length; w++) {
+    var test = line + words[w] + ' ';
+    if (ctx.measureText(test).width > maxW && line) {
+      ctx.fillText(line.trim(), 40, y);
+      line = words[w] + ' ';
+      y += 38;
+      if (y > 450) break;
+    } else { line = test; }
+  }
+  if (line && y <= 450) ctx.fillText(line.trim(), 40, y);
+
+  // Divider before related
+  y = Math.max(y + 50, 480);
+  ctx.strokeStyle = domainColor;
+  ctx.globalAlpha = 0.25;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(40, y - 20); ctx.lineTo(W - 40, y - 20);
+  ctx.stroke();
+  ctx.globalAlpha = 1.0;
+
+  // Related disciplines header
+  ctx.fillStyle = 'rgba(160, 155, 140, 0.6)';
+  ctx.font = 'bold 16px Helvetica, Arial, sans-serif';
+  ctx.fillText('RELATED DISCIPLINES', 40, y);
+  y += 30;
+
+  // Related chips
+  if (neighbors && neighbors.length > 0) {
+    var chipX = 40;
+    ctx.font = '20px Helvetica, Arial, sans-serif';
+    for (var ci = 0; ci < Math.min(neighbors.length, 8); ci++) {
+      var name = neighbors[ci].id || neighbors[ci];
+      var tw = ctx.measureText(name).width + 24;
+      if (chipX + tw > W - 40) { chipX = 40; y += 42; }
+      if (y > H - 30) break;
+      // Chip background
+      ctx.strokeStyle = 'rgba(200, 195, 180, 0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(chipX, y - 24, tw, 34, 6);
+      ctx.stroke();
+      // Chip text
+      ctx.fillStyle = 'rgba(200, 195, 180, 0.8)';
+      ctx.fillText(name, chipX + 12, y);
+      chipX += tw + 10;
+    }
+  }
+
+  return new THREE.CanvasTexture(cv);
+}
+
+var _holoVertShader = [
+  'varying vec2 vUv;',
+  'varying vec3 vPos;',
+  'void main(){',
+  '  vUv = uv;',
+  '  vPos = (modelViewMatrix * vec4(position,1.0)).xyz;',
+  '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0);',
+  '}'
+].join('\n');
+
+var _holoFragShader = [
+  'uniform sampler2D uMap;',
+  'uniform float uTime;',
+  'uniform vec3 uColor;',
+  'varying vec2 vUv;',
+  'varying vec3 vPos;',
+  'void main(){',
+  '  vec4 tex = texture2D(uMap, vUv);',
+  '',
+  '  // Background panel — dark with color tint',
+  '  float bgAlpha = 0.65;',
+  '  vec3 bgColor = uColor * 0.08;',
+  '',
+  '  // Scan lines — subtle horizontal bars',
+  '  float scanLine = sin(vUv.y * 200.0 + uTime * 2.0) * 0.04 + 0.96;',
+  '',
+  '  // Sweep — bright horizontal line moving down',
+  '  float sweepY = fract(uTime * 0.12);',
+  '  float sweep = smoothstep(0.02, 0.0, abs(vUv.y - sweepY)) * 0.4;',
+  '',
+  '  // Edge glow — bright at borders',
+  '  float ex = smoothstep(0.0, 0.03, vUv.x) * smoothstep(1.0, 0.97, vUv.x);',
+  '  float ey = smoothstep(0.0, 0.03, vUv.y) * smoothstep(1.0, 0.97, vUv.y);',
+  '  float edgeGlow = (1.0 - ex * ey) * 0.5;',
+  '',
+  '  // Flicker',
+  '  float flicker = 0.97 + sin(uTime * 7.0) * 0.02 + sin(uTime * 11.0) * 0.01;',
+  '',
+  '  // Combine: bg panel + text + effects',
+  '  vec3 col = bgColor + tex.rgb * scanLine * flicker;',
+  '  col += uColor * sweep;',
+  '  col += uColor * edgeGlow * 0.3;',
+  '  float alpha = max(bgAlpha, tex.a) * flicker + sweep * 0.15 + edgeGlow * 0.2;',
+  '',
+  '  gl_FragColor = vec4(col, alpha);',
+  '}'
+].join('\n');
+
+var _vrNoteCards = [];
+
+function drawHoloVariant(title, domain, desc, domColor, neighbors, cfg) {
+  var W = cfg.cW, H = cfg.cH;
+  var cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  var ctx = cv.getContext('2d');
+  var pad = Math.round(W * 0.06);
+
+  // Background — transparent (shader adds glow)
+  ctx.clearRect(0, 0, W, H);
+
+  // Top decorative bars
+  ctx.strokeStyle = domColor;
+  ctx.lineWidth = 2;
+  for (var b = 0; b < 3; b++) {
+    ctx.beginPath();
+    ctx.moveTo(W/2-40+b*2, 14+b*5); ctx.lineTo(W/2+40-b*2, 14+b*5);
+    ctx.stroke();
+  }
+
+  // Corner brackets
+  ctx.lineWidth = 1.5;
+  ctx.globalAlpha = 0.4;
+  var cb = 24;
+  ctx.beginPath();
+  ctx.moveTo(8,cb); ctx.lineTo(8,8); ctx.lineTo(cb,8);
+  ctx.moveTo(W-8,cb); ctx.lineTo(W-8,8); ctx.lineTo(W-cb,8);
+  ctx.moveTo(8,H-cb); ctx.lineTo(8,H-8); ctx.lineTo(cb,H-8);
+  ctx.moveTo(W-8,H-cb); ctx.lineTo(W-8,H-8); ctx.lineTo(W-cb,H-8);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // Label number (if testing)
+  if (cfg.label) {
+    ctx.fillStyle = 'rgba(232,216,154,0.4)';
+    ctx.font = 'bold 14px Helvetica, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(cfg.label, W - pad, H - 12);
+    ctx.textAlign = 'left';
+  }
+
+  // Title
+  ctx.fillStyle = '#e8d89a';
+  ctx.font = 'bold ' + cfg.titleSz + 'px Helvetica, Arial, sans-serif';
+  ctx.fillText(title, pad, pad + cfg.titleSz * 0.85);
+
+  // Domain subtitle
+  var domY = pad + cfg.titleSz * 0.85 + cfg.titleSz * 0.55;
+  ctx.fillStyle = domColor;
+  ctx.font = 'bold ' + Math.round(cfg.titleSz * 0.35) + 'px Helvetica, sans-serif';
+  ctx.fillText(domain.toUpperCase(), pad, domY);
+
+  // Divider
+  var divY = domY + 14;
+  ctx.strokeStyle = domColor;
+  ctx.globalAlpha = 0.25;
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(pad, divY); ctx.lineTo(W - pad, divY); ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // Description
+  var descY = divY + cfg.lineH;
+  ctx.fillStyle = 'rgba(210,205,190,0.85)';
+  ctx.font = cfg.descSz + 'px Helvetica, Arial, sans-serif';
+  var maxDescY = H - 160;
+  wrapText(ctx, desc, pad, descY, W - pad*2, cfg.lineH, maxDescY);
+
+  // Related section
+  var relY = Math.max(maxDescY + 20, H - 140);
+  ctx.strokeStyle = domColor;
+  ctx.globalAlpha = 0.2;
+  ctx.beginPath(); ctx.moveTo(pad, relY - 15); ctx.lineTo(W - pad, relY - 15); ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  ctx.fillStyle = 'rgba(150,150,150,0.5)';
+  ctx.font = 'bold ' + Math.round(cfg.descSz * 0.55) + 'px Helvetica, sans-serif';
+  ctx.fillText('RELATED DISCIPLINES', pad, relY);
+
+  if (neighbors && neighbors.length) {
+    var chipFont = Math.round(cfg.descSz * 0.7);
+    ctx.font = chipFont + 'px Helvetica, Arial, sans-serif';
+    var cx = pad, cy = relY + chipFont + 8;
+    for (var i = 0; i < Math.min(neighbors.length, 6); i++) {
+      var name = neighbors[i].id || neighbors[i];
+      var tw = ctx.measureText(name).width + 18;
+      if (cx + tw > W - pad) { cx = pad; cy += chipFont + 14; }
+      if (cy > H - 20) break;
+      ctx.strokeStyle = domColor;
+      ctx.globalAlpha = 0.4;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(cx, cy - chipFont - 2, tw, chipFont + 10, 4);
+      else ctx.rect(cx, cy - chipFont - 2, tw, chipFont + 10);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(200,200,200,0.7)';
+      ctx.fillText(name, cx + 9, cy);
+      cx += tw + 6;
+    }
+  }
+
+  return new THREE.CanvasTexture(cv);
+}
+
+function showVRNoteCard(n) {
+  hideVRNoteCard();
+  var desc = NODE_DESCRIPTIONS[n.id] || '';
+  if (!desc) return;
+  var hex = DOMAINS[n.domain]?.color || '#88aacc';
+  var domain = n.domain;
+  var neighbors = (neighborMap.get(n.id) || []).slice(0, 8);
+  var styles = ['minimalist', 'cyberpunk', 'glass', 'terminal', 'hologram'];
+  var parent = _galaxyGroup || scene;
+  var s = n.size * 18;
+  var spacing = s * 0.78; // gap between cards
+
+  // For Mathematics: show 5 hologram variations. Others: single card.
+  var configs = (n.id === 'Mathematics') ? [
+    { label:'1: SMALL',       cW:1024, cH:576,  titleSz:56, descSz:32, lineH:44, scale:n.size*18 },
+    { label:'2: MEDIUM',      cW:1600, cH:900,  titleSz:72, descSz:40, lineH:54, scale:n.size*22 },
+    { label:'3: LARGE',       cW:2048, cH:1152, titleSz:88, descSz:48, lineH:64, scale:n.size*25 },
+    { label:'4: EXTRA LARGE', cW:2048, cH:1152, titleSz:96, descSz:52, lineH:68, scale:n.size*30 },
+    { label:'5: HUGE',        cW:2048, cH:1152, titleSz:110,descSz:56, lineH:72, scale:n.size*35 },
+  ] : null;
+
+  if (configs) {
+    // Mathematics comparison mode
+    var spacing = configs[2].scale * 2.0;
+    for (var si = 0; si < configs.length; si++) {
+      var cfg = configs[si];
+      var tex = drawHoloVariant(n.id, n.domain, desc, hex, neighbors, cfg);
+      var mat = new THREE.ShaderMaterial({
+        transparent: true, side: THREE.DoubleSide, depthTest: false, depthWrite: false,
+        uniforms: { uMap:{value:tex}, uTime:{value:0}, uColor:{value:new THREE.Color(hex)} },
+        vertexShader: _holoVertShader, fragmentShader: _holoFragShader,
+      });
+      var aspect = cfg.cW / cfg.cH;
+      var card = new THREE.Mesh(new THREE.PlaneGeometry(aspect, 1.0), mat);
+      card.scale.set(cfg.scale, cfg.scale, 1);
+      var offset = (si - (configs.length - 1) / 2) * spacing;
+      card.position.set(n.x + offset, n.y + n.size * 20, n.z);
+      parent.add(card); _vrNoteCards.push(card);
+    }
+  } else {
+    // Troika card — crisp SDF text over hologram background
+    var useTroika = typeof troika_three_text !== 'undefined';
+    var TT = useTroika ? troika_three_text.Text : null;
+    var cardGroup = new THREE.Group();
+    var sc = n.size * 25;
+    // Card to the right of planet, no rotation needed (default faces user)
+    cardGroup.position.set(n.x + n.size * 35, n.y + n.size * 2, n.z);
+    cardGroup.scale.set(sc, sc, sc);
+    cardGroup.userData._planetNode = n;
+
+    // Background panel (canvas hologram — just the panel, no text)
+    var bgCv = document.createElement('canvas');
+    bgCv.width = 1024; bgCv.height = 576;
+    var bgCtx = bgCv.getContext('2d');
+    bgCtx.fillStyle = 'rgba(8,12,24,0.85)';
+    bgCtx.fillRect(0, 0, 1024, 576);
+    // Corner brackets
+    bgCtx.strokeStyle = hex; bgCtx.lineWidth = 2; bgCtx.globalAlpha = 0.4;
+    bgCtx.beginPath();
+    bgCtx.moveTo(10,30); bgCtx.lineTo(10,10); bgCtx.lineTo(30,10);
+    bgCtx.moveTo(1014,30); bgCtx.lineTo(1014,10); bgCtx.lineTo(994,10);
+    bgCtx.moveTo(10,546); bgCtx.lineTo(10,566); bgCtx.lineTo(30,566);
+    bgCtx.moveTo(1014,546); bgCtx.lineTo(1014,566); bgCtx.lineTo(994,566);
+    bgCtx.stroke(); bgCtx.globalAlpha = 1;
+    // Top bars
+    bgCtx.strokeStyle = hex; bgCtx.lineWidth = 2;
+    for (var b=0;b<3;b++){bgCtx.beginPath();bgCtx.moveTo(472+b*2,12+b*5);bgCtx.lineTo(552-b*2,12+b*5);bgCtx.stroke();}
+    var bgTex = new THREE.CanvasTexture(bgCv);
+    var bgMat = new THREE.ShaderMaterial({
+      transparent:true, side:THREE.DoubleSide, depthTest:false, depthWrite:false,
+      uniforms:{uMap:{value:bgTex},uTime:{value:0},uColor:{value:new THREE.Color(hex)}},
+      vertexShader:_holoVertShader, fragmentShader:_holoFragShader,
+    });
+    window._noteCardMat = bgMat;
+    var bgMesh = new THREE.Mesh(new THREE.PlaneGeometry(1.78, 1.0), bgMat);
+    cardGroup.add(bgMesh);
+
+    if (TT) {
+      // Title — crisp SDF
+      var titleText = new TT();
+      titleText.text = n.id;
+      titleText.fontSize = 0.09;
+      titleText.color = '#e8d89a';
+      titleText.anchorX = 'left'; titleText.anchorY = 'top';
+      titleText.position.set(-0.82, 0.42, 0.01);
+      titleText.outlineWidth = 0.003;
+      titleText.outlineColor = '#000000';
+      titleText.depthOffset = -1;
+      titleText.sync();
+      cardGroup.add(titleText);
+
+      // Domain
+      var domText = new TT();
+      domText.text = domain.toUpperCase();
+      domText.fontSize = 0.04;
+      domText.color = hex;
+      domText.anchorX = 'left'; domText.anchorY = 'top';
+      domText.position.set(-0.82, 0.3, 0.01);
+      domText.depthOffset = -1;
+      domText.sync();
+      cardGroup.add(domText);
+
+      // Description
+      var descText = new TT();
+      descText.text = desc;
+      descText.fontSize = 0.05;
+      descText.color = '#d0c8b8';
+      descText.anchorX = 'left'; descText.anchorY = 'top';
+      descText.maxWidth = 1.6;
+      descText.lineHeight = 1.4;
+      descText.position.set(-0.82, 0.2, 0.01);
+      descText.outlineWidth = 0.002;
+      descText.outlineColor = '#000000';
+      descText.depthOffset = -1;
+      descText.sync();
+      cardGroup.add(descText);
+
+      // Related discipline chips — clickable, rounded edges
+      if (neighbors.length > 0) {
+        var chipX = -0.82, chipY = -0.28;
+        // Header
+        var relHead = new TT();
+        relHead.text = 'RELATED DISCIPLINES';
+        relHead.fontSize = 0.025;
+        relHead.color = 'rgba(150,150,150,0.6)';
+        relHead.anchorX = 'left'; relHead.anchorY = 'top';
+        relHead.position.set(chipX, chipY, 0.01);
+        relHead.depthOffset = -1;
+        relHead.sync(); cardGroup.add(relHead);
+        chipY -= 0.06;
+
+        // Rounded rect helper
+        function makeRoundedRect(w, h, r) {
+          var s = new THREE.Shape();
+          s.moveTo(-w/2+r, -h/2); s.lineTo(w/2-r, -h/2);
+          s.quadraticCurveTo(w/2, -h/2, w/2, -h/2+r);
+          s.lineTo(w/2, h/2-r); s.quadraticCurveTo(w/2, h/2, w/2-r, h/2);
+          s.lineTo(-w/2+r, h/2); s.quadraticCurveTo(-w/2, h/2, -w/2, h/2-r);
+          s.lineTo(-w/2, -h/2+r); s.quadraticCurveTo(-w/2, -h/2, -w/2+r, -h/2);
+          return new THREE.ShapeGeometry(s);
+        }
+
+        window._vrChipMeshes = [];
+        var chipH = 0.05;
+        var chipR = 0.015; // corner radius
+        for (var ci = 0; ci < Math.min(neighbors.length, 6); ci++) {
+          var nb = neighbors[ci];
+          var nbName = nb.id || nb;
+          var chipW = 0.026 * nbName.length + 0.06;
+          // Clamp chip so it doesn't overflow card right edge (card half-width ~0.89)
+          if (chipX + chipW > 0.82) { chipX = -0.82; chipY -= 0.07; }
+          var chipGeo = makeRoundedRect(chipW, chipH, chipR);
+          var chipBg = new THREE.Mesh(
+            chipGeo,
+            new THREE.MeshBasicMaterial({ color: new THREE.Color(hex), transparent:true, opacity:0.15, side:THREE.DoubleSide, depthTest:false })
+          );
+          chipBg.position.set(chipX + chipW/2, chipY - chipH/2, 0.005);
+          chipBg.userData.targetNode = nbName;
+          chipBg.userData.baseMat = chipBg.material;
+          cardGroup.add(chipBg);
+          window._vrChipMeshes.push(chipBg);
+          // Chip text
+          var chipText = new TT();
+          chipText.text = nbName;
+          chipText.fontSize = 0.028;
+          chipText.color = '#c8c0b0';
+          chipText.anchorX = 'center'; chipText.anchorY = 'middle';
+          chipText.position.set(chipX + chipW/2, chipY - chipH/2, 0.01);
+          chipText.depthOffset = -1;
+          chipText.sync(); cardGroup.add(chipText);
+          chipX += chipW + 0.03;
+        }
+      }
+    }
+
+    parent.add(cardGroup);
+    _vrNoteCards.push(cardGroup);
+  }
+}
+
+function hideVRNoteCard() {
+  try {
+    _vrNoteCards.forEach(function(card) {
+      try {
+        if (card.parent) card.parent.remove(card);
+        if (card.isGroup) {
+          // Snapshot children array (it mutates during removal)
+          var kids = card.children.slice();
+          for (var i = 0; i < kids.length; i++) {
+            try {
+              var child = kids[i];
+              // Troika text has its own dispose
+              if (child.dispose && typeof child.dispose === 'function') child.dispose();
+              else {
+                if (child.material) child.material.dispose();
+                if (child.geometry) child.geometry.dispose();
+              }
+            } catch(e) {}
+          }
+        } else {
+          if (card.material) {
+            if (card.material.uniforms && card.material.uniforms.uMap)
+              card.material.uniforms.uMap.value.dispose();
+            card.material.dispose();
+          }
+          if (card.geometry) card.geometry.dispose();
+        }
+      } catch(e) {}
+    });
+  } catch(e) {}
+  _vrNoteCards = [];
+  window._noteCardMat = null;
+  window._vrChipMeshes = [];
+}
+
 function xrSelectNode(controller) {
+  if (window._introLocked) return;
+  _tourActive = false;
+  window._vrDriftLoop = null;
+  window._bhOrbit = null;
   _xrTempMatrix.identity().extractRotation(controller.matrixWorld);
   _xrRayOrigin.setFromMatrixPosition(controller.matrixWorld);
   _xrRayDir.set(0, 0, -1).applyMatrix4(_xrTempMatrix);
+
+  // Check chip clicks first
+  if (window._vrChipMeshes && window._vrChipMeshes.length > 0) {
+    var chipRay = new THREE.Raycaster(_xrRayOrigin, _xrRayDir);
+    var chipHits = chipRay.intersectObjects(window._vrChipMeshes, false);
+    if (chipHits.length > 0) {
+      var targetName = chipHits[0].object.userData.targetNode;
+      var targetNode = nodeMap.get(targetName);
+      if (targetNode) {
+        focusNode(targetNode);
+        window._warpActive = true;
+        setTimeout(function(){ window._warpActive = false; }, 2000);
+        if (_galaxyGroup) {
+          _galaxyGroup.rotation.set(0,0,0);
+          var tx = 0 - targetNode.x * XR_SCALE;
+          var ty = 1.4 - targetNode.y * XR_SCALE;
+          var tz = -3.5 - targetNode.z * XR_SCALE;
+          _vrZoomAnim = { startPos: _galaxyGroup.position.clone(), endPos: new THREE.Vector3(tx,ty,tz), t:0, frames:90 };
+        }
+        return;
+      }
+    }
+  }
 
   // Find closest node to the ray within a cone
   let bestNode = null;
@@ -1562,12 +2399,87 @@ function xrSelectNode(controller) {
       bestNode = n;
     }
   }
+  // Check black hole (same zoom math as v8 that worked)
+  if (blackHoleMesh && _galaxyGroup) {
+    blackHoleMesh.getWorldPosition(_xrNodeWorld);
+    const toBH = _xrNodeWorld.clone().sub(_xrRayOrigin).normalize();
+    const bhAngle = Math.acos(Math.max(-1, Math.min(1, toBH.dot(_xrRayDir))));
+    if (bhAngle < 0.18 && (!bestNode || bhAngle < bestAngle + 0.05)) {
+      // Exact v8 "dope" zoom params: tz=-3.5, frames=90
+      _galaxyGroup.rotation.set(0, 0, 0);
+      const tx = 0 - BH_POS.x * XR_SCALE;
+      const ty = 1.4 - BH_POS.y * XR_SCALE;
+      const tz = -3.5 - BH_POS.z * XR_SCALE;
+      const endPos = new THREE.Vector3(tx, ty, tz);
+      _vrZoomAnim = { startPos: _galaxyGroup.position.clone(), endPos: endPos, t: 0, frames: 90 };
+      window._bhSwirlActive = true;
+      window._bhOrbit = { center: endPos, angle: 0, radius: 1.5 };
+      window._warpActive = true;
+      setTimeout(() => { window._warpActive = false; }, 6000); // warp lasts longer
+      setTimeout(() => { window._bhSwirlActive = false; }, 10000);
+      if (audioCtx && audioCtx._masterGain) {
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(80, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(20, audioCtx.currentTime + 4);
+        const g = audioCtx.createGain();
+        g.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 6);
+        osc.connect(g).connect(audioCtx._masterGain);
+        osc.start(); osc.stop(audioCtx.currentTime + 6);
+      }
+      return;
+    }
+  }
+
+  // Check White Hole (same detection as BH — uses stored mesh)
+  if (window._whCoreMesh && _galaxyGroup) {
+    window._whCoreMesh.getWorldPosition(_xrNodeWorld);
+    const toWH = _xrNodeWorld.clone().sub(_xrRayOrigin).normalize();
+    const whAngle = Math.acos(Math.max(-1, Math.min(1, toWH.dot(_xrRayDir))));
+    if (whAngle < 0.18 && (!bestNode || whAngle < bestAngle + 0.05)) {
+      // Same exact zoom params as BH (the "dope" ones)
+      _galaxyGroup.rotation.set(0, 0, 0);
+      const tx = 0 - WH_POS.x * XR_SCALE;
+      const ty = 1.4 - WH_POS.y * XR_SCALE;
+      const tz = -3.5 - WH_POS.z * XR_SCALE;
+      const endPos = new THREE.Vector3(tx, ty, tz);
+      _vrZoomAnim = { startPos: _galaxyGroup.position.clone(), endPos: endPos, t: 0, frames: 90 };
+      window._bhOrbit = { center: endPos, angle: 0, radius: 1.5 };
+      window._warpActive = true;
+      setTimeout(() => { window._warpActive = false; }, 4000);
+      // Pitch shift UP for white hole
+      if (audioCtx && audioCtx._masterGain) {
+        const osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(40, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 4);
+        const g = audioCtx.createGain();
+        g.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 5);
+        osc.connect(g).connect(audioCtx._masterGain);
+        osc.start(); osc.stop(audioCtx.currentTime + 5);
+      }
+      return;
+    }
+  }
+
   if (bestNode) {
     focusNode(bestNode);
+    // Haptic pulse on planet select
+    try { const gp = controller.userData.gamepad || (renderer.xr.getSession() && Array.from(renderer.xr.getSession().inputSources).find(s => s.gamepad)?.gamepad);
+      if (gp && gp.hapticActuators && gp.hapticActuators[0]) gp.hapticActuators[0].pulse(0.6, 100);
+      else if (gp && gp.vibrationActuator) gp.vibrationActuator.playEffect('dual-rumble', {duration:100,strongMagnitude:0.6,weakMagnitude:0.3});
+    } catch(e) {}
+    window._warpActive = true;
+    setTimeout(() => { window._warpActive = false; }, 2000);
     if (_galaxyGroup) {
+      // Center the planet directly in front of the user's head
+      // tx,ty positions the planet at screen center (0, 1.4 = eye height)
+      // tz = -1.5 brings it close enough to examine but not too close
       const tx = 0 - bestNode.x * XR_SCALE;
       const ty = 1.4 - bestNode.y * XR_SCALE;
-      const tz = -2.0 - bestNode.z * XR_SCALE;
+      const tz = -1.5 - bestNode.z * XR_SCALE;
       _vrZoomAnim = { startPos: _galaxyGroup.position.clone(), endPos: new THREE.Vector3(tx, ty, tz), t: 0, frames: 60 };
     }
   }
@@ -1597,72 +2509,91 @@ function pollRightTriggerExit() {
       }
     }
     if (trigger && !trigger.pressed) _rightTriggerWasPressed = false;
+    // A button: single tap = recenter (delayed), double tap = zoom all way out
+    const aBtn = src.gamepad.buttons[4];
+    if (aBtn && aBtn.pressed && !window._aBtnWasPressed) {
+      window._aBtnWasPressed = true;
+      window._vrDriftLoop = null;
+      window._bhOrbit = null;
+      const now = performance.now();
+      if (window._lastAPress && now - window._lastAPress < 500) {
+        // Double tap — cancel pending single tap, zoom way out
+        window._lastAPress = 0;
+        clearTimeout(window._aSingleTimer);
+        if (_galaxyGroup) {
+          _vrZoomAnim = { startPos: _galaxyGroup.position.clone(), endPos: new THREE.Vector3(0, 1.4, -10), t: 0, frames: 120 };
+          window._recenterRotAnim = { startY: _galaxyGroup.rotation.y, t: 0, frames: 120 };
+        }
+      } else {
+        // First tap — wait 500ms to see if double tap comes
+        window._lastAPress = now;
+        window._aSingleTimer = setTimeout(() => {
+          if (_galaxyGroup) {
+            _vrZoomAnim = { startPos: _galaxyGroup.position.clone(), endPos: new THREE.Vector3(0, 1.4, -4), t: 0, frames: 60 };
+            window._recenterRotAnim = { startY: _galaxyGroup.rotation.y, t: 0, frames: 60 };
+          }
+        }, 500);
+      }
+    }
+    if (aBtn && !aBtn.pressed) window._aBtnWasPressed = false;
+    // B button (index 5) = start/stop guided tour
+    const bBtn = src.gamepad.buttons[5];
+    if (bBtn && bBtn.pressed && !window._bBtnWasPressed) {
+      window._bBtnWasPressed = true;
+      if (_tourActive) { _tourActive = false; } else { startGuidedTour(); }
+    }
+    if (bBtn && !bBtn.pressed) window._bBtnWasPressed = false;
   }
 }
 
 // Joystick navigation: left stick = move, right stick = rotate
-// Smooth lerp-damped velocity instead of direct position jumps
 const _xrMoveSpeed = 0.03;
 const _xrRotSpeed = 0.02;
-const _xrDamping = 0.08; // lerp factor — lower = smoother/slower
-let _xrVelX = 0, _xrVelY = 0, _xrVelZ = 0, _xrVelRotY = 0;
-let _planetMoveVelocity = 0;
-
+let _leftTriggerHeld = false;
+let _leftTriggerLastX = 0;
 function updateXRControls() {
+  if (window._introLocked) return; // locked during intro
   const session = renderer.xr.getSession();
   if (!session) return;
-  const moveTarget = _galaxyGroup || scene;
   const sources = session.inputSources;
+  const moveTarget = _galaxyGroup || scene;
 
-  let leftDx = 0, leftDy = 0, rightDx = 0, rightDy = 0;
   for (let i = 0; i < sources.length; i++) {
     const src = sources[i];
     if (!src.gamepad) continue;
+
+    // Left trigger held = rotate galaxy by moving controller
+    if (src.handedness === 'left') {
+      const trigger = src.gamepad.buttons[0];
+      if (trigger && trigger.pressed) {
+        // Get controller world X position for rotation delta
+        const cPos = new THREE.Vector3();
+        xrController0.getWorldPosition(cPos);
+        if (_leftTriggerHeld) {
+          const deltaX = cPos.x - _leftTriggerLastX;
+          moveTarget.rotation.y += deltaX * 2.0;
+        }
+        _leftTriggerLastX = cPos.x;
+        _leftTriggerHeld = true;
+      } else {
+        _leftTriggerHeld = false;
+      }
+    }
+
     const axes = src.gamepad.axes;
     const dx = axes.length >= 4 ? axes[2] : 0;
     const dy = axes.length >= 4 ? axes[3] : 0;
-    // Dead zone
-    const adx = Math.abs(dx) < 0.1 ? 0 : dx;
-    const ady = Math.abs(dy) < 0.1 ? 0 : dy;
-    if (src.handedness === 'left') { leftDx = adx; leftDy = ady; }
-    else if (src.handedness === 'right') { rightDx = adx; rightDy = ady; }
+    if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) continue;
+
+    if (src.handedness === 'left') {
+      // Left stick: left/right = rotate, fwd/back = zoom in/out
+      moveTarget.rotation.y -= dx * _xrRotSpeed;
+      moveTarget.position.z += dy * _xrMoveSpeed * 2; // back=zoom out, fwd=zoom in
+    } else if (src.handedness === 'right') {
+      moveTarget.rotation.y += dx * _xrRotSpeed;
+      moveTarget.position.y += dy * _xrMoveSpeed;
+    }
   }
-
-  // Lerp velocities toward joystick targets — smooth acceleration & deceleration
-  _xrVelX   += (leftDx * _xrMoveSpeed - _xrVelX) * _xrDamping;
-  _xrVelZ   += (leftDy * _xrMoveSpeed - _xrVelZ) * _xrDamping;
-  _xrVelRotY += (-rightDx * _xrRotSpeed - _xrVelRotY) * _xrDamping;
-  _xrVelY   += (-rightDy * _xrMoveSpeed - _xrVelY) * _xrDamping;
-
-  // Apply (skip if negligible)
-  if (Math.abs(_xrVelX) > 0.0001) moveTarget.position.x += _xrVelX;
-  if (Math.abs(_xrVelZ) > 0.0001) moveTarget.position.z += _xrVelZ;
-  if (Math.abs(_xrVelRotY) > 0.0001) moveTarget.rotation.y += _xrVelRotY;
-  if (Math.abs(_xrVelY) > 0.0001) moveTarget.position.y += _xrVelY;
-
-  // Selected planet push/pull — right stick Y moves focused planet toward/away from user
-  updateJoystickPlanetMove(rightDy);
-}
-
-function updateJoystickPlanetMove(rawY) {
-  if (!focusedNode) { _planetMoveVelocity *= 0.85; return; }
-  const mesh = focusedNode.mesh;
-  if (!mesh) return;
-
-  // Lerp velocity toward joystick input — smooth acceleration and deceleration
-  const input = Math.abs(rawY) < 0.12 ? 0 : rawY;
-  const targetVelocity = -input * 1.2;
-  _planetMoveVelocity += (targetVelocity - _planetMoveVelocity) * 0.08;
-
-  // Stop completely if nearly zero
-  if (Math.abs(_planetMoveVelocity) < 0.001) { _planetMoveVelocity = 0; return; }
-
-  const userPos = new THREE.Vector3().setFromMatrixPosition(renderer.xr.getCamera().matrixWorld);
-  const dir = new THREE.Vector3().subVectors(mesh.position, userPos).normalize();
-  mesh.position.addScaledVector(dir, _planetMoveVelocity);
-  focusedNode.x = mesh.position.x;
-  focusedNode.y = mesh.position.y;
-  focusedNode.z = mesh.position.z;
 }
 
 // VR button — uses exact same pattern as working xr_test.html
@@ -1693,6 +2624,8 @@ function setupVRButton() {
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 1, 12000);
+
+// ─── SKYBOX REMOVED ─────────────────────────────────────────────────────────
 
 // ─── STAR FIELD ──────────────────────────────────────────────────────────────
 (function buildStars() {
@@ -1766,7 +2699,7 @@ const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerH
 
 // ─── BLACK HOLE ───────────────────────────────────────────────────────────────
 let blackHoleMesh = null; // exposed for raycasting
-const BH_POS = new THREE.Vector3(3200, -800, -5500);
+const BH_POS = new THREE.Vector3(6000, -1500, -9000); // far out in deep space
 
 (function buildBlackHole() {
   // ── Event horizon — pure black sphere, cuts stars behind it ──────────────
@@ -1833,7 +2766,8 @@ const BH_POS = new THREE.Vector3(3200, -800, -5500);
 
   const diskTilt = new THREE.Euler(0.38, 0.22, 0.0); // slight tilt, not face-on
 
-  diskLayers.forEach(layer => {
+  const diskRings = [];
+  diskLayers.forEach((layer, idx) => {
     const geo = new THREE.RingGeometry(layer.inner, layer.outer, 128, 2);
     const mat = new THREE.MeshBasicMaterial({
       color: layer.color,
@@ -1845,105 +2779,167 @@ const BH_POS = new THREE.Vector3(3200, -800, -5500);
     });
     const ring = new THREE.Mesh(geo, mat);
     ring.position.copy(BH_POS);
-    ring.rotation.copy(diskTilt);
+    // Each ring gets a unique tilt — spread evenly like an atom model
+    ring.rotation.set(
+      0.38 + idx * 0.35,
+      0.22 + idx * 0.45,
+      idx * 0.2
+    );
+    ring.userData.baseOpacity = layer.opacity;
+    ring.userData.baseColor = layer.color;
+    ring.userData.ringIndex = idx;
     scene.add(ring);
+    diskRings.push(ring);
   });
 
-  // ── Disk slow rotation — store refs for animation ─────────────────────────
+  // ── Disk animation refs ───────────────────────────────────────────────────
   const diskMeshes = [];
   diskLayers.forEach(layer => {
     // Already added above; re-create a parallel ref array via scene traversal
   });
 
-  // ── Relativistic jets — faint beams above and below the disk ──────────────
-  const jetLayers = [
-    { length: 1200, radius: 18, color: 0x88aaff, opacity: 0.04 },
-    { length: 800, radius: 35, color: 0x6688cc, opacity: 0.025 },
-    { length: 500, radius: 55, color: 0x4466aa, opacity: 0.015 },
-  ];
+  // Jets REMOVED (looked like spikes)
   const jetMeshes = [];
-  jetLayers.forEach(jet => {
-    const jetGeo = new THREE.CylinderGeometry(jet.radius * 0.3, jet.radius, jet.length, 12, 1, true);
-    const jetMat = new THREE.MeshBasicMaterial({
-      color: jet.color, transparent: true, opacity: jet.opacity,
-      side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false,
-    });
-    // Top jet
-    const topJet = new THREE.Mesh(jetGeo, jetMat);
-    topJet.position.copy(BH_POS).add(new THREE.Vector3(0, jet.length * 0.5 + 260, 0));
-    topJet.rotation.copy(diskTilt);
-    scene.add(topJet);
-    // Bottom jet
-    const botJet = new THREE.Mesh(jetGeo, jetMat.clone());
-    botJet.position.copy(BH_POS).add(new THREE.Vector3(0, -jet.length * 0.5 - 260, 0));
-    botJet.rotation.copy(diskTilt);
-    botJet.rotation.z += Math.PI;
-    scene.add(botJet);
-    jetMeshes.push(topJet, botJet);
+  (function() { // placeholder to keep jetMeshes reference valid
   });
 
-  // Animate: subtle disk shimmer via opacity oscillation + jet flicker
+
+  // ── Accretion particle swarm (2000, GPU spiral) ──────────────────────────
+  var APN=2000, apP=new Float32Array(APN*3), apPh=new Float32Array(APN), apSp=new Float32Array(APN), apR=new Float32Array(APN);
+  for(var ai=0;ai<APN;ai++){
+    var ar=280+Math.random()*700, aa=Math.random()*6.283;
+    apP[ai*3]=BH_POS.x+ar*Math.cos(aa); apP[ai*3+1]=BH_POS.y+(Math.random()-.5)*ar*.15; apP[ai*3+2]=BH_POS.z+ar*Math.sin(aa);
+    apPh[ai]=Math.random()*6.283; apSp[ai]=.4+Math.random()*.8; apR[ai]=ar;
+  }
+  var apGeo=new THREE.BufferGeometry();
+  apGeo.setAttribute('position',new THREE.BufferAttribute(apP,3));
+  apGeo.setAttribute('aPhase',new THREE.BufferAttribute(apPh,1));
+  apGeo.setAttribute('aSpeed',new THREE.BufferAttribute(apSp,1));
+  apGeo.setAttribute('aRadius',new THREE.BufferAttribute(apR,1));
+  var apMat=new THREE.ShaderMaterial({
+    uniforms:{uTime:{value:0},uBH:{value:BH_POS}},
+    vertexShader:'attribute float aPhase,aSpeed,aRadius;uniform float uTime;uniform vec3 uBH;varying float vA,vH;void main(){float t=uTime*0.4*aSpeed+aPhase;float life=mod(t,6.283);float r=aRadius*(1.0-life/6.283)+270.0;float ang=t*1.5+0.5/max(r-269.0,1.0);float tiltX=sin(aPhase*2.7)*0.8;float tiltZ=cos(aPhase*3.1)*0.6;vec3 p;p.x=uBH.x+r*cos(ang);p.z=uBH.z+r*sin(ang);p.y=uBH.y+r*(sin(ang)*tiltX+cos(ang)*tiltZ)*0.3+sin(t*2.0+aPhase*5.0)*r*0.05;vH=1.0-smoothstep(270.0,600.0,r);vA=smoothstep(270.0,290.0,r)*smoothstep(1000.0,600.0,r);vec4 mv=modelViewMatrix*vec4(p,1.0);gl_PointSize=4.0;gl_Position=projectionMatrix*mv;}',
+    fragmentShader:'varying float vA,vH;void main(){float d=length(gl_PointCoord-0.5);if(d>0.5)discard;float a=(1.0-d*2.0)*vA*0.8;vec3 c=mix(vec3(0.8,0.3,0.05),vec3(1.0,0.95,0.9),vH);gl_FragColor=vec4(c,a);}',
+    blending:THREE.AdditiveBlending, depthWrite:false, depthTest:false, transparent:true,
+  });
+  scene.add(new THREE.Points(apGeo,apMat));
+
+  // Animate — full black hole animation system
   let bhT = 0;
   const bhTick = () => {
-    bhT += 0.0008;
+    bhT += 0.001;
+    const t = performance.now() * 0.001;
+
     // Photon sphere pulse
-    photonMat.opacity = 0.04 + Math.sin(bhT * 1.3) * 0.02;
-    // Jet flicker
-    jetMeshes.forEach((m, i) => {
-      m.material.opacity = m.material.opacity * (0.85 + Math.sin(bhT * 2.1 + i) * 0.15);
+    photonMat.opacity = 0.04 + Math.sin(bhT * 1.3) * 0.025;
+
+    // Spinning accretion disk — each ring on its own tilted axis
+    diskRings.forEach((ring, i) => {
+      // Each ring orbits around center at its own rate and axis
+      const baseSpeed = 0.00048 * (1 + (diskRings.length - i) * 0.2); // 20% faster
+      ring.rotation.x += baseSpeed * (0.6 + i * 0.15);
+      ring.rotation.y += baseSpeed * (0.4 + i * 0.1);
+      ring.rotation.z += baseSpeed * (0.3 + i * 0.08);
+
+      // Opacity waves — brightness pulse ripples outward through rings
+      const wavePhase = t * 0.8 - i * 0.4; // offset per ring = ripple
+      const wave = Math.sin(wavePhase) * 0.4 + 0.6; // 0.2 to 1.0
+      ring.material.opacity = ring.userData.baseOpacity * wave * 1.5; // extra glow
+
+      // Inner ring color cycle (first 3 rings) — white-hot breathing
+      if (i < 3) {
+        const heatPulse = Math.sin(t * 0.5 + i * 0.3) * 0.5 + 0.5;
+        const r = 1.0;
+        const g = 0.7 + heatPulse * 0.3;
+        const b = 0.4 + heatPulse * 0.5;
+        ring.material.color.setRGB(r, g, b);
+      }
     });
+
+    // Jet energy pulses — bright spots traveling up/down
+    jetMeshes.forEach((m, i) => {
+      const pulseSpeed = 1.5 + (i % 3) * 0.3;
+      const pulse = Math.sin(t * pulseSpeed + i * 1.5) * 0.5 + 0.5;
+      m.material.opacity = 0.01 + pulse * 0.06;
+    });
+
+    // Accretion particle time
+    apMat.uniforms.uTime.value = t;
   };
   window._bhTick = bhTick;
 })();
 
-// ─── NEBULA DUST CLOUDS ──────────────────────────────────────────────────────
-// Soft, large, semi-transparent sprite clouds scattered in the background
-(function buildNebulae() {
-  const nebulaColors = [
-    [0x442266, 0.018], [0x224466, 0.015], [0x663322, 0.012],
-    [0x336644, 0.014], [0x553344, 0.016], [0x223355, 0.013],
-    [0x443322, 0.011], [0x334455, 0.010],
-  ];
-  const nebulaGeo = new THREE.PlaneGeometry(1, 1);
-  const nebulaCount = Q.nebulaCount;
+// ─── WHITE HOLE (opposite side of map) ──────────────────────────────────────
+const WH_POS = new THREE.Vector3(-6000, 1500, 9000); // mirror of BH, far out
+(function buildWhiteHole() {
+  // Core — bright white sphere
+  const coreGeo = new THREE.SphereGeometry(1, 32, 24);
+  const coreMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const core = new THREE.Mesh(coreGeo, coreMat);
+  core.scale.setScalar(200);
+  core.position.copy(WH_POS);
+  scene.add(core);
+  window._whCoreMesh = core; // store for ray detection
 
-  for (let i = 0; i < nebulaCount; i++) {
-    const [color, opacity] = nebulaColors[i % nebulaColors.length];
-    // Create a soft radial gradient texture
-    const cv = document.createElement('canvas');
-    cv.width = cv.height = 256;
-    const ctx = cv.getContext('2d');
-    const grad = ctx.createRadialGradient(128, 128, 0, 128, 128, 128);
-    const c = new THREE.Color(color);
-    grad.addColorStop(0, `rgba(${Math.round(c.r*255)},${Math.round(c.g*255)},${Math.round(c.b*255)},1)`);
-    grad.addColorStop(0.4, `rgba(${Math.round(c.r*255)},${Math.round(c.g*255)},${Math.round(c.b*255)},0.5)`);
-    grad.addColorStop(1, `rgba(${Math.round(c.r*255)},${Math.round(c.g*255)},${Math.round(c.b*255)},0)`);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 256, 256);
-    const tex = new THREE.CanvasTexture(cv);
-
+  // Glow halos — white/blue expanding shells
+  [280, 350, 450, 580, 750].forEach((s, i) => {
     const mat = new THREE.MeshBasicMaterial({
-      map: tex, transparent: true, opacity: opacity,
-      side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false,
+      color: i < 2 ? 0xffffff : 0xccddff,
+      transparent: true, opacity: 0.06 - i * 0.008,
+      side: THREE.BackSide, blending: THREE.AdditiveBlending, depthWrite: false,
     });
-    const mesh = new THREE.Mesh(nebulaGeo, mat);
-
-    // Random position on far shell
-    const phi = Math.acos(2 * Math.random() - 1);
-    const theta = Math.random() * Math.PI * 2;
-    const r = 4000 + Math.random() * 3000;
-    mesh.position.set(
-      r * Math.sin(phi) * Math.cos(theta),
-      r * Math.sin(phi) * Math.sin(theta),
-      r * Math.cos(phi)
-    );
-    mesh.lookAt(0, 0, 0);
-    const scale = 1200 + Math.random() * 2400;
-    mesh.scale.set(scale, scale * (0.6 + Math.random() * 0.8), 1);
-    mesh.rotation.z = Math.random() * Math.PI;
+    const mesh = new THREE.Mesh(coreGeo, mat);
+    mesh.scale.setScalar(s);
+    mesh.position.copy(WH_POS);
     scene.add(mesh);
+  });
+
+  // Outward streaming particles (opposite of BH — particles flow OUT)
+  var WPN = 1500, wpP = new Float32Array(WPN*3), wpPh = new Float32Array(WPN), wpSp = new Float32Array(WPN), wpR = new Float32Array(WPN);
+  for (var i = 0; i < WPN; i++) {
+    var r = 200 + Math.random() * 600, a = Math.random() * 6.283;
+    wpP[i*3] = WH_POS.x + r * Math.cos(a);
+    wpP[i*3+1] = WH_POS.y + (Math.random() - 0.5) * r * 0.3;
+    wpP[i*3+2] = WH_POS.z + r * Math.sin(a);
+    wpPh[i] = Math.random() * 6.283; wpSp[i] = 0.3 + Math.random() * 0.7; wpR[i] = r;
   }
+  var wpGeo = new THREE.BufferGeometry();
+  wpGeo.setAttribute('position', new THREE.BufferAttribute(wpP, 3));
+  wpGeo.setAttribute('aPhase', new THREE.BufferAttribute(wpPh, 1));
+  wpGeo.setAttribute('aSpeed', new THREE.BufferAttribute(wpSp, 1));
+  wpGeo.setAttribute('aRadius', new THREE.BufferAttribute(wpR, 1));
+  var wpMat = new THREE.ShaderMaterial({
+    uniforms: { uTime:{value:0}, uWH:{value:WH_POS} },
+    vertexShader:'attribute float aPhase,aSpeed,aRadius;uniform float uTime;uniform vec3 uWH;varying float vA;void main(){float t=uTime*0.3*aSpeed+aPhase;float life=mod(t,6.283);float r=200.0+aRadius*life/6.283;float ang=t*1.5+0.3/max(r-199.0,1.0);float tiltX=sin(aPhase*2.7)*0.6;float tiltZ=cos(aPhase*3.1)*0.5;vec3 p;p.x=uWH.x+r*cos(ang);p.z=uWH.z+r*sin(ang);p.y=uWH.y+r*(sin(ang)*tiltX+cos(ang)*tiltZ)*0.25+sin(t*2.0+aPhase*4.0)*r*0.04;vA=smoothstep(200.0,250.0,r)*smoothstep(900.0,500.0,r);vec4 mv=modelViewMatrix*vec4(p,1.0);gl_PointSize=4.0;gl_Position=projectionMatrix*mv;}',
+    fragmentShader:'varying float vA;void main(){float d=length(gl_PointCoord-0.5);if(d>0.5)discard;float core=(1.0-d*2.0)*vA;float glow=exp(-d*d*8.0)*vA*0.5;gl_FragColor=vec4(vec3(glow),core*0.8+glow);}',
+    blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, transparent: true,
+  });
+  scene.add(new THREE.Points(wpGeo, wpMat));
+
+  // Label
+  if (typeof troika_three_text !== 'undefined') {
+    var TText = troika_three_text.Text;
+    var lbl = new TText();
+    lbl.text = 'WHITE HOLE';
+    lbl.fontSize = 80;
+    lbl.color = '#ffffff';
+    lbl.anchorX = 'center';
+    lbl.outlineWidth = 5;
+    lbl.outlineColor = '#444444';
+    lbl.position.copy(WH_POS).add(new THREE.Vector3(0, 400, 0));
+    lbl.sync();
+    scene.add(lbl);
+  }
+
+  // Animate outward particles
+  var origTick = window._bhTick;
+  window._bhTick = function() {
+    origTick();
+    wpMat.uniforms.uTime.value = performance.now() * 0.001;
+  };
 })();
+
+// ─── NEBULA DUST CLOUDS REMOVED ─────────────────────────────────────────────
 
 
 scene.add(new THREE.AmbientLight(0x223344, 5.0));
@@ -1960,27 +2956,91 @@ const light3 = new THREE.PointLight(0x886644, 1.5, 10000);
 light3.position.set(0, -1000, 300);
 scene.add(light3);
 
-// ─── COSMIC DUST (shader-animated, zero CPU cost per frame) ─────────────────
+// ─── COSMIC DUST (toji-inspired: tiny points, additive glow, GPU spiral) ────
 (function() {
-  var N=3000, pos=new Float32Array(N*3), vel=new Float32Array(N*3), off=new Float32Array(N);
-  for (var i=0;i<N;i++) {
-    var r=200+Math.random()*2800,t=Math.random()*Math.PI*2,p=Math.acos(2*Math.random()-1);
-    pos[i*3]=r*Math.sin(p)*Math.cos(t); pos[i*3+1]=r*Math.cos(p); pos[i*3+2]=r*Math.sin(p)*Math.sin(t);
-    vel[i*3]=(Math.random()-.5)*.2; vel[i*3+1]=(Math.random()-.5)*.2; vel[i*3+2]=(Math.random()-.5)*.2;
-    off[i]=Math.random()*6.283;
+  var N = 10000;
+  var pos = new Float32Array(N * 3);
+  var phase = new Float32Array(N);
+  var speed = new Float32Array(N);
+  var radius = new Float32Array(N);
+  for (var i = 0; i < N; i++) {
+    var r = 100 + Math.random() * 3000;
+    var t = Math.random() * Math.PI * 2;
+    var p = Math.acos(2 * Math.random() - 1);
+    pos[i*3] = r*Math.sin(p)*Math.cos(t);
+    pos[i*3+1] = r*Math.cos(p);
+    pos[i*3+2] = r*Math.sin(p)*Math.sin(t);
+    phase[i] = Math.random() * 6.283;
+    speed[i] = 0.3 + Math.random() * 0.7;
+    radius[i] = r;
   }
-  var geo=new THREE.BufferGeometry();
-  geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
-  geo.setAttribute('aVel',new THREE.BufferAttribute(vel,3));
-  geo.setAttribute('aOff',new THREE.BufferAttribute(off,1));
-  var mat=new THREE.ShaderMaterial({
-    uniforms:{uTime:{value:0}},
-    vertexShader:'attribute vec3 aVel;attribute float aOff;uniform float uTime;varying float vAlpha;void main(){vec3 p=position+aVel*sin(uTime*0.3+aOff)*2.0;p.y+=sin(uTime*0.17+aOff*3.0)*0.3;vec4 mv=modelViewMatrix*vec4(p,1.0);float dist=-mv.z;vAlpha=smoothstep(50.0,200.0,dist)*smoothstep(4000.0,1500.0,dist)*0.5;gl_PointSize=max(1.5,3.0*(400.0/dist));gl_Position=projectionMatrix*mv;}',
-    fragmentShader:'varying float vAlpha;void main(){float d=length(gl_PointCoord-0.5);float a=smoothstep(0.5,0.15,d)*vAlpha;gl_FragColor=vec4(0.75,0.8,1.0,a);}',
-    transparent:true, depthWrite:false,
+  var geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('aPhase', new THREE.BufferAttribute(phase, 1));
+  geo.setAttribute('aSpeed', new THREE.BufferAttribute(speed, 1));
+  geo.setAttribute('aRadius', new THREE.BufferAttribute(radius, 1));
+  var mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: { value: 0 },
+      uSwirl: { value: 0 },
+      uWarp: { value: 0 },
+      uBHPos: { value: new THREE.Vector3(3200, -800, -5500) },
+    },
+    vertexShader: [
+      'attribute float aPhase, aSpeed, aRadius;',
+      'uniform float uTime, uSwirl, uWarp;',
+      'uniform vec3 uBHPos;',
+      'varying float vAlpha, vSwirl, vWarp;',
+      'void main() {',
+      '  vec3 p = position;',
+      '  float t = uTime * 0.1 * aSpeed + aPhase;',
+      '  p.x += sin(t * 0.7 + aPhase) * 15.0;',
+      '  p.y += cos(t * 0.5 + aPhase * 2.0) * 10.0;',
+      '  p.z += sin(t * 0.6 + aPhase * 3.0) * 12.0;',
+      '  if (uSwirl > 0.01) {',
+      '    vec3 toBH = uBHPos - position;',
+      '    float d = length(toBH);',
+      '    vec3 dir = toBH / max(d, 1.0);',
+      '    vec3 tangent = normalize(cross(dir, vec3(0.0, 1.0, 0.0)));',
+      '    float swirlT = uTime * 0.4 * aSpeed + aPhase;',
+      '    float pullStrength = uSwirl * 300.0 / max(d, 50.0);',
+      '    float tangentStrength = uSwirl * 200.0 / max(d, 50.0);',
+      '    p += dir * pullStrength;',
+      '    p += tangent * tangentStrength * sin(swirlT * 2.0);',
+      '    p.y += cos(swirlT * 1.5) * pullStrength * 0.3;',
+      '  }',
+      '  // Warp: particles streak toward camera on planet select',
+      '  if (uWarp > 0.01) {',
+      '    p.z += uWarp * aSpeed * 2000.0 * sin(aPhase + uTime * 3.0);',
+      '    p.x += uWarp * aSpeed * 500.0 * cos(aPhase * 3.0);',
+      '    p.y += uWarp * aSpeed * 300.0 * sin(aPhase * 2.0 + uTime);',
+      '  }',
+      '  vec4 mv = modelViewMatrix * vec4(p, 1.0);',
+      '  float dist = -mv.z;',
+      '  vAlpha = smoothstep(30.0, 150.0, dist) * smoothstep(5000.0, 2000.0, dist);',
+      '  vSwirl = uSwirl; vWarp = uWarp;',
+      '  gl_PointSize = mix(4.0, 8.0, uWarp);',
+      '  gl_Position = projectionMatrix * mv;',
+      '}'
+    ].join('\n'),
+    fragmentShader: [
+      'varying float vAlpha, vSwirl, vWarp;',
+      'void main() {',
+      '  float d = length(gl_PointCoord - 0.5);',
+      '  if (d > 0.5) discard;',
+      '  float a = (1.0 - d * 2.0) * vAlpha;',
+      '  vec3 col = mix(vec3(0.3, 0.5, 1.0), vec3(1.0, 0.4, 0.1), vSwirl);',
+      '  col = mix(col, vec3(0.6, 0.8, 1.0), vWarp * 0.5);',
+      '  gl_FragColor = vec4(col, a);',
+      '}'
+    ].join('\n'),
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    depthTest: true,
+    transparent: true,
   });
-  scene.add(new THREE.Points(geo,mat));
-  window._dustMat=mat;
+  scene.add(new THREE.Points(geo, mat));
+  window._dustMat = mat;
 })();
 
 // ─── PROCEDURAL PLANET TEXTURES ─────────────────────────────────────────────
@@ -2054,7 +3114,48 @@ const PLANET_PALETTES = {
 
 function makePlanetTexture(domain, nodeId) {
   const type  = PLANET_TYPES[domain] || 'ocean';
-  const pal   = PLANET_PALETTES[type];
+  const basePal = PLANET_PALETTES[type];
+
+  // Per-planet color variation — shift hue/brightness so same-domain planets look different
+  let pseed = 0;
+  for (let i = 0; i < nodeId.length; i++) pseed = (pseed * 37 + nodeId.charCodeAt(i)) & 0xfffffff;
+  const pRng = seededRand(pseed + 5555);
+  const hueShift = (pRng() - 0.5) * 40;       // ±20 degrees hue rotation
+  const satMul   = 0.75 + pRng() * 0.5;        // 0.75–1.25 saturation
+  const brightOff = (pRng() - 0.5) * 30;       // ±15 brightness offset
+  const palOrder = pRng() > 0.5;               // sometimes reverse palette order
+
+  function rgb2hsl(r,g,b) {
+    r/=255; g/=255; b/=255;
+    var mx=Math.max(r,g,b), mn=Math.min(r,g,b), h, s, l=(mx+mn)/2;
+    if(mx===mn) { h=s=0; } else {
+      var d=mx-mn; s=l>0.5?d/(2-mx-mn):d/(mx+mn);
+      if(mx===r) h=(g-b)/d+(g<b?6:0);
+      else if(mx===g) h=(b-r)/d+2;
+      else h=(r-g)/d+4;
+      h/=6;
+    }
+    return [h*360,s*100,l*100];
+  }
+  function hsl2rgb(h,s,l) {
+    h=((h%360)+360)%360; s/=100; l/=100;
+    var c=(1-Math.abs(2*l-1))*s, x=c*(1-Math.abs((h/60)%2-1)), m=l-c/2;
+    var r1,g1,b1;
+    if(h<60){r1=c;g1=x;b1=0;}else if(h<120){r1=x;g1=c;b1=0;}
+    else if(h<180){r1=0;g1=c;b1=x;}else if(h<240){r1=0;g1=x;b1=c;}
+    else if(h<300){r1=x;g1=0;b1=c;}else{r1=c;g1=0;b1=x;}
+    return [Math.round((r1+m)*255),Math.round((g1+m)*255),Math.round((b1+m)*255)];
+  }
+
+  var pal = basePal.map(function(c, idx) {
+    var hsl = rgb2hsl(c[0], c[1], c[2]);
+    hsl[0] += hueShift;
+    hsl[1] = Math.max(0, Math.min(100, hsl[1] * satMul));
+    hsl[2] = Math.max(0, Math.min(100, hsl[2] + brightOff));
+    return hsl2rgb(hsl[0], hsl[1], hsl[2]);
+  });
+  if (palOrder) pal = pal.slice().reverse();
+
   const S     = Q.texSize;
   const cv    = document.createElement('canvas');
   cv.width = S * 2; cv.height = S;
@@ -2237,18 +3338,23 @@ const glowTexture = new THREE.CanvasTexture(glowCanvas);
 // ─── FRESNEL ATMOSPHERE SHADER (proven pattern from solar system demos) ─────
 const _atmosVert = `
   varying vec3 vNormal;
+  varying vec3 vViewPos;
   void main() {
     vNormal = normalize(normalMatrix * normal);
+    vViewPos = (modelViewMatrix * vec4(position, 1.0)).xyz;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
 const _atmosFrag = `
   varying vec3 vNormal;
+  varying vec3 vViewPos;
   uniform vec3 glowColor;
   uniform float coeff;
   uniform float power;
   void main() {
-    float intensity = pow(coeff - dot(vNormal, vec3(0.0, 0.0, 1.0)), power);
+    // Use actual view direction — not fixed Z — so glow doesn't track head
+    vec3 viewDir = normalize(-vViewPos);
+    float intensity = pow(coeff - dot(vNormal, viewDir), power);
     gl_FragColor = vec4(glowColor, 1.0) * intensity;
   }
 `;
@@ -2260,13 +3366,14 @@ function createFresnelAtmosphere(radius, color, scale) {
     fragmentShader: _atmosFrag,
     uniforms: {
       glowColor: { value: new THREE.Color(color) },
-      coeff: { value: 0.75 },
-      power: { value: 3.5 },
+      coeff: { value: 0.4 },
+      power: { value: 6.0 },
     },
     side: THREE.BackSide,
     blending: THREE.AdditiveBlending,
     transparent: true,
     depthWrite: false,
+    depthTest: true, // was false — caused glow to render on top of everything
   });
   const mesh = new THREE.Mesh(_atmosGeo, mat);
   mesh.scale.setScalar(radius * scale);
@@ -2288,7 +3395,7 @@ nodes.forEach(n => {
   const mat = new THREE.MeshPhongMaterial({
     color: domColor,
     emissive: domColor,
-    emissiveIntensity: 0.22,
+    emissiveIntensity: 0.15,
     shininess: 35,
     specular: new THREE.Color(0x111111),
     transparent: false,
@@ -2305,26 +3412,12 @@ nodes.forEach(n => {
   nodeMeshes.push(mesh);
   n.mesh = mesh;
 
-  // Atmosphere glow — gaussian sprite billboard (cheaper than sphere mesh)
-  const atmMat = new THREE.SpriteMaterial({
-    map: glowTexture,
-    color: domColor,
-    transparent: true,
-    opacity: 0.4,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    depthTest: false, // always visible — glow shows around and behind planet
-  });
-  const atm = new THREE.Sprite(atmMat);
-  const glowScale = n.size * 2.2 * PLANET_SCALE * 3.0;
-  atm.scale.set(glowScale, glowScale, 1);
-  atm.position.set(n.x, n.y, n.z);
-  scene.add(atm);
-  n.atm = atm;
-  n.atmMat = atmMat;
+  // Sprite billboard glow REMOVED — was tracking head movement in VR
+  n.atm = null;
+  n.atmMat = null;
 
-  // Fresnel 3D atmosphere on largest planets (backside shader, additive)
-  if (_fresnelNodes.has(n.id)) {
+  // Fresnel 3D atmosphere on largest planets (backside shader, fixed in space)
+  if (true) { // Fresnel on ALL planets (sprites removed)
     const fresnelAtm = createFresnelAtmosphere(n.size * 2.2 * PLANET_SCALE, hex, 1.25);
     fresnelAtm.position.set(n.x, n.y, n.z);
     scene.add(fresnelAtm);
@@ -2379,10 +3472,10 @@ nodes.forEach(n => {
     ctx.fillStyle = hex;
     ctx.fillText(text, 10, fontSize);
     const tex = new THREE.CanvasTexture(cv);
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false });
-    const label = new THREE.Sprite(mat);
+    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide });
     const s = size * 1.8;
-    label.scale.set(s * (cv.width / cv.height), s, 1);
+    const aspect = cv.width / cv.height;
+    const label = new THREE.Mesh(new THREE.PlaneGeometry(s * aspect, s), mat);
     return label;
   }
 
@@ -2398,6 +3491,11 @@ nodes.forEach(n => {
         label.anchorY = 'bottom';
         label.outlineWidth = n.size * 0.15;
         label.outlineColor = '#000000';
+        label.padding = n.size * 0.5;
+        label.backgroundColor = 'rgba(2,8,20,0.7)';
+        label.borderRadius = n.size * 0.8;
+        label.borderColor = DOMAINS[n.domain]?.color || '#aaaaaa';
+        label.borderWidth = n.size * 0.08;
         label.position.set(n.x, n.y + n.size * 16, n.z);
         label.sync();
         scene.add(label);
@@ -2406,7 +3504,7 @@ nodes.forEach(n => {
     });
     setTimeout(() => {
       const bh = new TText();
-      bh.text = 'SINGULARITY';
+      bh.text = 'BLACK HOLE';
       bh.fontSize = 80;
       bh.color = '#e8d89a';
       bh.anchorX = 'center';
@@ -2426,7 +3524,7 @@ nodes.forEach(n => {
       n._vrLabel = label;
     });
     // BH label
-    const bhLabel = makeCanvasLabel('SINGULARITY', '#e8d89a', 20);
+    const bhLabel = makeCanvasLabel('BLACK HOLE', '#e8d89a', 20);
     bhLabel.scale.set(400, 60, 1);
     bhLabel.position.copy(BH_POS).add(new THREE.Vector3(0, 500, 0));
     scene.add(bhLabel);
@@ -3207,7 +4305,7 @@ function updateScene() {
   for (const n of nodes) {
     n.mesh.position.set(n.x, n.y, n.z);
     n.mesh.rotation.y += n.mesh.userData.rotSpeed;
-    if (n.atm) n.atm.position.set(n.x, n.y, n.z);
+    // sprite glow removed — was billboard tracking head
     if (n._fresnelAtm) n._fresnelAtm.position.set(n.x, n.y, n.z);
     if (n._vrLabel) n._vrLabel.position.set(n.x, n.y + n.size * 16, n.z);
     if (n.outerAtm) n.outerAtm.position.set(n.x, n.y, n.z);
@@ -3946,13 +5044,15 @@ function focusNode(n) {
     clearMoons();
     clearShip();
     resetDim();
+    hideVRNoteCard();
   }
   focusCamAnim = null;
   focusedNode  = n;
   n._restX = n.x; n._restY = n.y; n._restZ = n.z;
   n._floatStart = undefined;
   playChime(n.domain);
-  // In VR: skip heavy effects that add draw calls (moons, ship, edges, trails, ripples)
+  // In VR: show note card, skip heavy effects
+  if (isInXR()) { showVRNoteCard(n); }
   if (!isInXR()) {
     dimToNeighbors(n);
     buildFocusEdges(n);
@@ -4913,23 +6013,24 @@ let _animFrame = 0;
 let _introZoom = null;
 
 function generateAllTextures(callback) {
-  // Only texture the top 30 biggest planets (Quest can't handle 212)
-  Q.texSize = 48; // 96×48 canvas — tiny but visible
-  const texNodes = nodes.slice().sort((a, b) => b.size - a.size).slice(0, 30);
+  // Force desktop-quality textures (Quest defaults to low mobile settings)
+  Q.texSize = 256;       // 512×256 canvas (higher res, load time OK)
+  Q.texOctaves = 6;      // 6 noise octaves for finer detail
+  Q.noiseGrid = [24, 12]; // finer noise grid for more surface detail
   let i = 0;
-  const BATCH = 3;
+  const BATCH = 2;
   function next() {
-    const end = Math.min(i + BATCH, texNodes.length);
+    const end = Math.min(i + BATCH, nodes.length);
     while (i < end) {
-      const n = texNodes[i++];
+      const n = nodes[i++];
       const tex = makePlanetTexture(n.domain, n.id);
       n.mesh.material.map = tex;
       n.mesh.material.needsUpdate = true;
     }
-    const pct = Math.round((i / texNodes.length) * 100);
+    const pct = Math.round((i / nodes.length) * 100);
     const label = document.querySelector('.loading-label');
     if (label) label.textContent = `Generating planets ${pct}%`;
-    if (i >= texNodes.length) {
+    if (i >= nodes.length) {
       _allTexturesReady = true;
       callback();
     } else {
@@ -4948,6 +6049,37 @@ function onTexturesReady() {
 
   // Now that the scene is ready, enable WebXR so the user can enter VR
   setupVRButton();
+
+  // Label remaining planets size>=10 (skip tiny ones to reduce clutter)
+  var unlabeled = nodes.filter(function(n) { return !n._vrLabel && n.size >= 10; });
+  var li = 0;
+  function nextLabel() {
+    if (li >= unlabeled.length) return;
+    var n = unlabeled[li++];
+    var hex = DOMAINS[n.domain]?.color || '#aaa';
+    var cv = document.createElement('canvas');
+    var ctx = cv.getContext('2d');
+    var fs = 28;
+    ctx.font = fs + 'px Helvetica,sans-serif';
+    var tw = ctx.measureText(n.id).width;
+    cv.width = Math.ceil(tw) + 10; cv.height = fs + 6;
+    ctx.font = fs + 'px Helvetica,sans-serif';
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = hex;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(n.id, cv.width / 2, cv.height / 2);
+    var tex = new THREE.CanvasTexture(cv);
+    var mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    var s = n.size * 2;
+    var aspect = cv.width / cv.height;
+    var label = new THREE.Mesh(new THREE.PlaneGeometry(s * aspect, s), mat);
+    label.position.set(n.x, n.y + n.size * 16, n.z);
+    if (_galaxyGroup) _galaxyGroup.add(label); else scene.add(label);
+    n._vrLabel = label;
+    setTimeout(nextLabel, 20);
+  }
+  setTimeout(nextLabel, 2000); // start 2s after textures done
 
   // Show welcome text after loading screen fades + emit a pulse wave from center
   setTimeout(() => {
@@ -5132,14 +6264,102 @@ function animate() {
   // XR controller navigation + menu button polling
   if (_inXR) {
     updateXRControls();
-    if (window._dustMat) window._dustMat.uniforms.uTime.value = performance.now() * 0.001;
+    if (window._dustMat) {
+      window._dustMat.uniforms.uTime.value = performance.now() * 0.001;
+      var _t = performance.now() * 0.001;
+      // skybox removed
+      var _ct = performance.now() * 0.001;
+      _vrNoteCards.forEach(function(c) { if (c.material && c.material.uniforms && c.material.uniforms.uTime) c.material.uniforms.uTime.value = _ct; });
+      if (window._noteCardMat && window._noteCardMat.uniforms) window._noteCardMat.uniforms.uTime.value = _ct;
+      // Billboard card groups — face user, positioned to the right of planet
+      // Position card to the right of planet — NO rotation (default faces user)
+      _vrNoteCards.forEach(function(c) {
+        if (c.isGroup && c.userData._planetNode) {
+          var pn = c.userData._planetNode;
+          // Fixed offset: card to the right and slightly above the planet
+          var offsetDist = pn.size * 35;
+          c.position.set(pn.x + offsetDist, pn.y + pn.size * 2, pn.z);
+          // No rotation — default orientation faces the user in this setup
+          c.rotation.set(0, 0, 0);
+        }
+      });
+      // Highlight chips on aim
+      if (window._vrChipMeshes && window._vrChipMeshes.length > 0) {
+        for (var ci=0;ci<window._vrChipMeshes.length;ci++) {
+          var chip = window._vrChipMeshes[ci];
+          chip.material.opacity = 0.15; chip.material.color.set(new THREE.Color(DOMAINS[focusedNode?.domain]?.color||'#888'));
+        }
+        for (var ctrl of [xrController0, xrController1]) {
+          _xrTempMatrix.identity().extractRotation(ctrl.matrixWorld);
+          _xrRayOrigin.setFromMatrixPosition(ctrl.matrixWorld);
+          _xrRayDir.set(0,0,-1).applyMatrix4(_xrTempMatrix);
+          var chipRay = new THREE.Raycaster(_xrRayOrigin, _xrRayDir);
+          var chipHits = chipRay.intersectObjects(window._vrChipMeshes, false);
+          if (chipHits.length > 0) { chipHits[0].object.material.opacity = 0.5; chipHits[0].object.material.color.set(0xffffff); break; }
+        }
+      }
+      const swirlTarget = window._bhSwirlActive ? 1.0 : 0.0;
+      window._dustMat.uniforms.uSwirl.value += (swirlTarget - window._dustMat.uniforms.uSwirl.value) * 0.03;
+      const warpTarget = window._warpActive ? 1.0 : 0.0;
+      window._dustMat.uniforms.uWarp.value += (warpTarget - window._dustMat.uniforms.uWarp.value) * 0.05;
+    }
     pollRightTriggerExit();
+    updateGuidedTour();
+    // Welcome text fade
+    if (window._welcomeSprite) {
+      var elapsed = (performance.now() - window._welcomeStart) / 1000;
+      if (elapsed < 1) {
+        window._welcomeSprite.material.opacity = elapsed;
+      } else if (elapsed < 5) {
+        window._welcomeSprite.material.opacity = 1;
+        // Slowly recede backward during hold
+        window._welcomeSprite.position.z -= 0.3;
+      } else if (elapsed < 8) {
+        // Fade out while continuing to recede
+        window._welcomeSprite.material.opacity = Math.max(0, 1 - (elapsed - 5) / 3);
+        window._welcomeSprite.position.z -= 0.5;
+        window._welcomeSprite.scale.x *= 0.998; // shrink slightly as it recedes
+        window._welcomeSprite.scale.y *= 0.998;
+      } else {
+        if (window._welcomeSprite.parent) window._welcomeSprite.parent.remove(window._welcomeSprite);
+        window._welcomeSprite = null;
+      }
+    }
     if (_vrZoomAnim && _galaxyGroup) {
       _vrZoomAnim.t++;
       const raw = Math.min(_vrZoomAnim.t / _vrZoomAnim.frames, 1);
       const ease = raw < 0.5 ? 2*raw*raw : -1+(4-2*raw)*raw;
       _galaxyGroup.position.lerpVectors(_vrZoomAnim.startPos, _vrZoomAnim.endPos, ease);
-      if (raw >= 1) _vrZoomAnim = null;
+      if (raw >= 1) {
+        // Start gentle looping drift (stays near target, no return home)
+        const center = _vrZoomAnim ? _vrZoomAnim.endPos.clone() : _galaxyGroup.position.clone();
+        _vrZoomAnim = null;
+        window._vrDriftLoop = { center: center, t: 0 };
+      }
+    }
+    // BH orbit — slowly circle around the black hole after zooming to it
+    if (window._bhOrbit && _galaxyGroup && !_vrZoomAnim) {
+      const o = window._bhOrbit;
+      o.angle += 0.003; // slow orbit
+      _galaxyGroup.position.x = o.center.x + Math.sin(o.angle) * o.radius;
+      _galaxyGroup.position.z = o.center.z + Math.cos(o.angle) * o.radius;
+      _galaxyGroup.position.y = o.center.y + Math.sin(o.angle * 0.4) * 0.3;
+    }
+    // Gentle looping drift — stays near zoomed target, 10s cycle
+    else if (window._vrDriftLoop && _galaxyGroup && !_vrZoomAnim) {
+      window._vrDriftLoop.t += 0.001;
+      const dt = window._vrDriftLoop.t;
+      const c = window._vrDriftLoop.center;
+      _galaxyGroup.position.x = c.x + Math.sin(dt * 0.63) * 0.15;
+      _galaxyGroup.position.y = c.y + Math.sin(dt * 0.47) * 0.08;
+      _galaxyGroup.position.z = c.z + Math.sin(dt * 0.31) * 0.2;
+    }
+    if (window._recenterRotAnim && _galaxyGroup) {
+      window._recenterRotAnim.t++;
+      const raw = Math.min(window._recenterRotAnim.t / window._recenterRotAnim.frames, 1);
+      const ease = raw < 0.5 ? 2*raw*raw : -1+(4-2*raw)*raw;
+      _galaxyGroup.rotation.y = window._recenterRotAnim.startY * (1 - ease);
+      if (raw >= 1) { _galaxyGroup.rotation.set(0, 0, 0); window._recenterRotAnim = null; }
     }
   }
 
