@@ -2898,7 +2898,7 @@ const BH_POS = new THREE.Vector3(6000, -1500, -9000);
     'float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}',
     'float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);}',
     'float fbm(vec2 p){float v=0.0,a=0.5;mat2 rot=mat2(0.877,0.479,-0.479,0.877);for(int i=0;i<4;i++){v+=a*noise(p);p=rot*p*2.01;a*=0.5;}return v;}',
-    'vec3 blackbody(float t){t=clamp(t,1000.0,40000.0)/100.0;vec3 c;c.r=t<=66.0?1.0:1.293*pow(t-60.0,-0.1332);c.g=t<=66.0?0.390*log(t)-0.632:1.130*pow(t-60.0,-0.0755);c.b=t>=190.0?1.0:(t<=19.0?0.0:0.543*log(t-10.0)-1.196);return clamp(c,0.0,1.0);}',
+    'vec3 blackbody(float t){t=clamp(t,1000.0,40000.0)/100.0;vec3 c;if(t<=66.0){c.r=1.0;c.g=clamp(0.390*log(max(t,1.0))-0.632,0.0,1.0);c.b=t<=19.0?0.0:clamp(0.543*log(max(t-10.0,1.0))-1.196,0.0,1.0);}else{c.r=clamp(1.293*pow(t-60.0,-0.1332),0.0,1.0);c.g=clamp(1.130*pow(t-60.0,-0.0755),0.0,1.0);c.b=1.0;}return c;}',
     'void main() {',
     '  float normR = clamp((vRadius-uInnerR)/(uOuterR-uInnerR), 0.0, 1.0);',
     '  float tempK = mix(14000.0, 1800.0, pow(normR, 0.75));',
